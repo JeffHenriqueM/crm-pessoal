@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "908967144787",
+    "project_id": "crm-pessoal-d993d",
+    "storage_bucket": "crm-pessoal-d993d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:908967144787:android:953d3e6ea4e41e40b485a6",
+        "android_client_info": {
+          "package_name": "com.example.crm_pessoal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBOg9qpDBN4UuAmJEl3SZdRsEGqeTcGlaw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
