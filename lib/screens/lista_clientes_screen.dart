@@ -64,15 +64,19 @@ class ListaClientesScreen extends StatelessWidget {
                   title: Text(fase.nomeDisplay),
                   onTap: () async {
                     Navigator.of(context).pop(); // Fecha o diálogo
-
-                    if (cliente.id != null) {
-                      await service.atualizarFaseCliente(cliente.id!, fase);
-                    }
-
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Fase alterada para ${fase.nomeDisplay}')),
-                      );
+                    if (fase == FaseCliente.perdido) {
+                      // SE FOR PERDIDO, ABRE O MOTIVO (PASSO 2)
+                      _confirmarPerda(context, cliente, service);
+                    } else {
+                      // SE FOR QUALQUER OUTRA FASE, SEGUE O FLUXO NORMAL
+                      if (cliente.id != null) {
+                        await service.atualizarFaseCliente(cliente.id!, fase);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Fase alterada para ${fase.nomeDisplay}')),
+                          );
+                        }
+                      }
                     }
                   },
                 );
@@ -160,6 +164,51 @@ class ListaClientesScreen extends StatelessWidget {
         );
       }
     }
+  }
+
+  void _confirmarPerda(BuildContext context, Cliente cliente, FirestoreService service) {
+    final TextEditingController motivoController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Motivo da Não Venda'),
+        content: TextField(
+          controller: motivoController,
+          decoration: const InputDecoration(
+            hintText: 'Ex: Preço, comprou em outro lugar...',
+            labelText: 'Por que não fechou?',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCELAR'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (cliente.id != null) {
+                await service.atualizarFaseCliente(
+                  cliente.id!,
+                  FaseCliente.perdido,
+                  motivo: motivoController.text,
+                );
+              }
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cliente movido para Perdido')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('CONFIRMAR PERDA', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

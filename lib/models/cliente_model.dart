@@ -8,11 +8,13 @@ class Cliente {
   final String tipo;
   final FaseCliente fase;
   final String? nomeEsposa;
+  final String? origem;
   final String? telefoneContato;
   final DateTime dataCadastro;
   final DateTime dataAtualizacao;
   final DateTime? proximoContato;
   final DateTime? dataVisita;
+  final String? motivoNaoVenda;
 
   Cliente({
     this.id,
@@ -24,7 +26,9 @@ class Cliente {
     this.nomeEsposa,
     this.telefoneContato,
     this.proximoContato,
-    this.dataVisita
+    this.dataVisita,
+    this.origem,
+    this.motivoNaoVenda
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -34,6 +38,7 @@ class Cliente {
       'tipo': tipo,
       'fase': fase.toString().split('.').last,
       'nomeEsposa': nomeEsposa,
+      'origem' : origem,
       'telefoneContato': telefoneContato,
       'dataCadastro': Timestamp.fromDate(dataCadastro),
       'dataAtualizacao': Timestamp.fromDate(dataAtualizacao),
@@ -41,29 +46,43 @@ class Cliente {
       // Adiciona o proximoContato ao mapa, convertendo para Timestamp se não for nulo.
       'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato!) : null,
       'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita!) : null,
+      'motivoNaoVenda': motivoNaoVenda,
     };
   }
 
   factory Cliente.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    FaseCliente fase = FaseCliente.values.firstWhere(
-            (e) => e.toString().split('.').last == data['fase'],
-        orElse: () => FaseCliente.prospeccao
-    );
+    // 2. Tratamento seguro da Fase (Onde geralmente ocorre o erro de null)
+    final stringFase = data['fase'] as String?;
+
+    FaseCliente faseRecuperada = FaseCliente.prospeccao; // Default
+
+    if (stringFase != null) {
+      try {
+        faseRecuperada = FaseCliente.values.firstWhere(
+              (e) => e.toString().split('.').last == stringFase,
+          orElse: () => FaseCliente.prospeccao,
+        );
+      } catch (_) {
+        faseRecuperada = FaseCliente.prospeccao;
+      }
+    }
 
     return Cliente(
       id: doc.id,
       nome: data['nome'] ?? 'Sem Nome',
       tipo: data['tipo'] ?? 'Não Definido',
-      fase: fase,
+      fase: faseRecuperada,
+      origem: data['origem'] ?? 'Antigo',
+      // 3. Tratamento seguro de Timestamps
       dataCadastro: (data['dataCadastro'] as Timestamp?)?.toDate() ?? DateTime.now(),
       dataAtualizacao: (data['dataAtualizacao'] as Timestamp?)?.toDate() ?? DateTime.now(),
       nomeEsposa: data['nomeEsposa'],
       telefoneContato: data['telefoneContato'],
       proximoContato: (data['proximoContato'] as Timestamp?)?.toDate(),
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
-
+      motivoNaoVenda: data['motivoNaoVenda'],
     );
   }
 }

@@ -70,18 +70,56 @@ class FirestoreService {
   }
 
   // 3. MÉTODO: Atualizar Fase do Cliente
-  Future<void> atualizarFaseCliente(String clienteId, FaseCliente novaFase) async {
+  Future<void> atualizarFaseCliente(String clienteId, FaseCliente novaFase, {String? motivo}) async {
     try {
       String faseString = novaFase.toString().split('.').last;
+
+      // 1. Buscamos a fase atual antes de mudar para registrar no histórico
+      DocumentSnapshot doc = await _db.collection(_colecaoClientes).doc(clienteId).get();
+      String faseAntiga = doc.exists ? (doc.data() as Map<String, dynamic>)['fase'] ?? 'prospeccao' : 'prospeccao';
 
       await _db.collection(_colecaoClientes).doc(clienteId).update({
         'fase': faseString,
         'dataAtualizacao': Timestamp.now(),
+        'motivoNaoVenda' : motivo,
       });
+
+      // 3. REGISTRAMOS O EVENTO NO HISTÓRICO (Para suas métricas futuras)
+      await registrarEventoHistorico(
+        clienteId: clienteId,
+        tipo: 'mudanca_fase',
+        detalhes: {
+          'de': faseAntiga,
+          'para': faseString,
+          'motivo': motivo, // Aqui salvamos o motivo no histórico
+        },
+      );
+
       print('Fase do cliente $clienteId atualizada para $faseString');
     } catch (e) {
       print('Erro ao atualizar fase do cliente $clienteId: $e');
       rethrow;
+    }
+  }
+
+  // NOVO MÉTODO AUXILIAR PARA MÉTRICAS
+  Future<void> registrarEventoHistorico({
+    required String clienteId,
+    required String tipo,
+    required Map<String, dynamic> detalhes,
+  }) async {
+    try {
+      await _db
+          .collection(_colecaoClientes)
+          .doc(clienteId)
+          .collection('historico')
+          .add({
+        'tipo': tipo,
+        'data': Timestamp.now(),
+        ...detalhes,
+      });
+    } catch (e) {
+      print('Erro ao registrar histórico: $e');
     }
   }
 
@@ -90,7 +128,7 @@ class FirestoreService {
       String clienteId,
       String novoNome,
       String novoTipo,
-      String? novoTelefoneContato, // Ordem corrigida
+      String? novoTelefoneContato, // Ordem
       String? novoNomeEsposa,       // Ordem corrigida
       DateTime? proximoContato,     // PARÂMETRO ADICIONADO
       ) async {

@@ -202,7 +202,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
                         ? 'Agendar Próximo Contato'
                         : 'Próximo contato: ${DateFormat('dd/MM/yyyy HH:mm').format(_proximoContatoSelecionado!)}',
                     style: TextStyle(
-                      color: _proximoContatoSelecionado == null ? Colors.grey.shade600 : Colors.black,
+                      color: _proximoContatoSelecionado == null ? Colors.grey.shade600 : Colors.white,
                       fontWeight: _proximoContatoSelecionado == null ? FontWeight.normal : FontWeight.bold,
                     ),
                   ),
@@ -227,7 +227,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
                         ? 'Agendar Proxima Visita'
                         : 'Próxima Visita: ${DateFormat('dd/MM/yyyy HH:mm').format(_dataVisitaSelecionada!)}',
                     style: TextStyle(
-                      color: _dataVisitaSelecionada == null ? Colors.grey.shade600 : Colors.black,
+                      color: _dataVisitaSelecionada == null ? Colors.grey.shade600 : Colors.white,
                       fontWeight: _dataVisitaSelecionada == null ? FontWeight.normal : FontWeight.bold,
                     ),
                   ),

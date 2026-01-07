@@ -18,6 +18,46 @@ class ClienteListFiltered extends StatelessWidget {
     required this.onDismissed,
   });
 
+  // ADICIONE O MÉTODO AQUI:
+  void _confirmarPerda(BuildContext context, String clienteId, FirestoreService service) {
+    final TextEditingController motivoController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Obriga o usuário a escolher ou cancelar
+      builder: (context) => AlertDialog(
+        title: const Text('Motivo da Não Venda'),
+        content: TextField(
+          controller: motivoController,
+          decoration: const InputDecoration(
+            hintText: 'Ex: Preço alto, comprou no concorrente...',
+            labelText: 'Por que não fechou?',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCELAR'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await service.atualizarFaseCliente(
+                clienteId,
+                FaseCliente.perdido,
+                motivo: motivoController.text,
+              );
+              if (context.mounted) Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('CONFIRMAR PERDA', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final FirestoreService firestoreService = FirestoreService();
@@ -98,38 +138,75 @@ class ClienteListFiltered extends StatelessWidget {
                       Text('Tipo: ${cliente.tipo}'),
                       const SizedBox(height: 4),
 
-                      // 4. EXIBIÇÃO DA DATA DO PRÓXIMO CONTATO
+                      // 1. BLOCO DO PRÓXIMO CONTATO (Aparece apenas se existir)
                       if (cliente.proximoContato != null)
                         Padding(
-                          padding: const EdgeInsets.only(top: 6.0),
+                          padding: const EdgeInsets.only(top: 4.0),
                           child: Row(
                             children: [
                               Icon(
                                 Icons.notification_important,
                                 size: 16,
-                                color: contatoUrgente ? Colors.red.shade700 : Colors.blueGrey,
+                                color: contatoUrgente ? Colors.red.shade700 : Colors.white,
                               ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  // Formatação completa da data e hora
-                                  "Prox. contato: ${DateFormat('dd/MM/yy \'às\' HH:mm').format(cliente.proximoContato!)}",
+                                  "Contato: ${DateFormat('dd/MM/yy HH:mm').format(cliente.proximoContato!)}",
                                   style: TextStyle(
-                                    color: contatoUrgente ? Colors.red.shade700 : Colors.black87,
+                                    color: contatoUrgente ? Colors.red.shade700 : Colors.white,
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 12,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+
+                      // 2. BLOCO DA DATA DA VISITA (Aparece apenas se existir - CORREÇÃO AQUI)
+                      if (cliente.dataVisita != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.event_available,
+                                size: 16,
+                                color: Colors.green,
+                              ),
+                              const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  // Formatação completa da data e hora
-                                  "Prox. Visita: ${DateFormat('dd/MM/yy \'às\' HH:mm').format(cliente.dataVisita!)}",
-                                  style: TextStyle(
-                                    color: contatoUrgente ? Colors.red.shade700 : Colors.black87,
+                                  "Visita: ${DateFormat('dd/MM/yy HH:mm').format(cliente.dataVisita!)}",
+                                  style: const TextStyle(
+                                    color: Colors.green,
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 12,
                                   ),
                                   overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      if (cliente.fase == FaseCliente.perdido && cliente.motivoNaoVenda != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6.0),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.comment_bank_outlined, size: 14, color: Colors.orangeAccent),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  "Motivo: ${cliente.motivoNaoVenda}",
+                                  style: const TextStyle(
+                                    color: Colors.orangeAccent,
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                  ),
                                 ),
                               ),
                             ],
@@ -138,7 +215,9 @@ class ClienteListFiltered extends StatelessWidget {
                     ],
                   ),
                   trailing: const Icon(Icons.more_vert),
-                  onTap: () => onTileTap(context, cliente, firestoreService),
+                  onTap: () async {
+                    onTileTap(context, cliente, firestoreService);
+                  },
                 ),
               ),
             );

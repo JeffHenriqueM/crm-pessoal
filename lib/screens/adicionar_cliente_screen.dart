@@ -20,6 +20,7 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   final _nomeController = TextEditingController();
   final _telefoneContatoController = TextEditingController();
   final _nomeEsposaController = TextEditingController();
+  final _motivoController = TextEditingController(); // ADICIONE AQUI
   final FirestoreService _firestoreService = FirestoreService();
   DateTime? _proximoContatoSelecionado;
   DateTime? _dataVisitaSelecionada;
@@ -28,6 +29,8 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   // Estados iniciais do formulário
   String? _tipoSelecionado = 'Solteiro';
   FaseCliente _faseSelecionada = FaseCliente.prospeccao;
+
+  String _origemSelecionada = 'Online';
 
   // 2. FUNÇÃO PARA SELECIONAR DATA E HORA
   Future<void> _selecionarProximoContato(BuildContext context) async {
@@ -103,6 +106,8 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
         nomeEsposa: esposa,
         proximoContato: _proximoContatoSelecionado,
         dataVisita: _dataVisitaSelecionada,
+        origem: _origemSelecionada,
+        motivoNaoVenda: _faseSelecionada == FaseCliente.perdido ? _motivoController.text : null, // ADICIONE AQUI
 
       );
 
@@ -140,6 +145,7 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
     _nomeController.dispose();
     _telefoneContatoController.dispose(); // CORREÇÃO: use dispose() ao invés de clear()
     _nomeEsposaController.dispose();   // CORREÇÃO: use dispose() ao invés de clear()
+    _motivoController.dispose();
     super.dispose();
   }
 
@@ -181,6 +187,37 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
                 validator: (value) => value == null || value.isEmpty ? 'Insira o telefone.' : null,
               ),
               const SizedBox(height: 20),
+              if (_faseSelecionada == FaseCliente.perdido) ...[
+                TextFormField(
+                  controller: _motivoController,
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo da Não Venda',
+                    hintText: 'Por que este cliente não fechou?',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.comment_bank, color: Colors.orange),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 20),
+              ],
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Ponto de Captação (Origem)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.location_searching),
+                ),
+
+                value: _origemSelecionada,
+                items: ['Online', 'Presencial', 'Indicação', 'Outro'].map((String origem) {
+                  return DropdownMenuItem<String>(
+                    value: origem,
+                    child: Text(origem),
+                  );
+                }).toList(),
+                onChanged: (value) => setState(() => _origemSelecionada = value!),
+              ),
+              const SizedBox(height: 20),
+
 
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
