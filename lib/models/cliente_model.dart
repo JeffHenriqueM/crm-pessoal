@@ -15,6 +15,7 @@ class Cliente {
   final DateTime? proximoContato;
   final DateTime? dataVisita;
   final String? motivoNaoVenda;
+  final String? motivoNaoVendaDropdown;
 
   Cliente({
     this.id,
@@ -28,7 +29,8 @@ class Cliente {
     this.proximoContato,
     this.dataVisita,
     this.origem,
-    this.motivoNaoVenda
+    this.motivoNaoVenda,
+    this.motivoNaoVendaDropdown
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -47,6 +49,7 @@ class Cliente {
       'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato!) : null,
       'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita!) : null,
       'motivoNaoVenda': motivoNaoVenda,
+      'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
     };
   }
 
@@ -83,6 +86,7 @@ class Cliente {
       proximoContato: (data['proximoContato'] as Timestamp?)?.toDate(),
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
       motivoNaoVenda: data['motivoNaoVenda'],
+      motivoNaoVendaDropdown: data['motivoNaoVendaDropdown'],
     );
   }
 }

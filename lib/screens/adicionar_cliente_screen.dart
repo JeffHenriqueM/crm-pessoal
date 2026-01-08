@@ -24,6 +24,15 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   DateTime? _proximoContatoSelecionado;
   DateTime? _dataVisitaSelecionada;
+  String? _motivoDropdownSelecionado; // Novo estado para o Dropdown
+  final List<String> _motivosOpcoes = [
+    'Financeiro',
+    'Distância',
+    'Não conhecem a Villamor',
+    'Sem interesse',
+    'Perfil Inadequado',
+    'Sem retorno'
+  ];
 
 
   // Estados iniciais do formulário
@@ -107,7 +116,15 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
         proximoContato: _proximoContatoSelecionado,
         dataVisita: _dataVisitaSelecionada,
         origem: _origemSelecionada,
-        motivoNaoVenda: _faseSelecionada == FaseCliente.perdido ? _motivoController.text : null, // ADICIONE AQUI
+        // Campo NOVO: Armazena apenas a opção selecionada para o GRÁFICO
+        motivoNaoVendaDropdown: _faseSelecionada == FaseCliente.perdido
+            ? _motivoDropdownSelecionado
+            : null,
+
+        // Campo ANTIGO: Armazena a descrição detalhada (preserva o histórico)
+        motivoNaoVenda: _faseSelecionada == FaseCliente.perdido
+            ? _motivoController.text
+            : null,
 
       );
 
@@ -188,15 +205,29 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
               ),
               const SizedBox(height: 20),
               if (_faseSelecionada == FaseCliente.perdido) ...[
+                DropdownButtonFormField<String>(
+                  value: _motivoDropdownSelecionado,
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo Principal da Perda',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.list, color: Colors.orange),
+                  ),
+                  items: _motivosOpcoes.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                  onChanged: (val) => setState(() => _motivoDropdownSelecionado = val),
+                  validator: (value) => _faseSelecionada == FaseCliente.perdido && value == null
+                      ? 'Selecione o motivo principal'
+                      : null,
+                ),
+                const SizedBox(height: 20),
                 TextFormField(
                   controller: _motivoController,
                   decoration: const InputDecoration(
-                    labelText: 'Motivo da Não Venda',
-                    hintText: 'Por que este cliente não fechou?',
+                    labelText: 'Detalhes do Motivo (Opcional)',
+                    hintText: 'Descreva observações adicionais...',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.comment_bank, color: Colors.orange),
                   ),
-                  maxLines: 3,
+                  maxLines: 2,
                 ),
                 const SizedBox(height: 20),
               ],

@@ -70,7 +70,7 @@ class FirestoreService {
   }
 
   // 3. MÉTODO: Atualizar Fase do Cliente
-  Future<void> atualizarFaseCliente(String clienteId, FaseCliente novaFase, {String? motivo}) async {
+  Future<void> atualizarFaseCliente(String clienteId, FaseCliente novaFase, {String? motivo, String? motivoDropdown}) async {
     try {
       String faseString = novaFase.toString().split('.').last;
 
@@ -82,6 +82,7 @@ class FirestoreService {
         'fase': faseString,
         'dataAtualizacao': Timestamp.now(),
         'motivoNaoVenda' : motivo,
+        'motivoNaoVendaDropdown': motivoDropdown,
       });
 
       // 3. REGISTRAMOS O EVENTO NO HISTÓRICO (Para suas métricas futuras)
@@ -123,26 +124,41 @@ class FirestoreService {
     }
   }
 
-  // 4. MÉTODO: Atualizar Detalhes do Cliente (CORRIGIDO)
   Future<void> atualizarClienteDetalhes(
-      String clienteId,
-      String novoNome,
+      String clienteId,String novoNome,
       String novoTipo,
-      String? novoTelefoneContato, // Ordem
-      String? novoNomeEsposa,       // Ordem corrigida
-      DateTime? proximoContato,     // PARÂMETRO ADICIONADO
+      String? novoTelefoneContato,
+      String? novoNomeEsposa,
+      DateTime? proximoContato,
+      {
+        DateTime? dataVisita,
+        FaseCliente? fase,
+        String? motivoNaoVenda,
+        String? motivoNaoVendaDropdown
+      }
       ) async {
     try {
-      await _db.collection(_colecaoClientes).doc(clienteId).update({
+      // Preparamos o mapa de atualização
+      Map<String, dynamic> dadosParaAtualizar = {
         'nome': novoNome,
         'tipo': novoTipo,
         'telefoneContato': novoTelefoneContato,
         'nomeEsposa': novoNomeEsposa,
         'dataAtualizacao': Timestamp.now(),
-        // CAMPO ADICIONADO PARA ATUALIZAÇÃO
         'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato) : null,
-      });
-      print('Detalhes do cliente $clienteId atualizados.');
+        'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita) : null, // Convertendo para Timestamp
+        'motivoNaoVenda': motivoNaoVenda,
+        'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
+      };
+
+      // Se a fase foi alterada, convertemos para String para manter o padrão do banco
+      if (fase != null) {
+        dadosParaAtualizar['fase'] = fase.toString().split('.').last;
+      }
+
+      await _db.collection(_colecaoClientes).doc(clienteId).update(dadosParaAtualizar);
+
+      print('Detalhes do cliente $clienteId atualizados com sucesso.');
     } catch (e) {
       print('Erro ao atualizar detalhes do cliente $clienteId: $e');
       rethrow;

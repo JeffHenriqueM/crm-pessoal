@@ -1,8 +1,8 @@
 // lib/main.dart
+import 'package:crm_pessoal/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // NECESSÁRIO
-import 'firebase_options.dart'; // CRIADO PELO 'flutterfire configure'
-import 'screens/lista_clientes_screen.dart'; // NOVO IMPORT
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 
 void main() async { // O 'async' é obrigatório!
@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
       darkTheme: ThemeData.dark(useMaterial3: true),
       themeMode: ThemeMode.system, // Escolhe entre light/dark baseado na configuração do Mac/SO
       debugShowCheckedModeBanner: false,
-      home: const ListaClientesScreen(),
+      home: DashboardScreen(),
     );
   }
 }

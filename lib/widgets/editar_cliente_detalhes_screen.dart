@@ -1,8 +1,9 @@
 // lib/screens/editar_cliente_detalhes_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // 1. IMPORTAR PACOTE INTl
+import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
+import '../models/fase_enum.dart'; // IMPORTANTE: Certifique-se que o caminho do seu enum está correto aqui
 import '../services/firestore_service.dart';
 
 class EditarClienteDetalhesScreen extends StatefulWidget {
@@ -21,9 +22,23 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
   late TextEditingController _nomeController;
   late TextEditingController _telefoneController;
   late TextEditingController _nomeParceiroController;
+  late TextEditingController _motivoDetalhamentoController;
+
+  late FaseCliente _faseSelecionada; // Agora é mutável via Dropdown
   late String _tipoSelecionado;
-  DateTime? _proximoContatoSelecionado; // 2. ADICIONAR ESTADO PARA A DATA
+
+  DateTime? _proximoContatoSelecionado;
   DateTime? _dataVisitaSelecionada;
+  String? _motivoDropdownSelecionado;
+
+  final List<String> _motivosOpcoes = [
+    'Financeiro',
+    'Distância',
+    'Não conhecem a Villamor',
+    'Sem interesse',
+    'Perfil Inadequado',
+    'Sem retorno'
+  ];
 
   final FirestoreService _firestoreService = FirestoreService();
 
@@ -31,21 +46,23 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
   void initState() {
     super.initState();
 
-    // Inicializa os controladores com os DADOS EXISTENTES do cliente
     _nomeController = TextEditingController(text: widget.cliente.nome);
     _telefoneController = TextEditingController(text: widget.cliente.telefoneContato);
     _nomeParceiroController = TextEditingController(text: widget.cliente.nomeEsposa);
+    _motivoDetalhamentoController = TextEditingController(text: widget.cliente.motivoNaoVenda);
+
+    _faseSelecionada = widget.cliente.fase;
     _tipoSelecionado = widget.cliente.tipo;
     _proximoContatoSelecionado = widget.cliente.proximoContato;
     _dataVisitaSelecionada = widget.cliente.dataVisita;
+    _motivoDropdownSelecionado = widget.cliente.motivoNaoVendaDropdown;
   }
 
-  // 4. FUNÇÃO PARA SELECIONAR DATA E HORA
   Future<void> _selecionarProximoContato(BuildContext context) async {
     final DateTime? dataEscolhida = await showDatePicker(
       context: context,
       initialDate: _proximoContatoSelecionado ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)), // Permite ver/editar datas passadas recentes
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime(2101),
     );
 
@@ -60,11 +77,8 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
 
     setState(() {
       _proximoContatoSelecionado = DateTime(
-        dataEscolhida.year,
-        dataEscolhida.month,
-        dataEscolhida.day,
-        horaEscolhida.hour,
-        horaEscolhida.minute,
+        dataEscolhida.year, dataEscolhida.month, dataEscolhida.day,
+        horaEscolhida.hour, horaEscolhida.minute,
       );
     });
   }
@@ -73,7 +87,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
     final DateTime? dataEscolhida = await showDatePicker(
       context: context,
       initialDate: _dataVisitaSelecionada ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)), // Permite ver/editar datas passadas recentes
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime(2101),
     );
 
@@ -88,31 +102,28 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
 
     setState(() {
       _dataVisitaSelecionada = DateTime(
-        dataEscolhida.year,
-        dataEscolhida.month,
-        dataEscolhida.day,
-        horaEscolhida.hour,
-        horaEscolhida.minute,
+        dataEscolhida.year, dataEscolhida.month, dataEscolhida.day,
+        horaEscolhida.hour, horaEscolhida.minute,
       );
     });
   }
 
   void _submit() async {
     if (_formKey.currentState!.validate()) {
-
-      final String? parceiro = _tipoSelecionado == 'Casal'
-          ? _nomeParceiroController.text
-          : null;
+      final String? parceiro = _tipoSelecionado == 'Casal' ? _nomeParceiroController.text : null;
 
       try {
-        // Usa o método de atualização do FirestoreService
         await _firestoreService.atualizarClienteDetalhes(
           widget.cliente.id!,
           _nomeController.text,
           _tipoSelecionado,
           _telefoneController.text,
           parceiro,
-          _proximoContatoSelecionado, // 5. ENVIAR A NOVA DATA
+          _proximoContatoSelecionado,
+          dataVisita: _dataVisitaSelecionada,
+          fase: _faseSelecionada, // Enviando a fase atualizada
+          motivoNaoVenda: _faseSelecionada == FaseCliente.perdido ? _motivoDetalhamentoController.text : null,
+          motivoNaoVendaDropdown: _faseSelecionada == FaseCliente.perdido ? _motivoDropdownSelecionado : null,
         );
 
         if (mounted) {
@@ -136,6 +147,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
     _nomeController.dispose();
     _telefoneController.dispose();
     _nomeParceiroController.dispose();
+    _motivoDetalhamentoController.dispose();
     super.dispose();
   }
 
@@ -143,7 +155,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Editar Cliente: ${widget.cliente.nome}'),
+        title: Text('Editar: ${widget.cliente.nome}'),
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),
@@ -153,109 +165,94 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
           key: _formKey,
           child: ListView(
             children: <Widget>[
-              // ... Seus campos existentes (Nome, Telefone, Tipo, etc.) ...
               TextFormField(
                 controller: _nomeController,
                 decoration: const InputDecoration(labelText: 'Nome do Cliente', border: OutlineInputBorder()),
                 validator: (v) => v == null || v.isEmpty ? 'Insira o nome.' : null,
               ),
               const SizedBox(height: 20),
+
+              // SELETOR DE FASE (NOVO)
+              DropdownButtonFormField<FaseCliente>(
+                decoration: const InputDecoration(labelText: 'Fase no Funil', border: OutlineInputBorder(), prefixIcon: Icon(Icons.loop)),
+                value: _faseSelecionada,
+                items: FaseCliente.values.map((fase) => DropdownMenuItem(value: fase, child: Text(fase.nomeDisplay))).toList(),
+                onChanged: (v) => setState(() => _faseSelecionada = v!),
+              ),
+              const SizedBox(height: 20),
+
               TextFormField(
                 controller: _telefoneController,
                 decoration: const InputDecoration(labelText: 'Telefone', border: OutlineInputBorder()),
                 keyboardType: TextInputType.phone,
-                validator: (v) => v == null || v.isEmpty ? 'Insira o telefone.' : null,
               ),
               const SizedBox(height: 20),
+
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(labelText: 'Tipo de Cliente', border: OutlineInputBorder()),
                 value: _tipoSelecionado,
-                items: ['Solteiro', 'Casal'].map((t) => DropdownMenuItem<String>(value: t, child: Text(t))).toList(),
+                items: ['Solteiro', 'Casal'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
                 onChanged: (v) {
                   setState(() => _tipoSelecionado = v!);
                   if (v == 'Solteiro') _nomeParceiroController.clear();
                 },
               ),
               const SizedBox(height: 20),
-              if (_tipoSelecionado == 'Casal')
-                Column(
-                  children: [
-                    TextFormField(
-                      controller: _nomeParceiroController,
-                      decoration: const InputDecoration(labelText: 'Nome do(a) Parceiro(a)', border: OutlineInputBorder()),
-                      validator: (v) => _tipoSelecionado == 'Casal' && (v == null || v.isEmpty) ? 'Insira o nome.' : null,
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-                ),
 
-              // 6. WIDGET PARA EDITAR A DATA
-              Card(
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(8.0),
+              if (_tipoSelecionado == 'Casal') ...[
+                TextFormField(
+                  controller: _nomeParceiroController,
+                  decoration: const InputDecoration(labelText: 'Nome do(a) Parceiro(a)', border: OutlineInputBorder()),
                 ),
-                child: ListTile(
-                  leading: const Icon(Icons.calendar_today, color: Colors.indigo),
-                  title: Text(
-                    _proximoContatoSelecionado == null
-                        ? 'Agendar Próximo Contato'
-                        : 'Próximo contato: ${DateFormat('dd/MM/yyyy HH:mm').format(_proximoContatoSelecionado!)}',
-                    style: TextStyle(
-                      color: _proximoContatoSelecionado == null ? Colors.grey.shade600 : Colors.white,
-                      fontWeight: _proximoContatoSelecionado == null ? FontWeight.normal : FontWeight.bold,
-                    ),
-                  ),
-                  trailing: _proximoContatoSelecionado != null ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.red),
-                    onPressed: () => setState(() => _proximoContatoSelecionado = null),
-                  ) : null,
-                  onTap: () => _selecionarProximoContato(context),
-                ),
-              ),
+                const SizedBox(height: 20),
+              ],
 
-              // 6. WIDGET PARA EDITAR A DATA
-              Card(
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(8.0),
+              // AGENDAMENTOS
+              _buildDateTile('Próximo Contato', _proximoContatoSelecionado, () => _selecionarProximoContato(context), (val) => setState(() => _proximoContatoSelecionado = val)),
+              const SizedBox(height: 10),
+              _buildDateTile('Próxima Visita', _dataVisitaSelecionada, () => _selecionarDataVisita(context), (val) => setState(() => _dataVisitaSelecionada = val)),
+
+              // CAMPOS DE PERDA (DINÂMICOS)
+              if (_faseSelecionada == FaseCliente.perdido) ...[
+                const Divider(height: 40),
+                const Text("Dados de Desistência", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(labelText: 'Motivo Principal', border: OutlineInputBorder()),
+                  value: _motivoDropdownSelecionado,
+                  items: _motivosOpcoes.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                  onChanged: (v) => setState(() => _motivoDropdownSelecionado = v),
+                  validator: (v) => _faseSelecionada == FaseCliente.perdido && v == null ? 'Selecione um motivo' : null,
                 ),
-                child: ListTile(
-                  leading: const Icon(Icons.calendar_today, color: Colors.indigo),
-                  title: Text(
-                    _dataVisitaSelecionada == null
-                        ? 'Agendar Proxima Visita'
-                        : 'Próxima Visita: ${DateFormat('dd/MM/yyyy HH:mm').format(_dataVisitaSelecionada!)}',
-                    style: TextStyle(
-                      color: _dataVisitaSelecionada == null ? Colors.grey.shade600 : Colors.white,
-                      fontWeight: _dataVisitaSelecionada == null ? FontWeight.normal : FontWeight.bold,
-                    ),
-                  ),
-                  trailing: _dataVisitaSelecionada != null ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.red),
-                    onPressed: () => setState(() => _dataVisitaSelecionada = null),
-                  ) : null,
-                  onTap: () => _selecionarDataVisita(context),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _motivoDetalhamentoController,
+                  decoration: const InputDecoration(labelText: 'Descrição Detalhada', border: OutlineInputBorder()),
+                  maxLines: 3,
                 ),
-              ),
+              ],
 
               const SizedBox(height: 30),
-
-              // Botão de Envio
               ElevatedButton.icon(
                 onPressed: _submit,
-                icon: const Icon(Icons.edit),
-                label: const Text('SALVAR ALTERAÇÕES', style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
+                icon: const Icon(Icons.save),
+                label: const Text('SALVAR ALTERAÇÕES'),
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), backgroundColor: Colors.indigo, foregroundColor: Colors.white),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDateTile(String label, DateTime? date, VoidCallback onTap, Function(DateTime?) onClear) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.calendar_today, color: Colors.indigo),
+        title: Text(date == null ? label : '$label: ${DateFormat('dd/MM/yyyy HH:mm').format(date)}'),
+        trailing: date != null ? IconButton(icon: const Icon(Icons.clear, color: Colors.red), onPressed: () => onClear(null)) : null,
+        onTap: onTap,
       ),
     );
   }
