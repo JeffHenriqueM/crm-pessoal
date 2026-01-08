@@ -11,6 +11,7 @@ import '../services/firestore_service.dart';
 import 'adicionar_cliente_screen.dart';
 import '../widgets/cliente_list_filtered.dart';
 import 'interacoes_screen.dart';
+import 'gerenciar_usuarios_screen.dart';
 
 class ListaClientesScreen extends StatefulWidget {
   final FaseCliente? faseInicial;
@@ -21,6 +22,7 @@ class ListaClientesScreen extends StatefulWidget {
 }
 
 class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTickerProviderStateMixin {
+  String _userProfile = 'vendedor'; // Valor padrão
   late TabController _tabController;
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService(); // <--- 3. INSTANCIAR AUTH SERVICE
@@ -37,6 +39,9 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
   void initState() {
     super.initState();
     _clientesStream = _firestoreService.getTodosClientesStream();
+    _authService.getCurrentUserProfile().then((perfil) {
+      if (mounted) setState(() => _userProfile = perfil);
+    });
 
     int initialIndex = widget.faseInicial != null ? FaseCliente.values.indexOf(widget.faseInicial!) : 0;
     _tabController = TabController(length: FaseCliente.values.length, vsync: this, initialIndex: initialIndex);
@@ -89,7 +94,18 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             : const Text('CRM Pessoal (Kanban)'),
         actions: [
           // ==================== NOVOS BOTÕES ADICIONADOS ====================
-          IconButton(
+          // Botão de Gerenciamento de Usuários (APENAS PARA ADMIN)
+          if (_userProfile == 'admin')
+      IconButton(
+      tooltip: 'Gerenciar Usuários',
+      icon: const Icon(Icons.manage_accounts),
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const GerenciarUsuariosScreen()),
+        );
+      },
+    )
+          ,IconButton(
             tooltip: 'Dashboard',
             icon: const Icon(Icons.dashboard_outlined),
             onPressed: () {
@@ -121,12 +137,6 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.sort),
-            onSelected: (String valor) {
-              setState(() {
-                _ordenarPor = valor;
-                _descendente = (valor != "nome");
-              });
-            },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'dataAtualizacao', child: Text('Mais Recentes')),
               const PopupMenuItem(value: 'nome', child: Text('Nome (A-Z)')),

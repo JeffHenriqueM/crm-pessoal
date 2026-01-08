@@ -6,6 +6,7 @@ import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart'; // <--- IMPORTAR O MODELO DE INTERAÇÃO
 import '../models/usuario_model.dart';
+import 'package:rxdart/rxdart.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -18,12 +19,29 @@ class FirestoreService {
 
   // --- MÉTODOS DE BUSCA DE CLIENTES (STREAMS) ---
   Stream<List<Cliente>> getTodosClientesStream() {
-    return _db
-        .collection(_colecaoClientes)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-        .map((doc) => Cliente.fromFirestore(doc))
-        .toList());
+    // 1. Cria um Stream que primeiro resolve uma operação futura.
+    return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
+      // 2. Após obter o perfil, constrói a consulta correta.
+      print("Perfil do usuário: $perfil. Construindo a consulta de clientes.");
+
+      // Perfis com visão total
+      final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro'];
+
+      Query query = _db.collection(_colecaoClientes);
+
+      // 3. SE o perfil NÃO for de visão total, aplica o filtro.
+      if (!perfisComVisaoTotal.contains(perfil)) {
+        print("Aplicando filtro de vendedor para o ID: $_currentUserId");
+        query = query.where('vendedorId', isEqualTo: _currentUserId);
+      } else {
+        print("Usuário com perfil de visão total. Sem filtros de vendedor.");
+      }
+
+      // 4. Retorna o Stream de dados com base na query construída.
+      // O '.switchMap' garante que estamos ouvindo o stream de dados do Firestore.
+      return query.snapshots().map((snapshot) =>
+          snapshot.docs.map((doc) => Cliente.fromFirestore(doc)).toList());
+    }).switchMap((streamDeClientes) => streamDeClientes); // Desembrulha o Stream<Stream<...>>
   }
 
   // --- MÉTODOS DE ESCRITA DE CLIENTES (OPERAÇÕES CRUD) ---
@@ -91,6 +109,24 @@ class FirestoreService {
         .add(dados);
   }
 
+  // Busca o perfil do usuário atualmente logado.
+  Future<String> _getCurrentUserProfile() async {
+    // Se não houver usuário logado, retorna um perfil restrito.
+    if (_auth.currentUser == null) {
+      return 'vendedor';
+    }
+    try {
+      final doc = await _db.collection('usuarios').doc(_currentUserId).get();
+      // Se o usuário existir no Firestore, retorna seu perfil. Caso contrário, padrão 'vendedor'.
+      return doc.exists ? (doc.data()?['perfil'] ?? 'vendedor') : 'vendedor';
+    } catch (e) {
+      print("Erro ao buscar perfil do usuário: $e");
+      // Em caso de erro, assume o perfil mais restritivo por segurança.
+      return 'vendedor';
+    }
+  }
+
+
   /// Atualiza uma interação existente.
   Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
     await _db
@@ -135,4 +171,30 @@ class FirestoreService {
       return [];
     }
   }
+
+  Future<void> atualizarUsuario({
+    required String id,
+    required String nome,
+    required String perfil,
+  }) async {
+    try {
+      // Atualiza os campos nome e perfil do documento do usuário no Firestore
+      await _db.collection('usuarios').doc(id).update({
+        'nome': nome,
+        'perfil': perfil,
+      });
+
+      // Também é uma boa prática atualizar o nome de exibição no Firebase Auth,
+      // embora isso não seja visível diretamente no app, a menos que você o use.
+      final user = _auth.currentUser;
+      // Garante que o admin só pode atualizar o displayName do usuário que ele está editando
+      // (Isso é mais complexo, vamos focar no Firestore por enquanto que é o principal)
+
+    } catch (e) {
+      print("Erro ao atualizar usuário no Firestore: $e");
+      throw 'Ocorreu um erro ao salvar as alterações do usuário.';
+    }
+  }
+
+
 }

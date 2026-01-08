@@ -32,7 +32,7 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
       _isLoading = true;
     });
 
-    final error = await _authService.signInWithEmailAndPassword(
+    final error = await _authService.signIn(
       _emailController.text.trim(),
       _passwordController.text.trim(),
     );
@@ -54,6 +54,65 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
       );
     }
     // Se o login for bem-sucedido, o Stream no 'main.dart' cuidará da navegação.
+  }
+
+  // ============ NOVA FUNÇÃO PARA O DIÁLOGO DE REDEFINIÇÃO ============
+  void _mostrarDialogoRedefinirSenha() {
+    final emailRedefinicaoController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Redefinir Senha'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Digite seu e-mail para receber o link de redefinição.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailRedefinicaoController,
+              decoration: const InputDecoration(labelText: 'E-mail'),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final email = emailRedefinicaoController.text.trim();
+              if (email.isEmpty || !email.contains('@')) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Por favor, digite um e-mail válido.'), backgroundColor: Colors.orange),
+                );
+                return;
+              }
+
+              Navigator.of(ctx).pop(); // Fecha o diálogo
+              setState(() => _isLoading = true);
+
+              final erro = await _authService.enviarEmailRedefinicaoSenha(email);
+
+              setState(() => _isLoading = false);
+
+              if (erro == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link de redefinição enviado para o seu e-mail!'), backgroundColor: Colors.green),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(erro), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text('Enviar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -105,7 +164,11 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
                         ),
                         child: const Text('Entrar'),
                       ),
-                    // Botão para alternar entre Login e Registro REMOVIDO
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: _isLoading ? null : _mostrarDialogoRedefinirSenha,
+                      child: const Text('Esqueceu a senha?'),
+                    ),
                   ],
                 ),
               ),
