@@ -8,9 +8,10 @@ import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
-import '../widgets/KanbanView.dart';
 import '../widgets/app_bar.dart';
+import '../widgets/cliente_list_filtered.dart';
 import '../widgets/editar_cliente_detalhes_screen.dart';
+import 'dashboard_screen.dart';
 import 'interacoes_screen.dart';
 
 class ListaClientesScreen extends StatefulWidget {
@@ -76,9 +77,10 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     super.dispose();
   }
 
-  // Métodos de Callback para os Widgets Filhos
+  // Funções de Callback
   void _handleSearchStateChange(bool isTyping) {
     if (isTyping && mounted) {
+      // Apenas atualiza o estado para reconstruir com o novo texto do filtro
       setState(() {});
       return;
     }
@@ -104,7 +106,14 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
 
   void _handleSortChange(String novaOrdem) {
     if (mounted) {
-      setState(() => _ordenarPor = novaOrdem);
+      setState(() {
+        if (_ordenarPor == novaOrdem) {
+          _descendente = !_descendente;
+        } else {
+          _ordenarPor = novaOrdem;
+          _descendente = true;
+        }
+      });
     }
   }
 
@@ -112,48 +121,79 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     await _authService.signOut();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: ListaClientesAppBar(
-        estaPesquisando: _estaPesquisando,
-        userProfile: _userProfile,
-        todosVendedores: _todosVendedores,
-        vendedorIdFiltro: _vendedorIdFiltro,
-        searchController: _searchController,
-        tabController: _tabController,
-        onSearchStateChange: _handleSearchStateChange,
-        onVendedorChange: _handleVendedorChange,
-        onSortChange: _handleSortChange,
-        onLogout: _handleLogout,
-      ),
-      body: StreamBuilder<List<Cliente>>(
-        stream: _clientesStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text("Erro: ${snapshot.error}"));
-          }
-
-          final todosClientes = snapshot.data ?? [];
-
-          return KanbanView(
-            tabController: _tabController,
-            todosClientes: todosClientes,
-            filtroTexto: _filtroTexto,
-            ordenarPor: _ordenarPor,
-            descendente: _descendente,
-            onMostrarOpcoes: _mostrarOpcoesCliente,
-            onDismissed: (ctx, cliente, svc) => _handleDismissed(ctx, cliente, svc),
-          );
-        },
+  void _abrirDashboard() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => DashboardScreen(),
       ),
     );
   }
 
-  // Funções de lógica de negócio que permanecem na tela principal.
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Cliente>>(
+      stream: _clientesStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(appBar: AppBar(title: const Text("Erro")), body: Center(child: Text("Erro: ${snapshot.error}")));
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(appBar: AppBar(title: const Text("Carregando...")), body: const Center(child: CircularProgressIndicator()));
+        }
+
+        final todosClientes = snapshot.data ?? [];
+
+        return Scaffold(
+          appBar: ListaClientesAppBar(
+            estaPesquisando: _estaPesquisando,
+            userProfile: _userProfile,
+            todosVendedores: _todosVendedores,
+            vendedorIdFiltro: _vendedorIdFiltro,
+            searchController: _searchController,
+            tabController: _tabController,
+            onSearchStateChange: _handleSearchStateChange,
+            onVendedorChange: _handleVendedorChange,
+            onSortChange: _handleSortChange,
+            onLogout: _handleLogout,
+            onShowDashboard: _abrirDashboard,
+          ),
+          body: _estaPesquisando
+              ? _buildSearchResults(todosClientes) // Se estiver pesquisando, mostra a lista global
+              : TabBarView( // Caso contrário, mostra as abas
+            controller: _tabController,
+            children: FaseCliente.values.map((fase) {
+              final clientesDaAba = todosClientes.where((c) => c.fase == fase).toList();
+              return ClienteListFiltered(
+                clientes: clientesDaAba,
+                filtroNome: "", // O filtro de texto é aplicado globalmente, não aqui.
+                onTileTap: (ctx, cliente, svc) => _mostrarOpcoesCliente(ctx, cliente, svc),
+                onDismissed: (cliente) => _handleDismissed(context, cliente, _firestoreService),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  // Widget auxiliar que constrói a lista de resultados da busca global
+  Widget _buildSearchResults(List<Cliente> todosClientes) {
+    final busca = _filtroTexto.toLowerCase().trim();
+    final clientesFiltrados = todosClientes.where((c) {
+      return c.nome.toLowerCase().contains(busca) ||
+          (c.nomeEsposa ?? "").toLowerCase().contains(busca) ||
+          (c.vendedorNome ?? "").toLowerCase().contains(busca);
+    }).toList();
+
+    return ClienteListFiltered(
+      clientes: clientesFiltrados,
+      filtroNome: _filtroTexto,
+      onTileTap: (ctx, cliente, svc) => _mostrarOpcoesCliente(ctx, cliente, svc),
+      onDismissed: (cliente) => _handleDismissed(context, cliente, _firestoreService),
+    );
+  }
+
+  // Funções para interação com os clientes (menu de opções)
   void _mostrarOpcoesCliente(BuildContext context, Cliente cliente, FirestoreService service) {
     showModalBottomSheet(
       context: context,
@@ -223,7 +263,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             onChanged: (FaseCliente? novaFase) {
               if (novaFase != null) {
                 Navigator.of(ctx).pop();
-                if (novaFase == FaseCliente.perdido) { // Corrigido para enum
+                if (novaFase == FaseCliente.perdido) {
                   _confirmarPerda(context, cliente, service);
                 } else {
                   service.atualizarFaseCliente(cliente.id!, novaFase);
@@ -255,7 +295,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             onPressed: () {
               service.atualizarFaseCliente(
                 cliente.id!,
-                FaseCliente.perdido, // Corrigido para enum
+                FaseCliente.perdido,
                 motivo: motivoController.text.trim(),
               );
               Navigator.of(ctx).pop();
@@ -282,16 +322,20 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
   void _handleDismissed(BuildContext context, Cliente cliente, FirestoreService firestoreService) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Confirmar Exclusão'),
         content: Text('Tem certeza que deseja apagar permanentemente o cliente "${cliente.nome}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
           TextButton(
-            onPressed: () {
-              firestoreService.deletarCliente(cliente.id!);
-              Navigator.of(ctx).pop();
-              if(mounted){
+            onPressed: () async {
+              await firestoreService.deletarCliente(cliente.id!);
+
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+
+              if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Cliente "${cliente.nome}" apagado.'),
