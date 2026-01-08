@@ -1,257 +1,138 @@
+// lib/services/firestore_service.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-import '../models/interacao_model.dart';
-
-// Enum para os critérios de ordenação
-enum ClienteOrder { dataCadastro, nome, dataAtualizacao, proximoContato } // ADICIONADO: Ordenar por próximo contato
+import '../models/interacao_model.dart'; // <--- IMPORTAR O MODELO DE INTERAÇÃO
+import '../models/usuario_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final String _colecaoClientes = 'clientes';
 
-  // 1. MÉTODO: Adicionar Cliente (Create)
-  // Este método já está correto, pois o `toFirestore()` do seu modelo `Cliente`
-  // já foi ajustado para lidar com `proximoContato`.
+  // HELPER: Obtém dados do usuário logado atualmente.
+  String get _currentUserId => _auth.currentUser?.uid ?? 'sistema_offline';
+  String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário Sem Nome';
+
+  // --- MÉTODOS DE BUSCA DE CLIENTES (STREAMS) ---
+  Stream<List<Cliente>> getTodosClientesStream() {
+    return _db
+        .collection(_colecaoClientes)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => Cliente.fromFirestore(doc))
+        .toList());
+  }
+
+  // --- MÉTODOS DE ESCRITA DE CLIENTES (OPERAÇÕES CRUD) ---
   Future<void> adicionarCliente(Cliente cliente) async {
-    try {
-      await _db.collection(_colecaoClientes).add(cliente.toFirestore());
-      print('Cliente ${cliente.nome} adicionado com sucesso!');
-    } catch (e) {
-      print('Erro ao adicionar cliente: $e');
-      rethrow;
-    }
+    final dados = cliente.toFirestore();
+    dados['criadoPorId'] = _currentUserId;
+    dados['criadoPorNome'] = _currentUserName;
+    dados['atualizadoPorId'] = _currentUserId;
+    dados['atualizadoPorNome'] = _currentUserName;
+    dados['dataCadastro'] = FieldValue.serverTimestamp();
+    dados['dataAtualizacao'] = FieldValue.serverTimestamp();
+    await _db.collection(_colecaoClientes).add(dados);
   }
 
-  // 2. MÉTODO: Ler Clientes em Tempo Real (Read/Filtered/Ordered)
-  Stream<List<Cliente>> getClientesStream({
-    FaseCliente? fase,
-    ClienteOrder orderBy = ClienteOrder.dataAtualizacao, // Mudei o padrão para dataAtualizacao
-    bool descending = true,
-  }) {
-    Query collectionRef = _db.collection(_colecaoClientes);
-
-    if (fase != null) {
-      String faseString = fase.toString().split('.').last;
-      collectionRef = collectionRef.where('fase', isEqualTo: faseString);
-    }
-
-    String orderByField;
-    switch (orderBy) {
-      case ClienteOrder.nome:
-        orderByField = 'nome';
-        // A direção da ordenação para nome é geralmente ascendente (A-Z)
-        collectionRef = collectionRef.orderBy(orderByField, descending: false);
-        break;
-      case ClienteOrder.dataAtualizacao:
-        orderByField = 'dataAtualizacao';
-        collectionRef = collectionRef.orderBy(orderByField, descending: descending);
-        break;
-    // ADICIONADO: Caso de ordenação por próximo contato
-      case ClienteOrder.proximoContato:
-        orderByField = 'proximoContato';
-        // Ordena por data de próximo contato, mostrando os nulos por último
-        // e os mais próximos primeiro.
-        collectionRef = collectionRef
-            .orderBy(orderByField, descending: false); // false para ascendente (mais próximo primeiro)
-        break;
-      case ClienteOrder.dataCadastro:
-      default:
-        orderByField = 'dataCadastro';
-        collectionRef = collectionRef.orderBy(orderByField, descending: descending);
-        break;
-    }
-
-    return collectionRef.snapshots().map((snapshot) {
-      // O método fromFirestore já foi atualizado para lidar com 'proximoContato',
-      // então não precisamos mudar nada aqui no mapeamento.
-      return snapshot.docs.map((doc) => Cliente.fromFirestore(doc)).toList();
+  Future<void> atualizarFaseCliente(String id, FaseCliente novaFase, {String? motivo}) async {
+    await _db.collection(_colecaoClientes).doc(id).update({
+      'fase': novaFase.toString().split('.').last,
+      'motivoNaoVenda': motivo,
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
+      'atualizadoPorNome': _currentUserName,
     });
+    await adicionarInteracaoAutomatica(id, "Fase alterada para: ${novaFase.nomeDisplay}");
   }
 
-  // 3. MÉTODO: Atualizar Fase do Cliente
-  Future<void> atualizarFaseCliente(String clienteId, FaseCliente novaFase, {String? motivo, String? motivoDropdown}) async {
-    try {
-      String faseString = novaFase.toString().split('.').last;
-
-      // 1. Buscamos a fase atual antes de mudar para registrar no histórico
-      DocumentSnapshot doc = await _db.collection(_colecaoClientes).doc(clienteId).get();
-      String faseAntiga = doc.exists ? (doc.data() as Map<String, dynamic>)['fase'] ?? 'prospeccao' : 'prospeccao';
-
-      await _db.collection(_colecaoClientes).doc(clienteId).update({
-        'fase': faseString,
-        'dataAtualizacao': Timestamp.now(),
-        'motivoNaoVenda' : motivo,
-        'motivoNaoVendaDropdown': motivoDropdown,
-      });
-
-      // 3. REGISTRAMOS O EVENTO NO HISTÓRICO (Para suas métricas futuras)
-      await registrarEventoHistorico(
-        clienteId: clienteId,
-        tipo: 'mudanca_fase',
-        detalhes: {
-          'de': faseAntiga,
-          'para': faseString,
-          'motivo': motivo, // Aqui salvamos o motivo no histórico
-        },
-      );
-
-      print('Fase do cliente $clienteId atualizada para $faseString');
-    } catch (e) {
-      print('Erro ao atualizar fase do cliente $clienteId: $e');
-      rethrow;
-    }
+  Future<void> atualizarClienteDetalhes(String id, Map<String, dynamic> dadosNovos) async {
+    dadosNovos['dataAtualizacao'] = FieldValue.serverTimestamp();
+    dadosNovos['atualizadoPorId'] = _currentUserId;
+    dadosNovos['atualizadoPorNome'] = _currentUserName;
+    await _db.collection(_colecaoClientes).doc(id).update(dadosNovos);
   }
 
-  // NOVO MÉTODO AUXILIAR PARA MÉTRICAS
-  Future<void> registrarEventoHistorico({
-    required String clienteId,
-    required String tipo,
-    required Map<String, dynamic> detalhes,
-  }) async {
-    try {
-      await _db
-          .collection(_colecaoClientes)
-          .doc(clienteId)
-          .collection('historico')
-          .add({
-        'tipo': tipo,
-        'data': Timestamp.now(),
-        ...detalhes,
-      });
-    } catch (e) {
-      print('Erro ao registrar histórico: $e');
-    }
+  Future<void> deletarCliente(String id) async {
+    await _db.collection(_colecaoClientes).doc(id).delete();
   }
 
-  Future<void> atualizarClienteDetalhes(
-      String clienteId,String novoNome,
-      String novoTipo,
-      String? novoTelefoneContato,
-      String? novoNomeEsposa,
-      DateTime? proximoContato,
-      {
-        DateTime? dataVisita,
-        FaseCliente? fase,
-        String? motivoNaoVenda,
-        String? motivoNaoVendaDropdown
-      }
-      ) async {
-    try {
-      // Preparamos o mapa de atualização
-      Map<String, dynamic> dadosParaAtualizar = {
-        'nome': novoNome,
-        'tipo': novoTipo,
-        'telefoneContato': novoTelefoneContato,
-        'nomeEsposa': novoNomeEsposa,
-        'dataAtualizacao': Timestamp.now(),
-        'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato) : null,
-        'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita) : null, // Convertendo para Timestamp
-        'motivoNaoVenda': motivoNaoVenda,
-        'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
-      };
+  // ===== INÍCIO DOS NOVOS MÉTODOS PARA INTERAÇÕES =====
 
-      // Se a fase foi alterada, convertemos para String para manter o padrão do banco
-      if (fase != null) {
-        dadosParaAtualizar['fase'] = fase.toString().split('.').last;
-      }
+  // --- MÉTODOS DE INTERAÇÕES (SUB-COLEÇÃO) ---
 
-      await _db.collection(_colecaoClientes).doc(clienteId).update(dadosParaAtualizar);
-
-      print('Detalhes do cliente $clienteId atualizados com sucesso.');
-    } catch (e) {
-      print('Erro ao atualizar detalhes do cliente $clienteId: $e');
-      rethrow;
-    }
-  }
-
-
-  // 5. MÉTODO: Deletar Cliente (Delete)
-  Future<void> deletarCliente(String clienteId) async {
-    try {
-      // Também é uma boa prática deletar as subcoleções, mas para isso
-      // seria necessário uma função mais complexa ou uma Cloud Function.
-      // Por agora, manteremos a exclusão apenas do documento principal.
-      await _db.collection(_colecaoClientes).doc(clienteId).delete();
-      print('Cliente $clienteId deletado com sucesso!');
-    } catch (e) {
-      print('Erro ao deletar cliente $clienteId: $e');
-      rethrow;
-    }
-  }
-
-  // --- MÉTODOS DE INTERAÇÃO (sem alterações necessárias) ---
-
-  Future<void> adicionarInteracao(String clienteId, Interacao interacao) async {
-    try {
-      await _db
-          .collection(_colecaoClientes)
-          .doc(clienteId)
-          .collection('interacoes')
-          .add(interacao.toFirestore());
-
-      await _db.collection(_colecaoClientes).doc(clienteId).update({
-        'dataAtualizacao': Timestamp.now(),
-      });
-      print('Interação adicionada para o cliente $clienteId');
-    } catch (e) {
-      print('Erro ao adicionar interação: $e');
-      rethrow;
-    }
-  }
-
+  /// Busca o stream de interações de um cliente específico.
   Stream<List<Interacao>> getInteracoesStream(String clienteId) {
     return _db
         .collection(_colecaoClientes)
         .doc(clienteId)
         .collection('interacoes')
-        .orderBy('dataInteracao', descending: true)
+        .orderBy('dataInteracao', descending: true) // Ordena da mais nova para a mais antiga
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) => Interacao.fromFirestore(doc)).toList();
+        .map((snapshot) =>
+        snapshot.docs.map((doc) => Interacao.fromFirestore(doc)).toList());
+  }
+
+  /// Adiciona uma nova interação manual a um cliente.
+  Future<void> adicionarInteracao(String clienteId, Interacao interacao) async {
+    final dados = interacao.toFirestore();
+    // Injeta campos de auditoria e data do servidor
+    dados['autorId'] = _currentUserId;
+    dados['autorNome'] = _currentUserName;
+    dados['dataInteracao'] = FieldValue.serverTimestamp();
+
+    await _db
+        .collection(_colecaoClientes)
+        .doc(clienteId)
+        .collection('interacoes')
+        .add(dados);
+  }
+
+  /// Atualiza uma interação existente.
+  Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
+    await _db
+        .collection(_colecaoClientes)
+        .doc(clienteId)
+        .collection('interacoes')
+        .doc(interacao.id)
+        .update(interacao.toFirestore());
+  }
+
+  /// Exclui uma interação de um cliente.
+  Future<void> excluirInteracao(String clienteId, String interacaoId) async {
+    await _db
+        .collection(_colecaoClientes)
+        .doc(clienteId)
+        .collection('interacoes')
+        .doc(interacaoId)
+        .delete();
+  }
+
+  // --- FIM DOS NOVOS MÉTODOS PARA INTERAÇÕES ---
+
+  // --- MÉTODOS AUXILIARES E DE USUÁRIOS ---
+
+  Future<void> adicionarInteracaoAutomatica(String clienteId, String texto) async {
+    await _db.collection(_colecaoClientes).doc(clienteId).collection('interacoes').add({
+      'titulo': 'Evento do Sistema',
+      'nota': texto,
+      'dataInteracao': FieldValue.serverTimestamp(),
+      'tipo': 'sistema',
+      'autorNome': 'Sistema',
     });
   }
 
-  Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
-    if (interacao.id == null) {
-      throw Exception('O ID da interação não pode ser nulo para atualização.');
-    }
+  Future<List<Usuario>> getTodosUsuarios() async {
     try {
-      await _db
-          .collection(_colecaoClientes)
-          .doc(clienteId)
-          .collection('interacoes')
-          .doc(interacao.id)
-          .update(interacao.toFirestore());
-
-      await _db.collection(_colecaoClientes).doc(clienteId).update({
-        'dataAtualizacao': Timestamp.now(),
-      });
-
-      print('Interação ${interacao.id} atualizada para o cliente $clienteId');
+      final snapshot = await _db.collection('usuarios').get();
+      if (snapshot.docs.isEmpty) return [];
+      return snapshot.docs.map((doc) => Usuario.fromMap(doc.data(), doc.id)).toList();
     } catch (e) {
-      print('Erro ao atualizar interação: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> excluirInteracao(String clienteId, String interacaoId) async {
-    try {
-      await _db
-          .collection(_colecaoClientes)
-          .doc(clienteId)
-          .collection('interacoes')
-          .doc(interacaoId)
-          .delete();
-
-      await _db.collection(_colecaoClientes).doc(clienteId).update({
-        'dataAtualizacao': Timestamp.now(),
-      });
-
-      print('Interação $interacaoId excluída para o cliente $clienteId');
-    } catch (e) {
-      print('Erro ao excluir interação: $e');
-      rethrow;
+      print("Erro ao buscar usuários: $e");
+      return [];
     }
   }
 }

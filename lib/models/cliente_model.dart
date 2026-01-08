@@ -17,6 +17,16 @@ class Cliente {
   final String? motivoNaoVenda;
   final String? motivoNaoVendaDropdown;
 
+  // --- CAMPO DE RESPONSABILIDADE (QUEM É O DONO COMERCIAL) ---
+  final String? vendedorId;
+  final String? vendedorNome;
+
+  // --- CAMPOS DE AUDITORIA (QUEM FEZ O QUÊ) ---
+  final String? criadoPorId;
+  final String? criadoPorNome;
+  final String? atualizadoPorId;
+  final String? atualizadoPorNome;
+
   Cliente({
     this.id,
     required this.nome,
@@ -30,7 +40,14 @@ class Cliente {
     this.dataVisita,
     this.origem,
     this.motivoNaoVenda,
-    this.motivoNaoVendaDropdown
+    this.motivoNaoVendaDropdown,
+    // Construtor com os novos campos
+    this.vendedorId,
+    this.vendedorNome,
+    this.criadoPorId,
+    this.criadoPorNome,
+    this.atualizadoPorId,
+    this.atualizadoPorNome,
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -44,22 +61,26 @@ class Cliente {
       'telefoneContato': telefoneContato,
       'dataCadastro': Timestamp.fromDate(dataCadastro),
       'dataAtualizacao': Timestamp.fromDate(dataAtualizacao),
-      // --- ALTERAÇÃO NECESSÁRIA AQUI ---
-      // Adiciona o proximoContato ao mapa, convertendo para Timestamp se não for nulo.
       'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato!) : null,
       'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita!) : null,
       'motivoNaoVenda': motivoNaoVenda,
       'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
+      // Mapeando os novos campos
+      'vendedorId': vendedorId,
+      'vendedorNome': vendedorNome,
+      'criadoPorId': criadoPorId,
+      'criadoPorNome': criadoPorNome,
+      'atualizadoPorId': atualizadoPorId,
+      'atualizadoPorNome': atualizadoPorNome,
     };
   }
 
+  // Cria um objeto Cliente a partir de um Documento do Firestore
   factory Cliente.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    // 2. Tratamento seguro da Fase (Onde geralmente ocorre o erro de null)
     final stringFase = data['fase'] as String?;
-
-    FaseCliente faseRecuperada = FaseCliente.prospeccao; // Default
+    FaseCliente faseRecuperada = FaseCliente.prospeccao;
 
     if (stringFase != null) {
       try {
@@ -78,7 +99,6 @@ class Cliente {
       tipo: data['tipo'] ?? 'Não Definido',
       fase: faseRecuperada,
       origem: data['origem'] ?? 'Antigo',
-      // 3. Tratamento seguro de Timestamps
       dataCadastro: (data['dataCadastro'] as Timestamp?)?.toDate() ?? DateTime.now(),
       dataAtualizacao: (data['dataAtualizacao'] as Timestamp?)?.toDate() ?? DateTime.now(),
       nomeEsposa: data['nomeEsposa'],
@@ -87,6 +107,13 @@ class Cliente {
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
       motivoNaoVenda: data['motivoNaoVenda'],
       motivoNaoVendaDropdown: data['motivoNaoVendaDropdown'],
+      // Recuperando os novos campos do Firebase (são nulos por padrão se não existirem)
+      vendedorId: data['vendedorId'],
+      vendedorNome: data['vendedorNome'],
+      criadoPorId: data['criadoPorId'],
+      criadoPorNome: data['criadoPorNome'],
+      atualizadoPorId: data['atualizadoPorId'],
+      atualizadoPorNome: data['atualizadoPorNome'],
     );
   }
 }

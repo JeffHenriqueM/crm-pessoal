@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../services/firestore_service.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import 'adicionar_cliente_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final FirestoreService _firestoreService = FirestoreService();
@@ -20,19 +21,30 @@ class DashboardScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.view_kanban),
+            icon: const Icon(Icons.person_add),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdicionarClienteScreen()),
+              );
+            },
+            tooltip: 'Novo Cliente',
+          ),
+          // Botão para Ver Lista/Kanban (Ícone alterado para "group")
+          IconButton(
+            icon: const Icon(Icons.group),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ListaClientesScreen()),
               );
             },
-            tooltip: 'Ver Kanban',
+            tooltip: 'Ver Clientes',
           ),
         ],
       ),
       body: StreamBuilder<List<Cliente>>(
-        stream: _firestoreService.getClientesStream(),
+        stream: _firestoreService.getTodosClientesStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

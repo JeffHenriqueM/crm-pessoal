@@ -1,11 +1,9 @@
 // lib/screens/adicionar_cliente_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // 1. IMPORTAR PACOTE INTl
-
-// Certifique-se de que estes imports estão corretos (ajuste se a estrutura de pastas for diferente)
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/usuario_model.dart'; // <--- IMPORTAR O NOVO MODELO
 import '../services/firestore_service.dart';
 
 class AdicionarClienteScreen extends StatefulWidget {
@@ -17,140 +15,76 @@ class AdicionarClienteScreen extends StatefulWidget {
 
 class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _firestoreService = FirestoreService();
+
+  // Controladores para os campos do formulário
   final _nomeController = TextEditingController();
-  final _telefoneContatoController = TextEditingController();
   final _nomeEsposaController = TextEditingController();
-  final _motivoController = TextEditingController(); // ADICIONE AQUI
-  final FirestoreService _firestoreService = FirestoreService();
-  DateTime? _proximoContatoSelecionado;
-  DateTime? _dataVisitaSelecionada;
-  String? _motivoDropdownSelecionado; // Novo estado para o Dropdown
-  final List<String> _motivosOpcoes = [
-    'Financeiro',
-    'Distância',
-    'Não conhecem a Villamor',
-    'Sem interesse',
-    'Perfil Inadequado',
-    'Sem retorno'
-  ];
+  final _telefoneController = TextEditingController();
+  final _origemController = TextEditingController();
 
+  String _tipoCliente = 'Casal';
 
-  // Estados iniciais do formulário
-  String? _tipoSelecionado = 'Solteiro';
-  FaseCliente _faseSelecionada = FaseCliente.prospeccao;
+  // Variáveis para o dropdown de vendedores
+  Usuario? _vendedorSelecionado;
+  List<Usuario> _listaDeVendedores = [];
+  bool _carregandoVendedores = true;
 
-  String _origemSelecionada = 'Online';
+  @override
+  void initState() {
+    super.initState();
+    _carregarVendedores();
+  }
 
-  // 2. FUNÇÃO PARA SELECIONAR DATA E HORA
-  Future<void> _selecionarProximoContato(BuildContext context) async {
-    final DateTime? dataEscolhida = await showDatePicker(
-      context: context,
-      initialDate: _proximoContatoSelecionado ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2101),
-    );
-
-    if (dataEscolhida == null || !mounted) return;
-
-    final TimeOfDay? horaEscolhida = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_proximoContatoSelecionado ?? DateTime.now()),
-    );
-
-    if (horaEscolhida == null) return;
-
+  Future<void> _carregarVendedores() async {
+    final vendedores = await _firestoreService.getTodosUsuarios();
     setState(() {
-      _proximoContatoSelecionado = DateTime(
-        dataEscolhida.year,
-        dataEscolhida.month,
-        dataEscolhida.day,
-        horaEscolhida.hour,
-        horaEscolhida.minute,
-      );
+      _listaDeVendedores = vendedores;
+      _carregandoVendedores = false;
     });
   }
 
-  Future<void> _selecionarDataVisita(BuildContext context) async {
-    final DateTime? dataEscolhida = await showDatePicker(
-      context: context,
-      initialDate: _dataVisitaSelecionada ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2101),
-    );
-
-    if (dataEscolhida == null || !mounted) return;
-
-    final TimeOfDay? horaEscolhida = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_dataVisitaSelecionada ?? DateTime.now()),
-    );
-
-    if (horaEscolhida == null) return;
-
-    setState(() {
-      _dataVisitaSelecionada = DateTime(
-        dataEscolhida.year,
-        dataEscolhida.month,
-        dataEscolhida.day,
-        horaEscolhida.hour,
-        horaEscolhida.minute,
-      );
-    });
+  @override
+  void dispose() {
+    _nomeController.dispose();
+    _nomeEsposaController.dispose();
+    _telefoneController.dispose();
+    _origemController.dispose();
+    super.dispose();
   }
 
-
-  // Função de submissão do formulário
-  void _submit() async {
+  Future<void> _salvarCliente() async {
     if (_formKey.currentState!.validate()) {
-      final String? esposa = _tipoSelecionado == 'Casal'
-          ? _nomeEsposaController.text
-          : null;
+      // Cria o objeto Cliente com todos os dados, incluindo o vendedor
       final novoCliente = Cliente(
         nome: _nomeController.text,
-        tipo: _tipoSelecionado!,
-        fase: _faseSelecionada,
-        telefoneContato: _telefoneContatoController.text,
-        dataCadastro: DateTime.now(),
-        dataAtualizacao: DateTime.now(),
-        nomeEsposa: esposa,
-        proximoContato: _proximoContatoSelecionado,
-        dataVisita: _dataVisitaSelecionada,
-        origem: _origemSelecionada,
-        // Campo NOVO: Armazena apenas a opção selecionada para o GRÁFICO
-        motivoNaoVendaDropdown: _faseSelecionada == FaseCliente.perdido
-            ? _motivoDropdownSelecionado
-            : null,
+        nomeEsposa: _nomeEsposaController.text,
+        telefoneContato: _telefoneController.text,
+        tipo: _tipoCliente,
+        origem: _origemController.text,
+        fase: FaseCliente.prospeccao,
+        dataCadastro: DateTime.now(), // O serviço substituirá pelo timestamp do servidor
+        dataAtualizacao: DateTime.now(), // O serviço substituirá pelo timestamp do servidor
 
-        // Campo ANTIGO: Armazena a descrição detalhada (preserva o histórico)
-        motivoNaoVenda: _faseSelecionada == FaseCliente.perdido
-            ? _motivoController.text
-            : null,
-
+        // Atribuindo o vendedor selecionado
+        vendedorId: _vendedorSelecionado?.id,
+        vendedorNome: _vendedorSelecionado?.nome,
+        // Os campos de auditoria (criadoPor, etc.) serão preenchidos pelo FirestoreService
       );
 
       try {
         await _firestoreService.adicionarCliente(novoCliente);
 
-        // Mostrar feedback de sucesso
         if (mounted) {
-
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Cliente ${_nomeController.text} adicionado com sucesso!')),
+            const SnackBar(content: Text('Cliente adicionado com sucesso!')),
           );
-          // Limpa o formulário após o sucesso
-          _telefoneContatoController.clear();
-          _nomeEsposaController.clear();
-          _nomeController.clear();
-          setState(() {
-            _tipoSelecionado = 'Solteiro';
-            _faseSelecionada = FaseCliente.prospeccao;
-            _proximoContatoSelecionado = null; // Limpa a data selecionada também
-          });
+          Navigator.of(context).pop();
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Erro ao salvar no Firebase. Verifique a conexão.')),
+            SnackBar(content: Text('Erro ao salvar cliente: $e')),
           );
         }
       }
@@ -158,216 +92,101 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   }
 
   @override
-  void dispose() {
-    _nomeController.dispose();
-    _telefoneContatoController.dispose(); // CORREÇÃO: use dispose() ao invés de clear()
-    _nomeEsposaController.dispose();   // CORREÇÃO: use dispose() ao invés de clear()
-    _motivoController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Adicionar Novo Cliente'),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.indigo,
+        foregroundColor: Colors.white,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
-          child: ListView(
-            children: <Widget>[
-              // ... (seus outros campos de formulário como Nome, Telefone, etc)
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               TextFormField(
                 controller: _nomeController,
-                decoration: const InputDecoration(
-                  labelText: 'Nome do Cliente',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: 'Nome Principal'),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Por favor, insira o nome.';
+                  if (value == null || value.trim().isEmpty) {
+                    return 'O nome é obrigatório.';
                   }
                   return null;
                 },
               ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _telefoneContatoController,
-                decoration: const InputDecoration(
-                  labelText: 'Telefone',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.phone,
-                validator: (value) => value == null || value.isEmpty ? 'Insira o telefone.' : null,
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _tipoCliente,
+                decoration: const InputDecoration(labelText: 'Tipo de Cliente'),
+                items: ['Casal', 'Individual']
+                    .map((label) => DropdownMenuItem(
+                  child: Text(label),
+                  value: label,
+                ))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _tipoCliente = value!;
+                  });
+                },
               ),
-              const SizedBox(height: 20),
-              if (_faseSelecionada == FaseCliente.perdido) ...[
-                DropdownButtonFormField<String>(
-                  value: _motivoDropdownSelecionado,
-                  decoration: const InputDecoration(
-                    labelText: 'Motivo Principal da Perda',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.list, color: Colors.orange),
-                  ),
-                  items: _motivosOpcoes.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                  onChanged: (val) => setState(() => _motivoDropdownSelecionado = val),
-                  validator: (value) => _faseSelecionada == FaseCliente.perdido && value == null
-                      ? 'Selecione o motivo principal'
-                      : null,
-                ),
-                const SizedBox(height: 20),
+              if (_tipoCliente == 'Casal') ...[
+                const SizedBox(height: 16),
                 TextFormField(
-                  controller: _motivoController,
-                  decoration: const InputDecoration(
-                    labelText: 'Detalhes do Motivo (Opcional)',
-                    hintText: 'Descreva observações adicionais...',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.comment_bank, color: Colors.orange),
-                  ),
-                  maxLines: 2,
+                  controller: _nomeEsposaController,
+                  decoration: const InputDecoration(labelText: 'Nome do Cônjuge/Parceiro(a)'),
                 ),
-                const SizedBox(height: 20),
               ],
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Ponto de Captação (Origem)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.location_searching),
-                ),
-
-                value: _origemSelecionada,
-                items: ['Online', 'Presencial', 'Indicação', 'Outro'].map((String origem) {
-                  return DropdownMenuItem<String>(
-                    value: origem,
-                    child: Text(origem),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() => _origemSelecionada = value!),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _telefoneController,
+                decoration: const InputDecoration(labelText: 'Telefone de Contato'),
+                keyboardType: TextInputType.phone,
               ),
-              const SizedBox(height: 20),
-
-
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Tipo de Cliente',
-                  border: OutlineInputBorder(),
-                ),
-                value: _tipoSelecionado,
-                items: ['Solteiro', 'Casal'].map((String tipo) {
-                  return DropdownMenuItem<String>(
-                    value: tipo,
-                    child: Text(tipo),
-                  );
-                }).toList(),
-                onChanged: (String? novoTipo) {
-                  setState(() {
-                    _tipoSelecionado = novoTipo;
-                  });
-                  if (novoTipo == 'Solteiro') {
-                    _nomeEsposaController.clear();
-                  }
-                },
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _origemController,
+                decoration: const InputDecoration(labelText: 'Origem do Cliente (Ex: Indicação, Instagram)'),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              if (_tipoSelecionado == 'Casal')
-                Column(
-                  children: [
-                    TextFormField(
-                      controller: _nomeEsposaController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome do(a) Parceiro(a)',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) => value == null || value.isEmpty ? 'Insira o nome do(a) parceiro(a).' : null,
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-                ),
-
-              DropdownButtonFormField<FaseCliente>(
+              // ----- NOVO CAMPO DE SELEÇÃO DE VENDEDOR -----
+              _carregandoVendedores
+                  ? const Center(child: CircularProgressIndicator())
+                  : DropdownButtonFormField<Usuario>(
+                value: _vendedorSelecionado,
+                isExpanded: true,
                 decoration: const InputDecoration(
-                  labelText: 'Fase Atual do Cliente',
+                  labelText: 'Vendedor Responsável',
                   border: OutlineInputBorder(),
                 ),
-                value: _faseSelecionada,
-                items: FaseCliente.values.map((FaseCliente fase) {
-                  return DropdownMenuItem<FaseCliente>(
-                    value: fase,
-                    child: Text(fase.nomeDisplay),
+                hint: const Text('Atribuir a...'),
+                items: _listaDeVendedores.map((vendedor) {
+                  return DropdownMenuItem<Usuario>(
+                    value: vendedor,
+                    child: Text(vendedor.nome),
                   );
                 }).toList(),
-                onChanged: (FaseCliente? novaFase) {
+                onChanged: (Usuario? newValue) {
                   setState(() {
-                    _faseSelecionada = novaFase!;
+                    _vendedorSelecionado = newValue;
                   });
                 },
-              ),
-              const SizedBox(height: 20),
-
-              // 4. WIDGET PARA SELECIONAR A DATA DO PRÓXIMO CONTATO
-              Card(
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                child: ListTile(
-                  leading: const Icon(Icons.calendar_today, color: Colors.blueAccent),
-                  title: Text(
-                    _proximoContatoSelecionado == null
-                        ? 'Agendar Próximo Contato'
-                        : 'Próximo contato: ${DateFormat('dd/MM/yyyy HH:mm').format(_proximoContatoSelecionado!)}',
-                    style: TextStyle(
-                      color: _proximoContatoSelecionado == null ? Colors.grey.shade600 : Colors.black,
-                    ),
-                  ),
-                  trailing: _proximoContatoSelecionado != null ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.red),
-                    onPressed: () => setState(() => _proximoContatoSelecionado = null),
-                  ) : null,
-                  onTap: () => _selecionarProximoContato(context),
-                ),
+                // Permite limpar a seleção
+                // Adicione um botão ou lógica se precisar dessa funcionalidade
               ),
 
-              Card(
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                child: ListTile(
-                  leading: const Icon(Icons.calendar_today, color: Colors.blueAccent),
-                  title: Text(
-                    _dataVisitaSelecionada == null
-                        ? 'Data de visita do cliente'
-                        : 'Próxima visita: ${DateFormat('dd/MM/yyyy HH:mm').format(_dataVisitaSelecionada!)}',
-                    style: TextStyle(
-                      color: _dataVisitaSelecionada == null ? Colors.grey.shade600 : Colors.black,
-                    ),
-                  ),
-                  trailing: _dataVisitaSelecionada != null ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.red),
-                    onPressed: () => setState(() => _dataVisitaSelecionada = null),
-                  ) : null,
-                  onTap: () => _selecionarDataVisita(context),
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
+              const SizedBox(height: 32),
               ElevatedButton.icon(
-                onPressed: _submit,
+                onPressed: _salvarCliente,
                 icon: const Icon(Icons.save),
-                label: const Text('SALVAR CLIENTE', style: TextStyle(fontSize: 18)),
+                label: const Text('Salvar Cliente'),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  backgroundColor: Colors.blue,
+                  backgroundColor: Colors.indigo,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
             ],

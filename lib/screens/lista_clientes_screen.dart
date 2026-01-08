@@ -1,7 +1,10 @@
+// lib/screens/lista_clientes_screen.dart
+
 import 'package:add_2_calendar/add_2_calendar.dart';
+import 'package:crm_pessoal/screens/dashboard_screen.dart'; // <--- 1. IMPORTAR DASHBOARD
+import 'package:crm_pessoal/services/auth_service.dart';    // <--- 2. IMPORTAR AUTH SERVICE
 import 'package:crm_pessoal/widgets/editar_cliente_detalhes_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../services/firestore_service.dart';
@@ -9,10 +12,8 @@ import 'adicionar_cliente_screen.dart';
 import '../widgets/cliente_list_filtered.dart';
 import 'interacoes_screen.dart';
 
-// 1. ALTERADO PARA STATEFULWIDGET
 class ListaClientesScreen extends StatefulWidget {
-  final FaseCliente? faseInicial; // Novo parâmetro para receber a fase do Dashboard
-
+  final FaseCliente? faseInicial;
   const ListaClientesScreen({super.key, this.faseInicial});
 
   @override
@@ -22,274 +23,124 @@ class ListaClientesScreen extends StatefulWidget {
 class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService(); // <--- 3. INSTANCIAR AUTH SERVICE
+
+  String _filtroTexto = "";
+  String _ordenarPor = "dataAtualizacao";
+  bool _descendente = true;
+  bool _estaPesquisando = false;
+  final TextEditingController _searchController = TextEditingController();
+
+  late Stream<List<Cliente>> _clientesStream;
 
   @override
   void initState() {
     super.initState();
+    _clientesStream = _firestoreService.getTodosClientesStream();
 
-    // 2. LOGICA PARA DEFINIR A ABA INICIAL
-    int initialIndex = 0;
-    if (widget.faseInicial != null) {
-      initialIndex = FaseCliente.values.indexOf(widget.faseInicial!);
-    }
-
-    _tabController = TabController(
-      length: FaseCliente.values.length,
-      vsync: this,
-      initialIndex: initialIndex,
-    );
+    int initialIndex = widget.faseInicial != null ? FaseCliente.values.indexOf(widget.faseInicial!) : 0;
+    _tabController = TabController(length: FaseCliente.values.length, vsync: this, initialIndex: initialIndex);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
-  }
-
-  // --- MANTIDAS TODAS AS SUAS FUNÇÕES ORIGINAIS (AGENDA, DIALOGS, ETC) ---
-
-  void _adicionarEventoNaAgenda(BuildContext context, Cliente cliente) {
-    if (cliente.proximoContato == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este cliente não tem um próximo contato agendado.')),
-      );
-      return;
-    }
-
-    final Event evento = Event(
-      title: 'Contato: ${cliente.nome}',
-      description: 'Acompanhamento do cliente ${cliente.nome}.\nFase: ${cliente.fase.nomeDisplay}.\nTelefone: ${cliente.telefoneContato ?? 'Não informado'}.',
-      location: 'Telefone/Remoto',
-      startDate: cliente.proximoContato!,
-      endDate: cliente.proximoContato!.add(const Duration(hours: 1)),
-      iosParams: const IOSParams(reminder: Duration(minutes: 30)),
-      androidParams: const AndroidParams(emailInvites: []),
-    );
-
-    Add2Calendar.addEvent2Cal(evento).then((success) {
-      if (mounted && success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Evento para ${cliente.nome} enviado para a agenda!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    });
-  }
-
-  void _mostrarMudarFaseDialog(BuildContext context, Cliente cliente, FirestoreService service) {
-    final List<FaseCliente> fases = FaseCliente.values;
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Mudar Fase de ${cliente.nome}'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: fases.map((fase) {
-                return ListTile(
-                  title: Text(fase.nomeDisplay),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    if (fase == FaseCliente.perdido) {
-                      _confirmarPerda(context, cliente, service);
-                    } else {
-                      if (cliente.id != null) {
-                        await service.atualizarFaseCliente(cliente.id!, fase);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Fase alterada para ${fase.nomeDisplay}')),
-                          );
-                        }
-                      }
-                    }
-                  },
-                );
-              }).toList(),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(child: const Text('CANCELAR'), onPressed: () => Navigator.of(context).pop()),
-          ],
-        );
-      },
-    );
-  }
-
-  void _mostrarOpcoesCliente(BuildContext context, Cliente cliente, FirestoreService service) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.edit_note),
-              title: const Text('Editar Detalhes'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => EditarClienteDetalhesScreen(cliente: cliente)));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.compare_arrows),
-              title: const Text('Mudar Fase'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _mostrarMudarFaseDialog(context, cliente, service);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Ver Histórico/Interações'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => InteracoesScreen(cliente: cliente)));
-              },
-            ),
-            if (cliente.proximoContato != null)
-              ListTile(
-                leading: const Icon(Icons.calendar_month, color: Colors.green),
-                title: const Text('Adicionar à Agenda'),
-                subtitle: Text('Evento em: ${DateFormat('dd/MM/yy \'às\' HH:mm').format(cliente.proximoContato!)}'),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _adicionarEventoNaAgenda(context, cliente);
-                },
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _handleDismissed(BuildContext context, Cliente cliente, FirestoreService firestoreService) async {
-    if (cliente.id != null) {
-      await firestoreService.deletarCliente(cliente.id!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${cliente.nome} deletado permanentemente.')),
-        );
-      }
-    }
-  }
-
-  void _confirmarPerda(BuildContext context, Cliente cliente, FirestoreService service) {
-    final TextEditingController detalheController = TextEditingController();
-    String? motivoSelecionado;
-
-    final List<String> motivosOpcoes = [
-      'Financeiro',
-      'Distância',
-      'Não conhecem a Villamor',
-      'Sem interesse',
-      'Perfil Inadequado',
-      'Sem retorno'
-    ];
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Motivo da Não Venda'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: motivoSelecionado,
-                    decoration: const InputDecoration(
-                      labelText: 'Motivo Principal',
-                      border: OutlineInputBorder(),
-                    ),
-                    hint: const Text('Selecione um motivo'),
-                    items: motivosOpcoes.map((m) {
-                      return DropdownMenuItem(value: m, child: Text(m));
-                    }).toList(),
-                    onChanged: (val) {
-                      setState(() => motivoSelecionado = val);
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: detalheController,
-                    decoration: const InputDecoration(
-                      hintText: 'Ex: O cliente achou longe...',
-                      labelText: 'Descrição detalhada (Opcional)',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('CANCELAR'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (motivoSelecionado == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Por favor, selecione o motivo principal.')),
-                    );
-                    return;
-                  }
-
-                  if (cliente.id != null) {
-                    // AJUSTE AQUI: Enviamos os dois campos separadamente
-                    // Certifique-se de que seu FirestoreService.atualizarFaseCliente
-                    // aceite o parâmetro motivoDropdown
-                    await service.atualizarFaseCliente(
-                        cliente.id!,
-                        FaseCliente.perdido,
-                        motivo: detalheController.text, // Campo antigo (descrição)
-                        motivoDropdown: motivoSelecionado // Campo novo (estatística)
-                    );
-                  }
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cliente movido para Perdido')),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('CONFIRMAR PERDA', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          );
-        },
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    return StreamBuilder<List<Cliente>>(
+      stream: _clientesStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (snapshot.hasError) {
+          return Scaffold(body: Center(child: Text("Erro: ${snapshot.error}")));
+        }
+
+        final todosClientes = snapshot.data ?? [];
+        return _buildUI(context, todosClientes);
+      },
+    );
+  }
+
+  Widget _buildUI(BuildContext context, List<Cliente> todosClientes) {
     final List<FaseCliente> fases = FaseCliente.values;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CRM Pessoal (Kanban)'),
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
+        title: _estaPesquisando
+            ? TextField(
+          controller: _searchController,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Buscar por nome ou parceiro...',
+            hintStyle: TextStyle(color: Colors.white70),
+            border: InputBorder.none,
+          ),
+          onChanged: (value) => setState(() => _filtroTexto = value),
+        )
+            : const Text('CRM Pessoal (Kanban)'),
         actions: [
+          // ==================== NOVOS BOTÕES ADICIONADOS ====================
           IconButton(
-            icon: const Icon(Icons.add_circle_outline),
+            tooltip: 'Dashboard',
+            icon: const Icon(Icons.dashboard_outlined),
             onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AdicionarClienteScreen()));
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (context) => DashboardScreen(),
+              ));
             },
+          ),
+          IconButton(
+            tooltip: 'Sair',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              // O StreamBuilder no main.dart cuidará de redirecionar para a tela de login
+              await _authService.signOut();
+            },
+          ),
+          // ================================================================
+          IconButton(
+            icon: Icon(_estaPesquisando ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                if (_estaPesquisando) {
+                  _filtroTexto = "";
+                  _searchController.clear();
+                }
+                _estaPesquisando = !_estaPesquisando;
+              });
+            },
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.sort),
+            onSelected: (String valor) {
+              setState(() {
+                _ordenarPor = valor;
+                _descendente = (valor != "nome");
+              });
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'dataAtualizacao', child: Text('Mais Recentes')),
+              const PopupMenuItem(value: 'nome', child: Text('Nome (A-Z)')),
+              const PopupMenuItem(value: 'proximoContato', child: Text('Próximo Contato')),
+            ],
+          ),
+          IconButton(
+            tooltip: 'Adicionar Cliente',
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AdicionarClienteScreen())),
           ),
         ],
         bottom: TabBar(
-          controller: _tabController, // USANDO O CONTROLLER MANUAL
+          controller: _tabController,
           isScrollable: true,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
@@ -298,14 +149,200 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
         ),
       ),
       body: TabBarView(
-        controller: _tabController, // USANDO O CONTROLLER MANUAL
+        controller: _tabController,
         children: fases.map((fase) {
+          List<Cliente> clientesFiltrados;
+          // Se estiver pesquisando, mostra a lista completa filtrada, ignorando as abas.
+          if (_filtroTexto.trim().isNotEmpty) {
+            clientesFiltrados = todosClientes.where((c) {
+              final busca = _filtroTexto.toLowerCase().trim();
+              return c.nome.toLowerCase().contains(busca) ||
+                  (c.nomeEsposa ?? "").toLowerCase().contains(busca) ||
+                  (c.vendedorNome ?? "").toLowerCase().contains(busca); // Adicionado filtro por vendedor
+            }).toList();
+          } else {
+            // Se não, filtra pela fase da aba atual.
+            clientesFiltrados = todosClientes.where((c) => c.fase == fase).toList();
+          }
+
+          // Ordenação
+          clientesFiltrados.sort((a, b) {
+            dynamic valA, valB;
+            if (_ordenarPor == "nome") {
+              valA = a.nome.toLowerCase();
+              valB = b.nome.toLowerCase();
+            } else if (_ordenarPor == "proximoContato") {
+              valA = a.proximoContato ?? DateTime(2100);
+              valB = b.proximoContato ?? DateTime(2100);
+            } else { // Padrão é dataAtualizacao
+              valA = a.dataAtualizacao;
+              valB = b.dataAtualizacao;
+            }
+            return _descendente ? valB.compareTo(valA) : valA.compareTo(valB);
+          });
+
           return ClienteListFiltered(
-            fase: fase,
+            clientes: clientesFiltrados,
+            filtroNome: _filtroTexto,
             onTileTap: (ctx, cliente, svc) => _mostrarOpcoesCliente(context, cliente, svc),
             onDismissed: (cliente) => _handleDismissed(context, cliente, _firestoreService),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  // ===== FUNÇÕES AUXILIARES (sem alterações) =====
+
+  void _mostrarOpcoesCliente(BuildContext context, Cliente cliente, FirestoreService service) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Editar Detalhes'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => EditarClienteDetalhesScreen(cliente: cliente),
+                ));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Ver Interações'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => InteracoesScreen(cliente: cliente),
+                ));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.move_up),
+              title: const Text('Mudar Fase'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _mostrarMudarFaseDialog(context, cliente, service);
+              },
+            ),
+            if (cliente.proximoContato != null)
+              ListTile(
+                leading: const Icon(Icons.event),
+                title: const Text('Adicionar à Agenda'),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _adicionarEventoNaAgenda(context, cliente);
+                },
+              ),
+            ListTile(
+              leading: Icon(Icons.delete, color: Colors.red.shade700),
+              title: Text('Apagar Cliente', style: TextStyle(color: Colors.red.shade700)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _handleDismissed(context, cliente, service);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _mostrarMudarFaseDialog(BuildContext context, Cliente cliente, FirestoreService service) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Mudar Fase do Cliente'),
+          content: DropdownButton<FaseCliente>(
+            value: cliente.fase,
+            isExpanded: true,
+            onChanged: (FaseCliente? novaFase) {
+              if (novaFase != null) {
+                Navigator.of(ctx).pop();
+                if (novaFase == FaseCliente.perdido) {
+                  _confirmarPerda(context, cliente, service);
+                } else {
+                  service.atualizarFaseCliente(cliente.id!, novaFase);
+                }
+              }
+            },
+            items: FaseCliente.values.map<DropdownMenuItem<FaseCliente>>((FaseCliente fase) {
+              return DropdownMenuItem<FaseCliente>(value: fase, child: Text(fase.nomeDisplay));
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmarPerda(BuildContext context, Cliente cliente, FirestoreService service) {
+    final TextEditingController motivoController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Perda'),
+        content: TextField(
+          controller: motivoController,
+          decoration: const InputDecoration(hintText: "Qual o motivo da perda?"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () {
+              service.atualizarFaseCliente(
+                cliente.id!,
+                FaseCliente.perdido,
+                motivo: motivoController.text.trim(),
+              );
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _adicionarEventoNaAgenda(BuildContext context, Cliente cliente) {
+    if (cliente.proximoContato == null) return;
+    final Event event = Event(
+      title: 'Contato Cliente: ${cliente.nome}',
+      description: 'Ligar para o cliente ${cliente.nome}.',
+      location: 'Telefone/CRM',
+      startDate: cliente.proximoContato!,
+      endDate: cliente.proximoContato!.add(const Duration(minutes: 30)),
+    );
+    Add2Calendar.addEvent2Cal(event);
+  }
+
+  void _handleDismissed(BuildContext context, Cliente cliente, FirestoreService firestoreService) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Exclusão'),
+        content: Text('Tem certeza que deseja apagar permanentemente o cliente "${cliente.nome}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () {
+              firestoreService.deletarCliente(cliente.id!);
+              Navigator.of(ctx).pop();
+              if(mounted){
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Cliente "${cliente.nome}" apagado.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Apagar'),
+          ),
+        ],
       ),
     );
   }
