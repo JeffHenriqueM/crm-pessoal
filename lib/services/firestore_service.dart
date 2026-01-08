@@ -18,30 +18,31 @@ class FirestoreService {
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário Sem Nome';
 
   // --- MÉTODOS DE BUSCA DE CLIENTES (STREAMS) ---
-  Stream<List<Cliente>> getTodosClientesStream() {
-    // 1. Cria um Stream que primeiro resolve uma operação futura.
+  Stream<List<Cliente>> getTodosClientesStream({String? vendedorId}) {
     return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
-      // 2. Após obter o perfil, constrói a consulta correta.
-      print("Perfil do usuário: $perfil. Construindo a consulta de clientes.");
+      print("Perfil: $perfil. Filtro de vendedorId: $vendedorId.");
 
-      // Perfis com visão total
       final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro'];
-
       Query query = _db.collection(_colecaoClientes);
 
-      // 3. SE o perfil NÃO for de visão total, aplica o filtro.
-      if (!perfisComVisaoTotal.contains(perfil)) {
-        print("Aplicando filtro de vendedor para o ID: $_currentUserId");
-        query = query.where('vendedorId', isEqualTo: _currentUserId);
+      // 2. Lógica do filtro
+      if (perfisComVisaoTotal.contains(perfil)) {
+        // É admin/pós-venda/financeiro. Pode filtrar por qualquer vendedor.
+        if (vendedorId != null && vendedorId.isNotEmpty) {
+          // Se um vendedor específico foi passado, filtra por ele.
+          print("Admin filtrando pelo vendedor: $vendedorId");
+          query = query.where('vendedorId', isEqualTo: vendedorId);
+        }
+        // Se `vendedorId` for nulo ou vazio, não aplica filtro (vê todos).
       } else {
-        print("Usuário com perfil de visão total. Sem filtros de vendedor.");
+        // É um vendedor normal, o filtro é sempre o seu próprio ID.
+        print("Aplicando filtro para o próprio vendedor: $_currentUserId");
+        query = query.where('vendedorId', isEqualTo: _currentUserId);
       }
 
-      // 4. Retorna o Stream de dados com base na query construída.
-      // O '.switchMap' garante que estamos ouvindo o stream de dados do Firestore.
       return query.snapshots().map((snapshot) =>
           snapshot.docs.map((doc) => Cliente.fromFirestore(doc)).toList());
-    }).switchMap((streamDeClientes) => streamDeClientes); // Desembrulha o Stream<Stream<...>>
+    }).switchMap((streamDeClientes) => streamDeClientes);
   }
 
   // --- MÉTODOS DE ESCRITA DE CLIENTES (OPERAÇÕES CRUD) ---

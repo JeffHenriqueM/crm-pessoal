@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // 1. IMPORTAR LOCALIZAÇÃO
 import 'firebase_options.dart';
 
 import 'services/auth_service.dart';
@@ -30,10 +31,21 @@ class MyApp extends StatelessWidget {
       darkTheme: ThemeData(
         primarySwatch: Colors.indigo,
         brightness: Brightness.dark,
-        // Você pode customizar mais o tema escuro aqui
       ),
-      themeMode: ThemeMode.system, // Usa o tema do sistema (claro ou escuro)
-      home: const AuthWrapper(), // Nosso novo "porteiro",
+      themeMode: ThemeMode.system,
+
+      // 2. ADICIONAR AS CONFIGURAÇÕES DE LOCALIZAÇÃO ABAIXO
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('pt', 'BR'), // Define o português do Brasil como língua suportada
+      ],
+      // FIM DAS CONFIGURAÇÕES DE LOCALIZAÇÃO
+
+      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -49,17 +61,13 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: authService.authStateChanges,
       builder: (context, snapshot) {
-        // Se a conexão está ativa, esperando dados
         if (snapshot.connectionState == ConnectionState.active) {
           final User? user = snapshot.data;
-          // Se não há usuário logado, mostra a tela de login
           if (user == null) {
             return const TelaLoginScreen();
           }
-          // Se há um usuário logado, mostra a tela principal
           return const ListaClientesScreen();
         }
-        // Enquanto espera a conexão, mostra uma tela de carregamento
         return const Scaffold(
           body: Center(
             child: CircularProgressIndicator(),

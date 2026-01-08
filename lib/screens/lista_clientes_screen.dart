@@ -1,17 +1,17 @@
 // lib/screens/lista_clientes_screen.dart
 
 import 'package:add_2_calendar/add_2_calendar.dart';
-import 'package:crm_pessoal/screens/dashboard_screen.dart'; // <--- 1. IMPORTAR DASHBOARD
-import 'package:crm_pessoal/services/auth_service.dart';    // <--- 2. IMPORTAR AUTH SERVICE
-import 'package:crm_pessoal/widgets/editar_cliente_detalhes_screen.dart';
+import 'package:crm_pessoal/services/auth_service.dart';
 import 'package:flutter/material.dart';
+
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
-import 'adicionar_cliente_screen.dart';
-import '../widgets/cliente_list_filtered.dart';
+import '../widgets/KanbanView.dart';
+import '../widgets/app_bar.dart';
+import '../widgets/editar_cliente_detalhes_screen.dart';
 import 'interacoes_screen.dart';
-import 'gerenciar_usuarios_screen.dart';
 
 class ListaClientesScreen extends StatefulWidget {
   final FaseCliente? faseInicial;
@@ -22,29 +22,51 @@ class ListaClientesScreen extends StatefulWidget {
 }
 
 class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTickerProviderStateMixin {
-  String _userProfile = 'vendedor'; // Valor padrão
-  late TabController _tabController;
+  // Serviços
   final FirestoreService _firestoreService = FirestoreService();
-  final AuthService _authService = AuthService(); // <--- 3. INSTANCIAR AUTH SERVICE
+  final AuthService _authService = AuthService();
 
+  // Controladores
+  late TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
+
+  // Estado da UI
+  String _userProfile = 'vendedor';
+  bool _estaPesquisando = false;
+
+  // Estado dos Dados
+  late Stream<List<Cliente>> _clientesStream;
+  List<Usuario> _todosVendedores = [];
+  String? _vendedorIdFiltro;
   String _filtroTexto = "";
   String _ordenarPor = "dataAtualizacao";
   bool _descendente = true;
-  bool _estaPesquisando = false;
-  final TextEditingController _searchController = TextEditingController();
-
-  late Stream<List<Cliente>> _clientesStream;
 
   @override
   void initState() {
     super.initState();
-    _clientesStream = _firestoreService.getTodosClientesStream();
+    _inicializarEstado();
+  }
+
+  void _inicializarEstado() {
+    _vendedorIdFiltro = _authService.getCurrentUser()?.uid;
+    _clientesStream = _firestoreService.getTodosClientesStream(vendedorId: _vendedorIdFiltro);
+
     _authService.getCurrentUserProfile().then((perfil) {
-      if (mounted) setState(() => _userProfile = perfil);
+      if (!mounted) return;
+      setState(() => _userProfile = perfil);
+      if (perfil == 'admin') {
+        _firestoreService.getTodosUsuarios().then((vendedores) {
+          if (mounted) setState(() => _todosVendedores = vendedores);
+        });
+      }
     });
 
     int initialIndex = widget.faseInicial != null ? FaseCliente.values.indexOf(widget.faseInicial!) : 0;
     _tabController = TabController(length: FaseCliente.values.length, vsync: this, initialIndex: initialIndex);
+    _searchController.addListener(() {
+      if (mounted) setState(() => _filtroTexto = _searchController.text);
+    });
   }
 
   @override
@@ -54,156 +76,84 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     super.dispose();
   }
 
+  // Métodos de Callback para os Widgets Filhos
+  void _handleSearchStateChange(bool isTyping) {
+    if (isTyping && mounted) {
+      setState(() {});
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        if (_estaPesquisando) {
+          _filtroTexto = "";
+          _searchController.clear();
+        }
+        _estaPesquisando = !_estaPesquisando;
+      });
+    }
+  }
+
+  void _handleVendedorChange(String? novoVendedorId) {
+    if (mounted) {
+      setState(() {
+        _vendedorIdFiltro = novoVendedorId;
+        _clientesStream = _firestoreService.getTodosClientesStream(vendedorId: _vendedorIdFiltro);
+      });
+    }
+  }
+
+  void _handleSortChange(String novaOrdem) {
+    if (mounted) {
+      setState(() => _ordenarPor = novaOrdem);
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await _authService.signOut();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Cliente>>(
-      stream: _clientesStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        if (snapshot.hasError) {
-          return Scaffold(body: Center(child: Text("Erro: ${snapshot.error}")));
-        }
-
-        final todosClientes = snapshot.data ?? [];
-        return _buildUI(context, todosClientes);
-      },
-    );
-  }
-
-  Widget _buildUI(BuildContext context, List<Cliente> todosClientes) {
-    final List<FaseCliente> fases = FaseCliente.values;
-
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
-        title: _estaPesquisando
-            ? TextField(
-          controller: _searchController,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Buscar por nome ou parceiro...',
-            hintStyle: TextStyle(color: Colors.white70),
-            border: InputBorder.none,
-          ),
-          onChanged: (value) => setState(() => _filtroTexto = value),
-        )
-            : const Text('CRM Pessoal (Kanban)'),
-        actions: [
-          // ==================== NOVOS BOTÕES ADICIONADOS ====================
-          // Botão de Gerenciamento de Usuários (APENAS PARA ADMIN)
-          if (_userProfile == 'admin')
-      IconButton(
-      tooltip: 'Gerenciar Usuários',
-      icon: const Icon(Icons.manage_accounts),
-      onPressed: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => const GerenciarUsuariosScreen()),
-        );
-      },
-    )
-          ,IconButton(
-            tooltip: 'Dashboard',
-            icon: const Icon(Icons.dashboard_outlined),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (context) => DashboardScreen(),
-              ));
-            },
-          ),
-          IconButton(
-            tooltip: 'Sair',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              // O StreamBuilder no main.dart cuidará de redirecionar para a tela de login
-              await _authService.signOut();
-            },
-          ),
-          // ================================================================
-          IconButton(
-            icon: Icon(_estaPesquisando ? Icons.close : Icons.search),
-            onPressed: () {
-              setState(() {
-                if (_estaPesquisando) {
-                  _filtroTexto = "";
-                  _searchController.clear();
-                }
-                _estaPesquisando = !_estaPesquisando;
-              });
-            },
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.sort),
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'dataAtualizacao', child: Text('Mais Recentes')),
-              const PopupMenuItem(value: 'nome', child: Text('Nome (A-Z)')),
-              const PopupMenuItem(value: 'proximoContato', child: Text('Próximo Contato')),
-            ],
-          ),
-          IconButton(
-            tooltip: 'Adicionar Cliente',
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AdicionarClienteScreen())),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
-          tabs: fases.map((fase) => Tab(text: fase.nomeDisplay)).toList(),
-        ),
+      appBar: ListaClientesAppBar(
+        estaPesquisando: _estaPesquisando,
+        userProfile: _userProfile,
+        todosVendedores: _todosVendedores,
+        vendedorIdFiltro: _vendedorIdFiltro,
+        searchController: _searchController,
+        tabController: _tabController,
+        onSearchStateChange: _handleSearchStateChange,
+        onVendedorChange: _handleVendedorChange,
+        onSortChange: _handleSortChange,
+        onLogout: _handleLogout,
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: fases.map((fase) {
-          List<Cliente> clientesFiltrados;
-          // Se estiver pesquisando, mostra a lista completa filtrada, ignorando as abas.
-          if (_filtroTexto.trim().isNotEmpty) {
-            clientesFiltrados = todosClientes.where((c) {
-              final busca = _filtroTexto.toLowerCase().trim();
-              return c.nome.toLowerCase().contains(busca) ||
-                  (c.nomeEsposa ?? "").toLowerCase().contains(busca) ||
-                  (c.vendedorNome ?? "").toLowerCase().contains(busca); // Adicionado filtro por vendedor
-            }).toList();
-          } else {
-            // Se não, filtra pela fase da aba atual.
-            clientesFiltrados = todosClientes.where((c) => c.fase == fase).toList();
+      body: StreamBuilder<List<Cliente>>(
+        stream: _clientesStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text("Erro: ${snapshot.error}"));
           }
 
-          // Ordenação
-          clientesFiltrados.sort((a, b) {
-            dynamic valA, valB;
-            if (_ordenarPor == "nome") {
-              valA = a.nome.toLowerCase();
-              valB = b.nome.toLowerCase();
-            } else if (_ordenarPor == "proximoContato") {
-              valA = a.proximoContato ?? DateTime(2100);
-              valB = b.proximoContato ?? DateTime(2100);
-            } else { // Padrão é dataAtualizacao
-              valA = a.dataAtualizacao;
-              valB = b.dataAtualizacao;
-            }
-            return _descendente ? valB.compareTo(valA) : valA.compareTo(valB);
-          });
+          final todosClientes = snapshot.data ?? [];
 
-          return ClienteListFiltered(
-            clientes: clientesFiltrados,
-            filtroNome: _filtroTexto,
-            onTileTap: (ctx, cliente, svc) => _mostrarOpcoesCliente(context, cliente, svc),
-            onDismissed: (cliente) => _handleDismissed(context, cliente, _firestoreService),
+          return KanbanView(
+            tabController: _tabController,
+            todosClientes: todosClientes,
+            filtroTexto: _filtroTexto,
+            ordenarPor: _ordenarPor,
+            descendente: _descendente,
+            onMostrarOpcoes: _mostrarOpcoesCliente,
+            onDismissed: (ctx, cliente, svc) => _handleDismissed(ctx, cliente, svc),
           );
-        }).toList(),
+        },
       ),
     );
   }
 
-  // ===== FUNÇÕES AUXILIARES (sem alterações) =====
-
+  // Funções de lógica de negócio que permanecem na tela principal.
   void _mostrarOpcoesCliente(BuildContext context, Cliente cliente, FirestoreService service) {
     showModalBottomSheet(
       context: context,
@@ -273,7 +223,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             onChanged: (FaseCliente? novaFase) {
               if (novaFase != null) {
                 Navigator.of(ctx).pop();
-                if (novaFase == FaseCliente.perdido) {
+                if (novaFase == FaseCliente.perdido) { // Corrigido para enum
                   _confirmarPerda(context, cliente, service);
                 } else {
                   service.atualizarFaseCliente(cliente.id!, novaFase);
@@ -305,7 +255,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             onPressed: () {
               service.atualizarFaseCliente(
                 cliente.id!,
-                FaseCliente.perdido,
+                FaseCliente.perdido, // Corrigido para enum
                 motivo: motivoController.text.trim(),
               );
               Navigator.of(ctx).pop();
