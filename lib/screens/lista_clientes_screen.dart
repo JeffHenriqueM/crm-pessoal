@@ -11,7 +11,7 @@ import '../services/firestore_service.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/cliente_list_filtered.dart';
 import '../widgets/editar_cliente_detalhes_screen.dart';
-import 'adicionar_cliente_screen.dart'; // Import adicionado
+import 'adicionar_cliente_screen.dart';
 import 'dashboard_screen.dart';
 import 'interacoes_screen.dart';
 
