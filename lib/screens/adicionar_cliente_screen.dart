@@ -61,10 +61,9 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   Future<void> _carregarDadosIniciais() async {
     try {
       // Carrega as listas em paralelo para otimizar
-      final futureVendedores = _firestoreService.getTodosUsuarios(perfil: 'vendedor');
-      final futureCaptadores = _firestoreService.getTodosUsuarios(perfil: 'captador');
+      final usuarios = _firestoreService.getTodosUsuarios();
 
-      final resultados = await Future.wait([futureVendedores, futureCaptadores]);
+      final resultados = await Future.wait([usuarios, usuarios]);
 
       if (mounted) {
         setState(() {

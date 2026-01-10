@@ -37,16 +37,12 @@ class _EditarClienteDetalhesScreenState
 
   DateTime? _proximoContatoSelecionado;
   DateTime? _dataVisitaSelecionada; // Corrigido
-  // NOVOS CAMPOS PARA EDIÇÃO
   DateTime? _dataCaptacaoSelecionada;
   Usuario? _captadorSelecionado;
-  // FIM DOS NOVOS CAMPOS
-
-  // Vendedores
   Usuario? _vendedorSelecionado;
   List<Usuario> _listaDeVendedores = [];
-  List<Usuario> _listaDeCaptadores = []; // Nova lista
-  bool _carregandoDados = true; // Um único 'loading'
+  List<Usuario> _listaDeCaptadores = [];
+  bool _carregandoDados = true;
 
   // Opções
   final List<String> _origemOpcoes = ['Presencial', 'WhatsApp', 'Instagram'];
@@ -65,10 +61,9 @@ class _EditarClienteDetalhesScreenState
   Future<void> _carregarDadosIniciais() async {
     try {
       // Carrega as listas de usuários em paralelo
-      final futureVendedores = _firestoreService.getTodosUsuarios(perfil: 'vendedor');
-      final futureCaptadores = _firestoreService.getTodosUsuarios(perfil: 'captador');
+      final usuarios = _firestoreService.getTodosUsuarios();
 
-      final resultados = await Future.wait([futureVendedores, futureCaptadores]);
+      final resultados = await Future.wait([usuarios, usuarios]);
       if (!mounted) return;
 
       setState(() {
