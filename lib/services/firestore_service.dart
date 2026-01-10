@@ -18,30 +18,38 @@ class FirestoreService {
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário Sem Nome';
 
   // --- MÉTODOS DE BUSCA DE CLIENTES (STREAMS) ---
-  Stream<List<Cliente>> getTodosClientesStream({String? vendedorId}) {
+  Stream<List<Cliente>> getTodosClientesStream({
+    String? vendedorId,
+    String ordenarPor = 'dataAtualizacao', // Valor padrão para ordenação
+    bool descendente = true,               // Valor padrão para direção
+  }) {
     return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
-      print("Perfil: $perfil. Filtro de vendedorId: $vendedorId.");
+      print(
+          "Perfil: $perfil. Filtro de vendedorId: $vendedorId. Ordenando por: $ordenarPor ($descendente)");
 
       final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro'];
       Query query = _db.collection(_colecaoClientes);
 
-      // 2. Lógica do filtro
+      // 1. LÓGICA DO FILTRO (baseada no perfil)
       if (perfisComVisaoTotal.contains(perfil)) {
-        // É admin/pós-venda/financeiro. Pode filtrar por qualquer vendedor.
+        // Admin/pós-venda/financeiro: pode filtrar por qualquer vendedor.
         if (vendedorId != null && vendedorId.isNotEmpty) {
-          // Se um vendedor específico foi passado, filtra por ele.
-          print("Admin filtrando pelo vendedor: $vendedorId");
           query = query.where('vendedorId', isEqualTo: vendedorId);
         }
-        // Se `vendedorId` for nulo ou vazio, não aplica filtro (vê todos).
+        // Se vendedorId for nulo, vê todos os clientes.
       } else {
-        // É um vendedor normal, o filtro é sempre o seu próprio ID.
-        print("Aplicando filtro para o próprio vendedor: $_currentUserId");
+        // Vendedor normal: vê apenas seus próprios clientes.
         query = query.where('vendedorId', isEqualTo: _currentUserId);
       }
 
-      return query.snapshots().map((snapshot) =>
-          snapshot.docs.map((doc) => Cliente.fromFirestore(doc)).toList());
+      // 2. APLICA A ORDENAÇÃO (ESSA É A PARTE QUE FALTAVA)
+      // A query é construída primeiro com os filtros e DEPOIS com a ordenação.
+      query = query.orderBy(ordenarPor, descending: descendente);
+
+      // Retorna o stream final com os dados filtrados e ordenados.
+      return query.snapshots().map(
+              (snapshot) => snapshot.docs.map((doc) => Cliente.fromFirestore(doc)).toList());
+
     }).switchMap((streamDeClientes) => streamDeClientes);
   }
 
@@ -78,10 +86,6 @@ class FirestoreService {
   Future<void> deletarCliente(String id) async {
     await _db.collection(_colecaoClientes).doc(id).delete();
   }
-
-  // ===== INÍCIO DOS NOVOS MÉTODOS PARA INTERAÇÕES =====
-
-  // --- MÉTODOS DE INTERAÇÕES (SUB-COLEÇÃO) ---
 
   /// Busca o stream de interações de um cliente específico.
   Stream<List<Interacao>> getInteracoesStream(String clienteId) {

@@ -1,4 +1,4 @@
-// lib/screens/lista_clientes_screen.dart
+// lib/screens/lista_clientlista_clientes_screenes_screen.dart
 
 import 'package:add_2_calendar/add_2_calendar.dart';
 import 'package:crm_pessoal/services/auth_service.dart';
@@ -52,7 +52,11 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
 
   void _inicializarEstado() {
     _vendedorIdFiltro = _authService.getCurrentUser()?.uid;
-    _clientesStream = _firestoreService.getTodosClientesStream(vendedorId: _vendedorIdFiltro);
+    _clientesStream = _firestoreService.getTodosClientesStream(
+      vendedorId: _vendedorIdFiltro,
+      ordenarPor: _ordenarPor,      // <-- Passa a ordenação padrão
+      descendente: _descendente,   // <-- Passa a direção padrão
+    );
 
     _authService.getCurrentUserProfile().then((perfil) {
       if (!mounted) return;
@@ -100,7 +104,12 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     if (mounted) {
       setState(() {
         _vendedorIdFiltro = novoVendedorId;
-        _clientesStream = _firestoreService.getTodosClientesStream(vendedorId: _vendedorIdFiltro);
+        // CORREÇÃO: Adicione os parâmetros de ordenação aqui também!
+        _clientesStream = _firestoreService.getTodosClientesStream(
+          vendedorId: _vendedorIdFiltro,
+          ordenarPor: _ordenarPor,
+          descendente: _descendente,
+        );
       });
     }
   }
@@ -109,11 +118,23 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     if (mounted) {
       setState(() {
         if (_ordenarPor == novaOrdem) {
+          // Se estamos no mesmo campo, apenas invertemos a direção.
+          // Com os dois índices (ASC e DESC), o Firestore agora permite isso.
           _descendente = !_descendente;
         } else {
+          // Se estamos mudando para um novo campo de ordenação...
           _ordenarPor = novaOrdem;
-          _descendente = true;
+
+          // ...definimos a direção inicial padrão para esse campo.
+          _descendente = (novaOrdem == 'dataAtualizacao'); // true para data, false para nome
         }
+
+        // Recria o stream com os parâmetros corretos
+        _clientesStream = _firestoreService.getTodosClientesStream(
+          vendedorId: _vendedorIdFiltro,
+          ordenarPor: _ordenarPor,
+          descendente: _descendente,
+        );
       });
     }
   }
