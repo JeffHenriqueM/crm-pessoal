@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../services/firestore_service.dart';
-// Adicione as importações que faltam, se necessário
 import '../models/usuario_model.dart';
 
 class EditarClienteDetalhesScreen extends StatefulWidget {
@@ -24,24 +23,32 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
   late TextEditingController _nomeController;
   late TextEditingController _telefoneController;
   late TextEditingController _nomeParceiroController;
-  late TextEditingController _motivoDetalhamentoController;
+  late TextEditingController _motivoPerdaDescricaoController;
 
   late FaseCliente _faseSelecionada;
   late String _tipoSelecionado;
 
   DateTime? _proximoContatoSelecionado;
-  DateTime? _dataVisitaSelecionada;
-  String? _motivoDropdownSelecionado;
+  DateTime? _proximaVisitaSelecionada;
 
-  // Variáveis para o dropdown de vendedores
-  Usuario? _vendedorSelecionado;
-  List<Usuario> _listaDeVendedores = [];
-  bool _carregandoVendedores = true;
-
+  // --- LÓGICA DE PERDA ---
+  String? _motivoPerdaSelecionado;
   final List<String> _motivosOpcoes = [
     'Financeiro', 'Distância', 'Não conhecem a Villamor', 'Sem interesse',
     'Perfil Inadequado', 'Sem retorno', 'Outro'
   ];
+  // --- FIM LÓGICA DE PERDA ---
+
+  // +++ CAMPO DE ORIGEM CORRIGIDO +++
+  String? _origemSelecionada;
+  // A lista de opções volta ao normal, sem "Antigo"
+  final List<String> _origemOpcoes = ['Presencial', 'WhatsApp', 'Instagram'];
+  // +++++++++++++++++++++++++++++++
+
+  // Vendedores
+  Usuario? _vendedorSelecionado;
+  List<Usuario> _listaDeVendedores = [];
+  bool _carregandoVendedores = true;
 
   final FirestoreService _firestoreService = FirestoreService();
 
@@ -56,12 +63,21 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
     _nomeController = TextEditingController(text: widget.cliente.nome);
     _telefoneController = TextEditingController(text: widget.cliente.telefoneContato);
     _nomeParceiroController = TextEditingController(text: widget.cliente.nomeEsposa);
-    _motivoDetalhamentoController = TextEditingController(text: widget.cliente.motivoNaoVenda);
+    _motivoPerdaDescricaoController = TextEditingController(text: widget.cliente.motivoNaoVenda);
+
     _faseSelecionada = widget.cliente.fase;
     _tipoSelecionado = widget.cliente.tipo;
     _proximoContatoSelecionado = widget.cliente.proximoContato;
-    _dataVisitaSelecionada = widget.cliente.dataVisita;
-    _motivoDropdownSelecionado = widget.cliente.motivoNaoVendaDropdown;
+    _proximaVisitaSelecionada = widget.cliente.dataVisita; // Corrigido aqui
+
+    _motivoPerdaSelecionado = widget.cliente.motivoNaoVendaDropdown;
+
+    if (_origemOpcoes.contains(widget.cliente.origem)) {
+      _origemSelecionada = widget.cliente.origem;
+    } else {
+      _origemSelecionada = null; // Deixa o campo sem valor, mostrando o "hintText"
+    }
+    // +++++++++++++++++++++++++++++++++++++++++++++++++
   }
 
   Future<void> _carregarVendedores() async {
@@ -69,14 +85,13 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
     if (mounted) {
       setState(() {
         _listaDeVendedores = vendedores;
-        // Tenta pré-selecionar o vendedor atual do cliente
         if (widget.cliente.vendedorId != null) {
           try {
             _vendedorSelecionado = _listaDeVendedores.firstWhere(
                     (v) => v.id == widget.cliente.vendedorId
             );
           } catch (e) {
-            _vendedorSelecionado = null; // Vendedor não encontrado na lista
+            _vendedorSelecionado = null;
           }
         }
         _carregandoVendedores = false;
@@ -87,48 +102,34 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
   Future<void> _selecionarData(BuildContext context, Function(DateTime) onSelect) async {
     final DateTime? dataEscolhida = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: _proximaVisitaSelecionada ?? _proximoContatoSelecionado ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2101),
     );
 
     if (dataEscolhida == null || !mounted) return;
 
-    final TimeOfDay? horaEscolhida = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-
-    if (horaEscolhida == null) return;
-
-    onSelect(DateTime(
-      dataEscolhida.year, dataEscolhida.month, dataEscolhida.day,
-      horaEscolhida.hour, horaEscolhida.minute,
-    ));
+    onSelect(DateTime(dataEscolhida.year, dataEscolhida.month, dataEscolhida.day));
   }
 
-  // ==================== FUNÇÃO _submit() CORRIGIDA ====================
   void _submit() async {
     if (_formKey.currentState!.validate()) {
-      // 1. Criar o Mapa de dados a serem atualizados
       final Map<String, dynamic> dadosParaAtualizar = {
         'nome': _nomeController.text.trim(),
         'tipo': _tipoSelecionado,
         'nomeEsposa': _tipoSelecionado == 'Casal' ? _nomeParceiroController.text.trim() : null,
         'telefoneContato': _telefoneController.text.trim(),
-        'fase': _faseSelecionada.toString().split('.').last, // Salva o texto do enum
+        'fase': _faseSelecionada.toString().split('.').last,
         'proximoContato': _proximoContatoSelecionado,
-        'dataVisita': _dataVisitaSelecionada,
-        // Atribui o vendedor selecionado (ou nulo se nenhum for)
+        'proximaVisita': _proximaVisitaSelecionada,
+        'origem': _origemSelecionada,
         'vendedorId': _vendedorSelecionado?.id,
         'vendedorNome': _vendedorSelecionado?.nome,
-        // Lógica para campos de perda
-        'motivoNaoVenda': _faseSelecionada == FaseCliente.perdido ? _motivoDetalhamentoController.text.trim() : null,
-        'motivoNaoVendaDropdown': _faseSelecionada == FaseCliente.perdido ? _motivoDropdownSelecionado : null,
+        'motivoNaoVenda': _faseSelecionada == FaseCliente.perdido ? _motivoPerdaDescricaoController.text.trim() : null,
+        'motivoNaoVendaDropdown': _faseSelecionada == FaseCliente.perdido ? _motivoPerdaSelecionado : null,
       };
 
       try {
-        // 2. Chamar o método com o ID e o Mapa
         await _firestoreService.atualizarClienteDetalhes(
           widget.cliente.id!,
           dadosParaAtualizar,
@@ -149,14 +150,13 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
       }
     }
   }
-  // =====================================================================
 
   @override
   void dispose() {
     _nomeController.dispose();
     _telefoneController.dispose();
     _nomeParceiroController.dispose();
-    _motivoDetalhamentoController.dispose();
+    _motivoPerdaDescricaoController.dispose();
     super.dispose();
   }
 
@@ -174,11 +174,29 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
           key: _formKey,
           child: ListView(
             children: <Widget>[
-              // ... (outros campos não mudaram)
               TextFormField(
                 controller: _nomeController,
                 decoration: const InputDecoration(labelText: 'Nome do Cliente', border: OutlineInputBorder()),
                 validator: (v) => v == null || v.trim().isEmpty ? 'Insira o nome.' : null,
+              ),
+              const SizedBox(height: 20),
+              // Agora, se o valor for antigo, o hintText "Selecione a origem" será exibido
+              DropdownButtonFormField<String>(
+                value: _origemSelecionada,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Origem do Cliente *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.public),
+                ),
+                hint: const Text('Selecione a origem'),
+                validator: (value) => value == null ? 'A origem é obrigatória.' : null,
+                items: _origemOpcoes.map((origem) {
+                  return DropdownMenuItem<String>(value: origem, child: Text(origem));
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() => _origemSelecionada = newValue);
+                },
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<FaseCliente>(
@@ -188,7 +206,6 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
                 onChanged: (v) => setState(() => _faseSelecionada = v!),
               ),
               const SizedBox(height: 20),
-              // ----- CAMPO DE SELEÇÃO DE VENDEDOR -----
               _carregandoVendedores
                   ? const Center(child: CircularProgressIndicator())
                   : DropdownButtonFormField<Usuario>(
@@ -231,7 +248,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
               ],
               _buildDateTile('Próximo Contato', _proximoContatoSelecionado, () => _selecionarData(context, (date) => setState(() => _proximoContatoSelecionado = date)), () => setState(() => _proximoContatoSelecionado = null)),
               const SizedBox(height: 10),
-              _buildDateTile('Próxima Visita', _dataVisitaSelecionada, () => _selecionarData(context, (date) => setState(() => _dataVisitaSelecionada = date)), () => setState(() => _dataVisitaSelecionada = null)),
+              _buildDateTile('Próxima Visita', _proximaVisitaSelecionada, () => _selecionarData(context, (date) => setState(() => _proximaVisitaSelecionada = date)), () => setState(() => _proximaVisitaSelecionada = null)),
 
               if (_faseSelecionada == FaseCliente.perdido) ...[
                 const Divider(height: 40),
@@ -239,14 +256,14 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   decoration: const InputDecoration(labelText: 'Motivo Principal', border: OutlineInputBorder()),
-                  value: _motivoDropdownSelecionado,
+                  value: _motivoPerdaSelecionado,
                   items: _motivosOpcoes.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                  onChanged: (v) => setState(() => _motivoDropdownSelecionado = v),
+                  onChanged: (v) => setState(() => _motivoPerdaSelecionado = v),
                   validator: (v) => _faseSelecionada == FaseCliente.perdido && v == null ? 'Selecione um motivo' : null,
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
-                  controller: _motivoDetalhamentoController,
+                  controller: _motivoPerdaDescricaoController,
                   decoration: const InputDecoration(labelText: 'Descrição Detalhada do Motivo', border: OutlineInputBorder()),
                   maxLines: 3,
                 ),
@@ -270,7 +287,7 @@ class _EditarClienteDetalhesScreenState extends State<EditarClienteDetalhesScree
       elevation: 2.0,
       child: ListTile(
         leading: const Icon(Icons.calendar_today, color: Colors.indigo),
-        title: Text(date == null ? label : '$label: ${DateFormat('dd/MM/yyyy HH:mm').format(date)}', style: TextStyle(fontWeight: date != null ? FontWeight.bold: FontWeight.normal)),
+        title: Text(date == null ? label : '$label: ${DateFormat('dd/MM/yyyy').format(date)}', style: TextStyle(fontWeight: date != null ? FontWeight.bold: FontWeight.normal)),
         trailing: date != null ? IconButton(icon: const Icon(Icons.clear, color: Colors.red), onPressed: onClear) : null,
         onTap: onTap,
       ),

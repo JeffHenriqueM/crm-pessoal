@@ -11,6 +11,7 @@ import '../services/firestore_service.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/cliente_list_filtered.dart';
 import '../widgets/editar_cliente_detalhes_screen.dart';
+import 'adicionar_cliente_screen.dart'; // Import adicionado
 import 'dashboard_screen.dart';
 import 'interacoes_screen.dart';
 
@@ -129,6 +130,13 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     );
   }
 
+  // Função para abrir a tela de adicionar cliente
+  void _abrirAdicionarCliente() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const AdicionarClienteScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Cliente>>(
@@ -156,6 +164,12 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             onSortChange: _handleSortChange,
             onLogout: _handleLogout,
             onShowDashboard: _abrirDashboard,
+          ),
+          // Botão flutuante adicionado aqui
+          floatingActionButton: FloatingActionButton(
+            onPressed: _abrirAdicionarCliente,
+            tooltip: 'Adicionar Cliente',
+            child: const Icon(Icons.add),
           ),
           body: _estaPesquisando
               ? _buildSearchResults(todosClientes) // Se estiver pesquisando, mostra a lista global
