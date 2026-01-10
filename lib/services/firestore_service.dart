@@ -162,14 +162,27 @@ class FirestoreService {
     });
   }
 
-  Future<List<Usuario>> getTodosUsuarios() async {
+  Future<List<Usuario>> getTodosUsuarios({String? perfil}) async {
     try {
-      final snapshot = await _db.collection('usuarios').get();
+      // Cria a query base
+      Query query = _db.collection('usuarios');
+
+      // Se um perfil for especificado, adiciona o filtro 'where'
+      if (perfil != null && perfil.isNotEmpty) {
+        query = query.where('perfil', isEqualTo: perfil);
+      }
+
+      // Executa a query (filtrada ou não)
+      final snapshot = await query.get();
+
       if (snapshot.docs.isEmpty) return [];
-      return snapshot.docs.map((doc) => Usuario.fromMap(doc.data(), doc.id)).toList();
+
+      // Mapeia os resultados para a lista de usuários
+      return snapshot.docs.map((doc) => Usuario.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
+
     } catch (e) {
-      print("Erro ao buscar usuários: $e");
-      return [];
+      print("Erro ao buscar usuários (perfil: $perfil): $e");
+      return []; // Retorna lista vazia em caso de erro
     }
   }
 

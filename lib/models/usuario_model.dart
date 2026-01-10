@@ -4,13 +4,13 @@ class Usuario {
   final String id;
   final String nome;
   final String email;
-  final String perfil; // <--- 1. NOVO CAMPO 'PERFIL'
+  final String perfil;
 
   Usuario({
     required this.id,
     required this.nome,
     required this.email,
-    required this.perfil, // <--- 2. ADICIONAR AO CONSTRUTOR
+    required this.perfil,
   });
 
   factory Usuario.fromMap(Map<String, dynamic> data, String documentId) {

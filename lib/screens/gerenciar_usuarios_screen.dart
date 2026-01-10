@@ -49,10 +49,11 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                   children: [
                     Chip(
                       label: Text(
-                        usuario.perfil,
+                        // Transforma o nome do perfil para ter a primeira letra maiúscula
+                        usuario.perfil.isNotEmpty ? usuario.perfil[0].toUpperCase() + usuario.perfil.substring(1) : '',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                       ),
-                      backgroundColor: Colors.blueGrey,
+                      backgroundColor: _getCorPerfil(usuario.perfil), // Cor baseada no perfil
                     ),
                     const SizedBox(width: 8),
                     IconButton(
@@ -67,7 +68,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           );
         },
       ),
-      // ============ PASSO 1: ADICIONAR O FAB DE VOLTA ============
       floatingActionButton: FloatingActionButton(
         onPressed: () => _mostrarDialogoCriarUsuario(context),
         tooltip: 'Adicionar Novo Usuário',
@@ -75,17 +75,36 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
-      // ========================================================
     );
   }
 
-  // ============ PASSO 2: REINSERIR O DIÁLOGO DE CRIAÇÃO ============
+  // Função auxiliar para dar uma cor diferente a cada perfil
+  Color _getCorPerfil(String perfil) {
+    switch (perfil.toLowerCase()) {
+      case 'admin':
+        return Colors.red[700]!;
+      case 'captador':
+        return Colors.green[600]!;
+      case 'vendedor':
+        return Colors.blue[600]!;
+      case 'pós-venda':
+        return Colors.orange[700]!;
+      case 'financeiro':
+        return Colors.purple[600]!;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
   void _mostrarDialogoCriarUsuario(BuildContext context) {
     final formKey = GlobalKey<FormState>();
     final nomeController = TextEditingController();
     final emailController = TextEditingController();
     final senhaController = TextEditingController();
-    String perfilSelecionado = 'vendedor';
+    String perfilSelecionado = 'vendedor'; // Perfil padrão
+
+    // CORREÇÃO: Lista de perfis agora inclui 'captador'
+    final List<String> perfisDisponiveis = ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro'];
 
     showDialog(
       context: context,
@@ -118,8 +137,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                   DropdownButtonFormField<String>(
                     value: perfilSelecionado,
                     decoration: const InputDecoration(labelText: 'Perfil'),
-                    items: ['admin', 'pós-venda', 'financeiro', 'vendedor']
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                    items: perfisDisponiveis // Usando a lista atualizada
+                        .map((p) => DropdownMenuItem(value: p, child: Text(p[0].toUpperCase() + p.substring(1))))
                         .toList(),
                     onChanged: (value) {
                       if (value != null) perfilSelecionado = value;
@@ -162,14 +181,16 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       },
     );
   }
-  // =================================================================
 
-  // DIÁLOGO DE EDIÇÃO (seu código existente, sem alterações)
   void _mostrarDialogoEditarUsuario(BuildContext context, Usuario usuario) {
     final formKey = GlobalKey<FormState>();
     final nomeController = TextEditingController(text: usuario.nome);
     final emailController = TextEditingController(text: usuario.email);
     String perfilSelecionado = usuario.perfil;
+
+    // CORREÇÃO: Lista de perfis agora inclui 'captador'
+    final List<String> perfisDisponiveis = ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro'];
+
 
     showDialog(
       context: context,
@@ -195,8 +216,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                   DropdownButtonFormField<String>(
                     value: perfilSelecionado,
                     decoration: const InputDecoration(labelText: 'Perfil'),
-                    items: ['admin', 'pós-venda', 'financeiro', 'vendedor']
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                    items: perfisDisponiveis // Usando a lista atualizada
+                        .map((p) => DropdownMenuItem(value: p, child: Text(p[0].toUpperCase() + p.substring(1))))
                         .toList(),
                     onChanged: (value) {
                       if (value != null) perfilSelecionado = value;

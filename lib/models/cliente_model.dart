@@ -14,14 +14,13 @@ class Cliente {
   final DateTime dataAtualizacao;
   final DateTime? proximoContato;
   final DateTime? dataVisita;
+  final String? captadorId;
+  final String? captadorNome;
+  final DateTime? dataEntradaSala;
   final String? motivoNaoVenda;
   final String? motivoNaoVendaDropdown;
-
-  // --- CAMPO DE RESPONSABILIDADE (QUEM É O DONO COMERCIAL) ---
   final String? vendedorId;
   final String? vendedorNome;
-
-  // --- CAMPOS DE AUDITORIA (QUEM FEZ O QUÊ) ---
   final String? criadoPorId;
   final String? criadoPorNome;
   final String? atualizadoPorId;
@@ -41,9 +40,11 @@ class Cliente {
     this.origem,
     this.motivoNaoVenda,
     this.motivoNaoVendaDropdown,
-    // Construtor com os novos campos
     this.vendedorId,
     this.vendedorNome,
+    this.captadorId,
+    this.captadorNome,
+    this.dataEntradaSala,
     this.criadoPorId,
     this.criadoPorNome,
     this.atualizadoPorId,
@@ -65,9 +66,11 @@ class Cliente {
       'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita!) : null,
       'motivoNaoVenda': motivoNaoVenda,
       'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
-      // Mapeando os novos campos
       'vendedorId': vendedorId,
       'vendedorNome': vendedorNome,
+      'captadorNome': captadorNome,
+      'captadorId': captadorId,
+      'dataEntradaSala': dataEntradaSala != null ? Timestamp.fromDate(dataEntradaSala!): null,
       'criadoPorId': criadoPorId,
       'criadoPorNome': criadoPorNome,
       'atualizadoPorId': atualizadoPorId,
@@ -107,9 +110,11 @@ class Cliente {
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
       motivoNaoVenda: data['motivoNaoVenda'],
       motivoNaoVendaDropdown: data['motivoNaoVendaDropdown'],
-      // Recuperando os novos campos do Firebase (são nulos por padrão se não existirem)
       vendedorId: data['vendedorId'],
       vendedorNome: data['vendedorNome'],
+      captadorId: data['captadorId'],
+      captadorNome: data['captadorNome'],
+      dataEntradaSala: (data['dataEntradaSala'] as Timestamp?)?.toDate(),
       criadoPorId: data['criadoPorId'],
       criadoPorNome: data['criadoPorNome'],
       atualizadoPorId: data['atualizadoPorId'],
