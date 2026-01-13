@@ -3,7 +3,11 @@
 import 'package:add_2_calendar/add_2_calendar.dart';
 import 'package:crm_pessoal/services/auth_service.dart';
 import 'package:flutter/material.dart';
+import 'package:crm_pessoal/services/auth_service.dart';
+import 'package:flutter/material.dart';
 
+import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // Ícone do WhatsApp
+import '../utils/url_launcher_service.dart'; // Nosso serviço para abrir a URL
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
@@ -255,6 +259,27 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
                 ));
               },
             ),
+            if (cliente.telefoneContato != null && cliente.telefoneContato!.isNotEmpty)
+              ListTile(
+                leading: const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
+                title: const Text('Conversar no WhatsApp'),
+                onTap: () async {
+                  Navigator.of(ctx).pop(); // Fecha o menu de opções
+                  final urlService = UrlLauncherService();
+                  try {
+                    // A chamada do método agora usa 'telefoneContato'
+                    // A exclamação (!) é segura por causa do 'if' acima
+                    await urlService.abrirWhatsApp(cliente.telefoneContato!);
+                  } catch (e) {
+                    // Se der erro (ex: WhatsApp não instalado), mostra um aviso
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.toString())),
+                      );
+                    }
+                  }
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.move_up),
               title: const Text('Mudar Fase'),
