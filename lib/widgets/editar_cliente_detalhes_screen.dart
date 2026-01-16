@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-import '../services/auth_service.dart'; // Importar para auditoria
+import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../models/usuario_model.dart';
 
@@ -23,7 +23,7 @@ class _EditarClienteDetalhesScreenState
     extends State<EditarClienteDetalhesScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firestoreService = FirestoreService();
-  final _authService = AuthService(); // Serviço para pegar usuário logado
+  final _authService = AuthService();
 
   // Controladores e Estados
   late TextEditingController _nomeController;
@@ -36,7 +36,7 @@ class _EditarClienteDetalhesScreenState
   String? _origemSelecionada;
 
   DateTime? _proximoContatoSelecionado;
-  DateTime? _dataVisitaSelecionada; // Corrigido
+  DateTime? _dataVisitaSelecionada;
   DateTime? _dataCaptacaoSelecionada;
   Usuario? _captadorSelecionado;
   Usuario? _vendedorSelecionado;
@@ -60,16 +60,16 @@ class _EditarClienteDetalhesScreenState
 
   Future<void> _carregarDadosIniciais() async {
     try {
-      // Carrega as listas de usuários em paralelo
-      final usuarios = _firestoreService.getTodosUsuarios();
-
-      final resultados = await Future.wait([usuarios, usuarios]);
+      // Faz uma única busca pela lista completa de usuários para otimizar
+      final todosOsUsuarios = await _firestoreService.getTodosUsuarios();
       if (!mounted) return;
 
       setState(() {
-        _listaDeVendedores = resultados[0];
-        _listaDeCaptadores = resultados[1];
-        _inicializarDadosDoFormulario(); // Inicializa os campos do formulário
+        // Usa a mesma lista para preencher ambos os Dropdowns
+        _listaDeVendedores = todosOsUsuarios;
+        _listaDeCaptadores = todosOsUsuarios;
+
+        _inicializarDadosDoFormulario(); // Inicializa os campos do formulário com os dados carregados
         _carregandoDados = false;
       });
     } catch (e) {
@@ -99,7 +99,6 @@ class _EditarClienteDetalhesScreenState
       _origemSelecionada = widget.cliente.origem;
     }
 
-    // Inicialização dos novos campos
     _dataCaptacaoSelecionada = widget.cliente.dataEntradaSala;
     if (widget.cliente.captadorId != null) {
       try {
@@ -114,10 +113,10 @@ class _EditarClienteDetalhesScreenState
     }
   }
 
-  Future<void> _selecionarData(BuildContext context, Function(DateTime) onSelect) async {
+  Future<void> _selecionarData(BuildContext context, Function(DateTime) onSelect, DateTime? initialDate) async {
     final DateTime? dataEscolhida = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: initialDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2101),
     );
@@ -133,7 +132,6 @@ class _EditarClienteDetalhesScreenState
 
     final user = _authService.getCurrentUser();
     if (user == null) {
-      // Segurança: Não deve acontecer se a tela só é acessível por usuários logados
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Erro: Usuário não autenticado.')),
       );
@@ -149,19 +147,15 @@ class _EditarClienteDetalhesScreenState
       'origem': _origemSelecionada,
       'proximoContato': _proximoContatoSelecionado,
       'dataVisita': _dataVisitaSelecionada,
-      // Salva os novos campos
       'captadorId': _captadorSelecionado?.id,
       'captadorNome': _captadorSelecionado?.nome,
       'dataEntradaSala': _dataCaptacaoSelecionada,
-      // Fim dos novos campos
       'vendedorId': _vendedorSelecionado?.id,
       'vendedorNome': _vendedorSelecionado?.nome,
       'motivoNaoVenda': _faseSelecionada == FaseCliente.perdido ? _motivoPerdaDescricaoController.text.trim() : null,
       'motivoNaoVendaDropdown': _faseSelecionada == FaseCliente.perdido ? _motivoPerdaSelecionado : null,
-      // Auditoria
       'dataAtualizacao': FieldValue.serverTimestamp(),
       'atualizadoPorId': user.uid,
-      // 'atualizadoPorNome' você precisaria buscar do seu serviço de Firestore, se desejar
     };
 
     try {
@@ -208,10 +202,40 @@ class _EditarClienteDetalhesScreenState
             children: <Widget>[
               TextFormField(
                 controller: _nomeController,
-                decoration: const InputDecoration(labelText: 'Nome do Cliente', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Nome do Cliente', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person)),
                 validator: (v) => v == null || v.trim().isEmpty ? 'Insira o nome.' : null,
               ),
               const SizedBox(height: 20),
+
+              // CAMPO ADICIONADO: TIPO DE CLIENTE
+              DropdownButtonFormField<String>(
+                value: _tipoSelecionado,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Tipo de Cliente', border: OutlineInputBorder(), prefixIcon: Icon(Icons.group_outlined)),
+                items: ['Solteiro', 'Casal'].map((tipo) => DropdownMenuItem<String>(value: tipo, child: Text(tipo))).toList(),
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _tipoSelecionado = newValue;
+                      if (newValue == 'Solteiro') {
+                        _nomeParceiroController.clear();
+                      }
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // CAMPO ADICIONADO: NOME DO CÔNJUGE (CONDICIONAL)
+              if (_tipoSelecionado == 'Casal')
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20.0),
+                  child: TextFormField(
+                    controller: _nomeParceiroController,
+                    decoration: const InputDecoration(labelText: 'Nome do Cônjuge/Parceiro(a)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.favorite_border)),
+                  ),
+                ),
+
               DropdownButtonFormField<String>(
                 value: _origemSelecionada,
                 isExpanded: true,
@@ -222,6 +246,7 @@ class _EditarClienteDetalhesScreenState
                 onChanged: (String? newValue) => setState(() => _origemSelecionada = newValue),
               ),
               const SizedBox(height: 20),
+
               DropdownButtonFormField<FaseCliente>(
                 decoration: const InputDecoration(labelText: 'Fase no Funil', border: OutlineInputBorder(), prefixIcon: Icon(Icons.flag_outlined)),
                 value: _faseSelecionada,
@@ -229,7 +254,29 @@ class _EditarClienteDetalhesScreenState
                 onChanged: (v) => setState(() => _faseSelecionada = v!),
               ),
               const SizedBox(height: 20),
-              // NOVO DROPDOWN DE CAPTADOR
+
+              // CAMPOS ADICIONADOS: MOTIVO DA PERDA (CONDICIONAL)
+              if (_faseSelecionada == FaseCliente.perdido)
+                Column(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _motivoPerdaSelecionado,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Motivo da Perda', border: OutlineInputBorder(), prefixIcon: Icon(Icons.mood_bad_outlined)),
+                      hint: const Text('Selecione o motivo principal'),
+                      items: _motivosOpcoes.map((motivo) => DropdownMenuItem<String>(value: motivo, child: Text(motivo))).toList(),
+                      onChanged: (String? newValue) => setState(() => _motivoPerdaSelecionado = newValue),
+                    ),
+                    const SizedBox(height: 20),
+                    TextFormField(
+                      controller: _motivoPerdaDescricaoController,
+                      decoration: const InputDecoration(labelText: 'Descrição do Motivo (Opcional)', border: OutlineInputBorder()),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+
               DropdownButtonFormField<Usuario>(
                 value: _captadorSelecionado,
                 isExpanded: true,
@@ -239,6 +286,7 @@ class _EditarClienteDetalhesScreenState
                 onChanged: (Usuario? newValue) => setState(() => _captadorSelecionado = newValue),
               ),
               const SizedBox(height: 20),
+
               DropdownButtonFormField<Usuario>(
                 value: _vendedorSelecionado,
                 isExpanded: true,
@@ -248,20 +296,20 @@ class _EditarClienteDetalhesScreenState
                 onChanged: (Usuario? newValue) => setState(() => _vendedorSelecionado = newValue),
               ),
               const SizedBox(height: 20),
-              // ... resto dos campos
+
               TextFormField(
                 controller: _telefoneController,
                 decoration: const InputDecoration(labelText: 'Telefone', border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone_outlined)),
                 keyboardType: TextInputType.phone,
               ),
               const SizedBox(height: 20),
-              // NOVO CAMPO DE DATA DA CAPTAÇÃO
-              _buildDateTile('Data da Captação', _dataCaptacaoSelecionada, () => _selecionarData(context, (date) => _dataCaptacaoSelecionada = date), () => setState(() => _dataCaptacaoSelecionada = null)),
+
+              _buildDateTile('Data da Captação', _dataCaptacaoSelecionada, () => _selecionarData(context, (date) => _dataCaptacaoSelecionada = date, _dataCaptacaoSelecionada), () => setState(() => _dataCaptacaoSelecionada = null)),
               const SizedBox(height: 10),
-              _buildDateTile('Próximo Contato', _proximoContatoSelecionado, () => _selecionarData(context, (date) => _proximoContatoSelecionado = date), () => setState(() => _proximoContatoSelecionado = null)),
+              _buildDateTile('Próximo Contato', _proximoContatoSelecionado, () => _selecionarData(context, (date) => _proximoContatoSelecionado = date, _proximoContatoSelecionado), () => setState(() => _proximoContatoSelecionado = null)),
               const SizedBox(height: 10),
-              _buildDateTile('Data da Visita', _dataVisitaSelecionada, () => _selecionarData(context, (date) => _dataVisitaSelecionada = date), () => setState(() => _dataVisitaSelecionada = null)),
-              // ...
+              _buildDateTile('Data da Visita', _dataVisitaSelecionada, () => _selecionarData(context, (date) => _dataVisitaSelecionada = date, _dataVisitaSelecionada), () => setState(() => _dataVisitaSelecionada = null)),
+
               const SizedBox(height: 30),
               ElevatedButton.icon(
                 onPressed: _submit,
