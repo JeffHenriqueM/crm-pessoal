@@ -17,7 +17,8 @@ import 'interacoes_screen.dart';
 
 class ListaClientesScreen extends StatefulWidget {
   final FaseCliente? faseInicial;
-  const ListaClientesScreen({super.key, this.faseInicial});
+  final String? vendedorIdInicial;
+  const ListaClientesScreen({super.key, this.faseInicial, this.vendedorIdInicial});
 
   @override
   State<ListaClientesScreen> createState() => _ListaClientesScreenState();
@@ -60,7 +61,26 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
       if (perfil == 'admin') {
         _firestoreService.getTodosUsuarios().then((vendedores) {
           if (!mounted) return;
-          setState(() => _todosVendedores = vendedores);
+          setState(() {
+            _todosVendedores = vendedores;
+            // Se veio do dashboard admin com filtro de vendedor, aplicar
+            if (widget.vendedorIdInicial != null) {
+              _vendedorIdFiltro = widget.vendedorIdInicial;
+              _clientesStream = _firestoreService.getTodosClientesStream(
+                vendedorId: _vendedorIdFiltro,
+                ordenarPor: _ordenarPor,
+                descendente: _descendente,
+              );
+            } else {
+              // Admin sem filtro inicial vê todos
+              _vendedorIdFiltro = null;
+              _clientesStream = _firestoreService.getTodosClientesStream(
+                vendedorId: null,
+                ordenarPor: _ordenarPor,
+                descendente: _descendente,
+              );
+            }
+          });
         });
       }
     });
