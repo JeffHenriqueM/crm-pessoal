@@ -155,6 +155,17 @@ class FirestoreService {
     }
   }
 
+  /// Stream em tempo real de todos os usuários (para a tela de gerenciamento).
+  Stream<List<Usuario>> getTodosUsuariosStream() {
+    return _db
+        .collection('usuarios')
+        .orderBy('nome')
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => Usuario.fromMap(d.data(), d.id))
+            .toList());
+  }
+
   Future<void> atualizarUsuario({
     required String id,
     required String nome,
@@ -168,6 +179,30 @@ class FirestoreService {
     } catch (e) {
       debugPrint('[Firestore] Erro ao atualizar usuário: $e');
       throw 'Ocorreu um erro ao salvar as alterações do usuário.';
+    }
+  }
+
+  /// Ativa ou inativa um usuário. Usuários inativos são bloqueados no login.
+  Future<void> alterarStatusUsuario({
+    required String id,
+    required bool ativo,
+  }) async {
+    try {
+      await _db.collection('usuarios').doc(id).update({'ativo': ativo});
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao alterar status: $e');
+      throw 'Não foi possível alterar o status do usuário.';
+    }
+  }
+
+  /// Verifica se o usuário logado está ativo no Firestore.
+  Future<bool> isUsuarioAtivo(String uid) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(uid).get();
+      if (!doc.exists) return true; // usuário sem documento = considera ativo
+      return doc.data()?['ativo'] ?? true;
+    } catch (_) {
+      return true;
     }
   }
 

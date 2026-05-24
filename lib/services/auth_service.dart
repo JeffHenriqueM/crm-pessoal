@@ -8,29 +8,52 @@ class AuthService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Fornece um Stream para ouvir as mudanças de estado de autenticação.
-  /// (usuário logou, deslogou, etc.)
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  User? getCurrentUser() {
-    return _auth.currentUser;
-  }
+  User? getCurrentUser() => _auth.currentUser;
 
   Future<String?> signIn(String email, String password) async {
     try {
-      await _auth.signInWithEmailAndPassword(      email: email,
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email,
         password: password,
       );
-      // Em caso de sucesso, não retorna nada (ou null),
-      // indicando que não houve erro.
+
+      // Verifica se o usuário está ativo no Firestore
+      final uid = credential.user?.uid;
+      if (uid != null) {
+        final doc = await _db.collection('usuarios').doc(uid).get();
+        final ativo = doc.exists ? (doc.data()?['ativo'] ?? true) : true;
+        if (!ativo) {
+          await _auth.signOut();
+          return 'Seu acesso foi desativado. Entre em contato com o administrador.';
+        }
+      }
+
       return null;
     } on FirebaseAuthException catch (e) {
-      // Em caso de erro, retorna uma mensagem amigável.
-      if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
+      if (e.code == 'user-not-found' ||
+          e.code == 'wrong-password' ||
+          e.code == 'invalid-credential') {
         return 'E-mail ou senha inválidos.';
       }
       return 'Ocorreu um erro no login. Tente novamente.';
     } catch (e) {
       return 'Um erro inesperado ocorreu.';
+    }
+  }
+
+  /// Admin envia link de redefinição para o e-mail de um usuário específico.
+  Future<void> adminEnviarResetSenha(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+        throw 'Usuário não encontrado para este e-mail.';
+      }
+      throw 'Não foi possível enviar o e-mail. (${e.code})';
+    } catch (_) {
+      throw 'Ocorreu um erro inesperado.';
     }
   }
 

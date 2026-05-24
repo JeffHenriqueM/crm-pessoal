@@ -5,12 +5,14 @@ class Usuario {
   final String nome;
   final String email;
   final String perfil;
+  final bool ativo;
 
   Usuario({
     required this.id,
     required this.nome,
     required this.email,
     required this.perfil,
+    this.ativo = true,
   });
 
   factory Usuario.fromMap(Map<String, dynamic> data, String documentId) {
@@ -18,8 +20,9 @@ class Usuario {
       id: documentId,
       nome: data['nome'] ?? 'Nome não encontrado',
       email: data['email'] ?? 'Email não encontrado',
-      perfil: data['perfil'] ?? 'vendedor', // <--- 3. LEITURA DO BANCO
-      // Se o perfil não existir, assume 'vendedor' como padrão.
+      perfil: data['perfil'] ?? 'vendedor',
+      // Se o campo não existir (usuários antigos), considera ativo
+      ativo: data['ativo'] ?? true,
     );
   }
 
@@ -27,7 +30,8 @@ class Usuario {
     return {
       'nome': nome,
       'email': email,
-      'perfil': perfil, // <--- 4. ADICIONAR AO MAPA PARA SALVAR NO BANCO
+      'perfil': perfil,
+      'ativo': ativo,
     };
   }
 }
