@@ -7,12 +7,12 @@ import 'services/auth_service.dart';
 import 'screens/lista_clientes_screen.dart';
 import 'screens/tela_login_screen.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await ThemeController.instance.initialize();
   runApp(const VillamorCrmApp());
 }
 
@@ -21,19 +21,22 @@ class VillamorCrmApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Villamor CRM',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.light,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('pt', 'BR')],
-      home: const AuthWrapper(),
-      debugShowCheckedModeBanner: false,
+    return AnimatedBuilder(
+      animation: ThemeController.instance,
+      builder: (_, __) => MaterialApp(
+        title: 'Villamor CRM',
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeController.instance.mode,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('pt', 'BR')],
+        home: const AuthWrapper(),
+        debugShowCheckedModeBanner: false,
+      ),
     );
   }
 }
@@ -43,10 +46,8 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authService = AuthService();
-
     return StreamBuilder<User?>(
-      stream: authService.authStateChanges,
+      stream: AuthService().authStateChanges,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.active) {
           return snapshot.data == null

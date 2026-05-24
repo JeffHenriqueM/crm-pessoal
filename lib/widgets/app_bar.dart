@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
+import '../theme/theme_controller.dart';
 
 class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool estaPesquisando;
@@ -50,10 +51,10 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
           ? TextField(
               controller: searchController,
               autofocus: true,
-              style: TextStyle(color: cs.onPrimary),
+              style: TextStyle(color: cs.onSurface),
               decoration: InputDecoration(
                 hintText: 'Pesquisar clientes...',
-                hintStyle: TextStyle(color: cs.onPrimary.withValues(alpha: 0.7)),
+                hintStyle: TextStyle(color: cs.onSurfaceVariant),
                 border: InputBorder.none,
                 filled: false,
               ),
@@ -80,6 +81,21 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
         userProfile == 'admin' && todosVendedores.isNotEmpty;
     final bool isAdmin = userProfile == 'admin';
 
+    // Botão de toggle de tema (reutilizado em ambos os layouts)
+    final themeToggle = AnimatedBuilder(
+      animation: ThemeController.instance,
+      builder: (_, __) {
+        final isDark = ThemeController.instance.isDark;
+        return IconButton(
+          icon: Icon(
+            isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+          ),
+          tooltip: isDark ? 'Modo claro' : 'Modo escuro',
+          onPressed: ThemeController.instance.toggle,
+        );
+      },
+    );
+
     if (isSmallScreen) {
       return [
         IconButton(
@@ -100,6 +116,8 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
                 MaterialPageRoute(
                     builder: (_) => const GerenciarUsuariosScreen()),
               );
+            } else if (value == 'toggle_theme') {
+              ThemeController.instance.toggle();
             } else if (value.startsWith('sort_')) {
               onSortChange(value.substring(5));
             } else if (value == 'logout') {
@@ -130,8 +148,8 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
                 child: Text('Filtrar por vendedor',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               ));
-              items.add(
-                const PopupMenuItem<String>(value: 'todos', child: Text('Todos')));
+              items.add(const PopupMenuItem<String>(
+                  value: 'todos', child: Text('Todos')));
               items.addAll(todosVendedores.map((v) =>
                   PopupMenuItem<String>(value: v.id, child: Text(v.nome))));
               items.add(const PopupMenuDivider());
@@ -147,6 +165,21 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
             items.add(const PopupMenuItem<String>(
                 value: 'sort_nome', child: Text('Nome')));
             items.add(const PopupMenuDivider());
+
+            // Toggle de tema no menu
+            final isDark = ThemeController.instance.isDark;
+            items.add(PopupMenuItem<String>(
+              value: 'toggle_theme',
+              child: ListTile(
+                leading: Icon(isDark
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined),
+                title: Text(isDark ? 'Modo claro' : 'Modo escuro'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+            ));
+            items.add(const PopupMenuDivider());
             items.add(const PopupMenuItem<String>(
                 value: 'logout', child: Text('Sair')));
 
@@ -156,7 +189,7 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
       ];
     }
 
-    // Tela grande
+    // ── Tela grande ─────────────────────────────────────────────────────────
     return [
       IconButton(
         icon: const Icon(Icons.bar_chart_rounded),
@@ -179,24 +212,24 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
               value: vendedorIdFiltro,
               hint: Text(
                 'Vendedor',
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8)),
+                style:
+                    TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
               ),
               onChanged: onVendedorChange,
               underline: const SizedBox.shrink(),
-              icon: Icon(Icons.people_outlined,
-                  color: Theme.of(context).colorScheme.onPrimary),
-              dropdownColor: cs.primary,
+              icon:
+                  Icon(Icons.people_outlined, color: cs.onSurfaceVariant),
               items: [
                 DropdownMenuItem<String>(
                   value: null,
                   child: Text('Todos',
-                      style: TextStyle(color: cs.onPrimary)),
+                      style: TextStyle(color: cs.onSurface, fontSize: 14)),
                 ),
                 ...todosVendedores.map((v) => DropdownMenuItem<String>(
                       value: v.id,
                       child: Text(v.nome,
-                          style: TextStyle(color: cs.onPrimary)),
+                          style: TextStyle(
+                              color: cs.onSurface, fontSize: 14)),
                     )),
               ],
             ),
@@ -207,6 +240,8 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
         tooltip: estaPesquisando ? 'Fechar busca' : 'Pesquisar',
         onPressed: () => onSearchStateChange(false),
       ),
+      // Toggle de tema
+      themeToggle,
       PopupMenuButton<String>(
         icon: const Icon(Icons.sort),
         tooltip: 'Ordenar',
@@ -214,7 +249,8 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
         itemBuilder: (_) => const [
           PopupMenuItem<String>(
               value: 'dataAtualizacao', child: Text('Ordenar por Data')),
-          PopupMenuItem<String>(value: 'nome', child: Text('Ordenar por Nome')),
+          PopupMenuItem<String>(
+              value: 'nome', child: Text('Ordenar por Nome')),
         ],
       ),
       IconButton(
