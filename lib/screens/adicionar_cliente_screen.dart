@@ -138,8 +138,9 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Erro ao salvar cliente: $e'),
-            backgroundColor: Colors.red.shade700),
+          content: Text('Erro ao salvar cliente: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     }
   }

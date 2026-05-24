@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 
 class TelaLoginScreen extends StatefulWidget {
@@ -36,7 +35,10 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
     setState(() => _isLoading = false);
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red.shade700),
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     }
   }
@@ -87,8 +89,9 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(erro ?? 'Link enviado para o seu e-mail!'),
-                  backgroundColor:
-                      erro != null ? Colors.red.shade700 : Colors.green.shade700,
+                  backgroundColor: erro != null
+                      ? Theme.of(context).colorScheme.error
+                      : Colors.green.shade700,
                 ),
               );
             },
@@ -139,7 +142,7 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
           end: Alignment.bottomCenter,
           colors: isDark
               ? [const Color(0xFF1F2937), const Color(0xFF111827)]
-              : [AppTheme.seedColor, AppTheme.seedColor.withValues(alpha: 0.85)],
+              : [const Color(0xFF1565C0), const Color(0xFF0D47A1)],
         ),
       ),
       child: SafeArea(
@@ -223,10 +226,7 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
           end: Alignment.bottomRight,
           colors: isDark
               ? [const Color(0xFF1F2937), const Color(0xFF111827)]
-              : [
-                  AppTheme.seedColor,
-                  const Color(0xFF880E4F),
-                ],
+              : [const Color(0xFF1565C0), const Color(0xFF0D47A1)],
         ),
       ),
       child: SafeArea(

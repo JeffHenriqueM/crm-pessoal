@@ -108,7 +108,8 @@ class InteracoesScreen extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            leading: Icon(Icons.delete_outline,
+                color: Theme.of(ctx).colorScheme.error),
             title: const Text('Excluir'),
             onTap: () async {
               Navigator.of(ctx).pop();
@@ -125,7 +126,11 @@ class InteracoesScreen extends StatelessWidget {
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(
-                          backgroundColor: Colors.red.shade700),
+                        backgroundColor:
+                            Theme.of(dctx).colorScheme.error,
+                        foregroundColor:
+                            Theme.of(dctx).colorScheme.onError,
+                      ),
                       onPressed: () => Navigator.of(dctx).pop(true),
                       child: const Text('Excluir'),
                     ),

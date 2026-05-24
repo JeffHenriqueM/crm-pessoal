@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../screens/lista_clientes_screen.dart';
-import '../theme/app_theme.dart';
 
 class AbaEstatisticas extends StatelessWidget {
   final List<Cliente> clientes;
@@ -207,12 +206,12 @@ class AbaEstatisticas extends StatelessWidget {
     }
 
     final cores = [
-      AppTheme.seedColor,
+      Colors.blue.shade700,
       Colors.orange.shade600,
       Colors.green.shade600,
-      Colors.blue.shade600,
-      Colors.purple.shade500,
+      Colors.indigo.shade500,
       Colors.teal.shade500,
+      Colors.purple.shade500,
     ];
     int i = 0;
 

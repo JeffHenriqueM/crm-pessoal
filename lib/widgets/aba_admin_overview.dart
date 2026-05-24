@@ -676,12 +676,12 @@ class AbaAdminOverview extends StatelessWidget {
     final inicial =
         nome.isNotEmpty ? nome[0].toUpperCase() : '?';
     final cores = [
-      Colors.blue.shade600,
+      Colors.blue.shade700,
       Colors.teal.shade600,
-      Colors.purple.shade600,
+      Colors.indigo.shade600,
       Colors.orange.shade700,
       Colors.green.shade700,
-      Colors.pink.shade600,
+      Colors.cyan.shade700,
     ];
     final cor = cores[nome.codeUnits.first % cores.length];
 

@@ -182,7 +182,7 @@ class _EditarClienteDetalhesScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erro ao atualizar: $e'),
-          backgroundColor: Colors.red.shade700,
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
     }

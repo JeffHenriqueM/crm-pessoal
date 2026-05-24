@@ -105,7 +105,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   Color _corDePerfil(String perfil, ColorScheme cs) {
     switch (perfil.toLowerCase()) {
       case 'admin':
-        return Colors.red.shade700;
+        return Colors.deepOrange.shade700;
       case 'captador':
         return Colors.green.shade600;
       case 'vendedor':
@@ -343,7 +343,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro: ${e.toString()}'),
-            backgroundColor: Colors.red.shade700,
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }

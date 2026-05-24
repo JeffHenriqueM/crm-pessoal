@@ -295,9 +295,10 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
               },
             ),
           ListTile(
-            leading: Icon(Icons.delete_outline, color: Colors.red.shade600),
-            title:
-                Text('Apagar Cliente', style: TextStyle(color: Colors.red.shade600)),
+            leading: Icon(Icons.delete_outline,
+                color: Theme.of(ctx).colorScheme.error),
+            title: Text('Apagar Cliente',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
             onTap: () {
               Navigator.of(ctx).pop();
               _confirmarExclusao(context, cliente, service);
@@ -394,16 +395,20 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
             onPressed: () async {
               final nav = Navigator.of(ctx);
               final messenger = ScaffoldMessenger.of(context);
+              final errorColor = Theme.of(context).colorScheme.error;
               await firestoreService.deletarCliente(cliente.id!);
               if (ctx.mounted) nav.pop();
               messenger.showSnackBar(
                 SnackBar(
                   content: Text('"${cliente.nome}" foi removido.'),
-                  backgroundColor: Colors.red.shade700,
+                  backgroundColor: errorColor,
                 ),
               );
             },

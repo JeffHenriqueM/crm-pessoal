@@ -61,23 +61,28 @@ class ClienteListFiltered extends StatelessWidget {
           confirmDismiss: (_) => _confirmarExclusao(context, cliente),
           onDismissed: (_) {
             firestoreService.deletarCliente(cliente.id!);
+            final cs = Theme.of(context).colorScheme;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('"${cliente.nome}" foi removido.'),
-                backgroundColor: Colors.red.shade700,
+                backgroundColor: cs.error,
               ),
             );
           },
-          background: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.red.shade600,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            child: const Icon(Icons.delete_forever_outlined, color: Colors.white, size: 28),
-          ),
+          background: Builder(builder: (context) {
+            final cs = Theme.of(context).colorScheme;
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: cs.error,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              child: Icon(Icons.delete_forever_outlined,
+                  color: cs.onError, size: 28),
+            );
+          }),
           child: _buildClienteCard(context, cliente, firestoreService, contatoAtrasado),
         );
       },
@@ -96,7 +101,10 @@ class ClienteListFiltered extends StatelessWidget {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Apagar'),
           ),
