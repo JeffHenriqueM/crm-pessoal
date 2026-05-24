@@ -1,59 +1,49 @@
-// lib/services/firestore_service.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:rxdart/rxdart.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-import '../models/interacao_model.dart'; // <--- IMPORTAR O MODELO DE INTERAÇÃO
+import '../models/interacao_model.dart';
 import '../models/usuario_model.dart';
-import 'package:rxdart/rxdart.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final String _colecaoClientes = 'clientes';
+  static const _colClientes = 'clientes';
 
-  // HELPER: Obtém dados do usuário logado atualmente.
-  String get _currentUserId => _auth.currentUser?.uid ?? 'sistema_offline';
-  String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário Sem Nome';
+  String get _currentUserId => _auth.currentUser?.uid ?? 'sistema';
+  String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário';
 
-  // --- MÉTODOS DE BUSCA DE CLIENTES (STREAMS) ---
+  // --- CLIENTES ---
+
   Stream<List<Cliente>> getTodosClientesStream({
     String? vendedorId,
-    String ordenarPor = 'dataAtualizacao', // Valor padrão para ordenação
-    bool descendente = true,               // Valor padrão para direção
+    String ordenarPor = 'dataAtualizacao',
+    bool descendente = true,
   }) {
-    return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
-      print(
-          "Perfil: $perfil. Filtro de vendedorId: $vendedorId. Ordenando por: $ordenarPor ($descendente)");
+    return Stream.fromFuture(_getCurrentUserProfile())
+        .asyncMap((perfil) {
+          debugPrint('[Firestore] perfil=$perfil | filtro=$vendedorId | ordenar=$ordenarPor');
+          final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro'];
+          Query query = _db.collection(_colClientes);
 
-      final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro'];
-      Query query = _db.collection(_colecaoClientes);
+          if (perfisComVisaoTotal.contains(perfil)) {
+            if (vendedorId != null && vendedorId.isNotEmpty) {
+              query = query.where('vendedorId', isEqualTo: vendedorId);
+            }
+          } else {
+            query = query.where('vendedorId', isEqualTo: _currentUserId);
+          }
 
-      // 1. LÓGICA DO FILTRO (baseada no perfil)
-      if (perfisComVisaoTotal.contains(perfil)) {
-        // Admin/pós-venda/financeiro: pode filtrar por qualquer vendedor.
-        if (vendedorId != null && vendedorId.isNotEmpty) {
-          query = query.where('vendedorId', isEqualTo: vendedorId);
-        }
-        // Se vendedorId for nulo, vê todos os clientes.
-      } else {
-        // Vendedor normal: vê apenas seus próprios clientes.
-        query = query.where('vendedorId', isEqualTo: _currentUserId);
-      }
+          query = query.orderBy(ordenarPor, descending: descendente);
 
-      // 2. APLICA A ORDENAÇÃO (ESSA É A PARTE QUE FALTAVA)
-      // A query é construída primeiro com os filtros e DEPOIS com a ordenação.
-      query = query.orderBy(ordenarPor, descending: descendente);
-
-      // Retorna o stream final com os dados filtrados e ordenados.
-      return query.snapshots().map(
-              (snapshot) => snapshot.docs.map((doc) => Cliente.fromFirestore(doc)).toList());
-
-    }).switchMap((streamDeClientes) => streamDeClientes);
+          return query.snapshots().map(
+              (s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+        })
+        .switchMap((stream) => stream);
   }
 
-  // --- MÉTODOS DE ESCRITA DE CLIENTES (OPERAÇÕES CRUD) ---
   Future<void> adicionarCliente(Cliente cliente) async {
     final dados = cliente.toFirestore();
     dados['criadoPorId'] = _currentUserId;
@@ -62,102 +52,83 @@ class FirestoreService {
     dados['atualizadoPorNome'] = _currentUserName;
     dados['dataCadastro'] = FieldValue.serverTimestamp();
     dados['dataAtualizacao'] = FieldValue.serverTimestamp();
-    await _db.collection(_colecaoClientes).add(dados);
+    await _db.collection(_colClientes).add(dados);
   }
 
-  Future<void> atualizarFaseCliente(String id, FaseCliente novaFase, {String? motivo}) async {
-    await _db.collection(_colecaoClientes).doc(id).update({
+  Future<void> atualizarFaseCliente(String id, FaseCliente novaFase,
+      {String? motivo}) async {
+    await _db.collection(_colClientes).doc(id).update({
       'fase': novaFase.toString().split('.').last,
       'motivoNaoVenda': motivo,
       'dataAtualizacao': FieldValue.serverTimestamp(),
       'atualizadoPorId': _currentUserId,
       'atualizadoPorNome': _currentUserName,
     });
-    await adicionarInteracaoAutomatica(id, "Fase alterada para: ${novaFase.nomeDisplay}");
+    await _adicionarInteracaoAutomatica(
+        id, 'Fase alterada para: ${novaFase.nomeDisplay}');
   }
 
-  Future<void> atualizarClienteDetalhes(String id, Map<String, dynamic> dadosNovos) async {
-    dadosNovos['dataAtualizacao'] = FieldValue.serverTimestamp();
-    dadosNovos['atualizadoPorId'] = _currentUserId;
-    dadosNovos['atualizadoPorNome'] = _currentUserName;
-    await _db.collection(_colecaoClientes).doc(id).update(dadosNovos);
+  Future<void> atualizarClienteDetalhes(
+      String id, Map<String, dynamic> dados) async {
+    dados['dataAtualizacao'] = FieldValue.serverTimestamp();
+    dados['atualizadoPorId'] = _currentUserId;
+    dados['atualizadoPorNome'] = _currentUserName;
+    await _db.collection(_colClientes).doc(id).update(dados);
   }
 
   Future<void> deletarCliente(String id) async {
-    await _db.collection(_colecaoClientes).doc(id).delete();
+    await _db.collection(_colClientes).doc(id).delete();
   }
 
-  /// Busca o stream de interações de um cliente específico.
+  // --- INTERAÇÕES ---
+
   Stream<List<Interacao>> getInteracoesStream(String clienteId) {
     return _db
-        .collection(_colecaoClientes)
+        .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
-        .orderBy('dataInteracao', descending: true) // Ordena da mais nova para a mais antiga
+        .orderBy('dataInteracao', descending: true)
         .snapshots()
-        .map((snapshot) =>
-        snapshot.docs.map((doc) => Interacao.fromFirestore(doc)).toList());
+        .map((s) => s.docs.map((d) => Interacao.fromFirestore(d)).toList());
   }
 
-  /// Adiciona uma nova interação manual a um cliente.
   Future<void> adicionarInteracao(String clienteId, Interacao interacao) async {
     final dados = interacao.toFirestore();
-    // Injeta campos de auditoria e data do servidor
     dados['autorId'] = _currentUserId;
     dados['autorNome'] = _currentUserName;
     dados['dataInteracao'] = FieldValue.serverTimestamp();
-
     await _db
-        .collection(_colecaoClientes)
+        .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
         .add(dados);
   }
 
-  // Busca o perfil do usuário atualmente logado.
-  Future<String> _getCurrentUserProfile() async {
-    // Se não houver usuário logado, retorna um perfil restrito.
-    if (_auth.currentUser == null) {
-      return 'vendedor';
-    }
-    try {
-      final doc = await _db.collection('usuarios').doc(_currentUserId).get();
-      // Se o usuário existir no Firestore, retorna seu perfil. Caso contrário, padrão 'vendedor'.
-      return doc.exists ? (doc.data()?['perfil'] ?? 'vendedor') : 'vendedor';
-    } catch (e) {
-      print("Erro ao buscar perfil do usuário: $e");
-      // Em caso de erro, assume o perfil mais restritivo por segurança.
-      return 'vendedor';
-    }
-  }
-
-
-  /// Atualiza uma interação existente.
   Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
     await _db
-        .collection(_colecaoClientes)
+        .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
         .doc(interacao.id)
         .update(interacao.toFirestore());
   }
 
-  /// Exclui uma interação de um cliente.
   Future<void> excluirInteracao(String clienteId, String interacaoId) async {
     await _db
-        .collection(_colecaoClientes)
+        .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
         .doc(interacaoId)
         .delete();
   }
 
-  // --- FIM DOS NOVOS MÉTODOS PARA INTERAÇÕES ---
-
-  // --- MÉTODOS AUXILIARES E DE USUÁRIOS ---
-
-  Future<void> adicionarInteracaoAutomatica(String clienteId, String texto) async {
-    await _db.collection(_colecaoClientes).doc(clienteId).collection('interacoes').add({
+  Future<void> _adicionarInteracaoAutomatica(
+      String clienteId, String texto) async {
+    await _db
+        .collection(_colClientes)
+        .doc(clienteId)
+        .collection('interacoes')
+        .add({
       'titulo': 'Evento do Sistema',
       'nota': texto,
       'dataInteracao': FieldValue.serverTimestamp(),
@@ -166,27 +137,21 @@ class FirestoreService {
     });
   }
 
+  // --- USUÁRIOS ---
+
   Future<List<Usuario>> getTodosUsuarios({String? perfil}) async {
     try {
-      // Cria a query base
       Query query = _db.collection('usuarios');
-
-      // Se um perfil for especificado, adiciona o filtro 'where'
       if (perfil != null && perfil.isNotEmpty) {
         query = query.where('perfil', isEqualTo: perfil);
       }
-
-      // Executa a query (filtrada ou não)
       final snapshot = await query.get();
-
-      if (snapshot.docs.isEmpty) return [];
-
-      // Mapeia os resultados para a lista de usuários
-      return snapshot.docs.map((doc) => Usuario.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-
+      return snapshot.docs
+          .map((d) => Usuario.fromMap(d.data() as Map<String, dynamic>, d.id))
+          .toList();
     } catch (e) {
-      print("Erro ao buscar usuários (perfil: $perfil): $e");
-      return []; // Retorna lista vazia em caso de erro
+      debugPrint('[Firestore] Erro ao buscar usuários: $e');
+      return [];
     }
   }
 
@@ -196,23 +161,25 @@ class FirestoreService {
     required String perfil,
   }) async {
     try {
-      // Atualiza os campos nome e perfil do documento do usuário no Firestore
       await _db.collection('usuarios').doc(id).update({
         'nome': nome,
         'perfil': perfil,
       });
-
-      // Também é uma boa prática atualizar o nome de exibição no Firebase Auth,
-      // embora isso não seja visível diretamente no app, a menos que você o use.
-      final user = _auth.currentUser;
-      // Garante que o admin só pode atualizar o displayName do usuário que ele está editando
-      // (Isso é mais complexo, vamos focar no Firestore por enquanto que é o principal)
-
     } catch (e) {
-      print("Erro ao atualizar usuário no Firestore: $e");
+      debugPrint('[Firestore] Erro ao atualizar usuário: $e');
       throw 'Ocorreu um erro ao salvar as alterações do usuário.';
     }
   }
 
-
+  Future<String> _getCurrentUserProfile() async {
+    if (_auth.currentUser == null) return 'vendedor';
+    try {
+      final doc =
+          await _db.collection('usuarios').doc(_currentUserId).get();
+      return doc.exists ? (doc.data()?['perfil'] ?? 'vendedor') : 'vendedor';
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar perfil: $e');
+      return 'vendedor';
+    }
+  }
 }

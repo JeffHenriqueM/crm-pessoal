@@ -1,17 +1,13 @@
-// lib/screens/lista_clientlista_clientes_screenes_screen.dart
-
 import 'package:add_2_calendar/add_2_calendar.dart';
-import 'package:crm_pessoal/services/auth_service.dart';
 import 'package:flutter/material.dart';
-import 'package:crm_pessoal/services/auth_service.dart';
-import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // Ícone do WhatsApp
-import '../utils/url_launcher_service.dart'; // Nosso serviço para abrir a URL
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
+import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../utils/url_launcher_service.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/cliente_list_filtered.dart';
 import '../widgets/editar_cliente_detalhes_screen.dart';
@@ -27,25 +23,21 @@ class ListaClientesScreen extends StatefulWidget {
   State<ListaClientesScreen> createState() => _ListaClientesScreenState();
 }
 
-class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTickerProviderStateMixin {
-  // Serviços
+class _ListaClientesScreenState extends State<ListaClientesScreen>
+    with SingleTickerProviderStateMixin {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
-  // Controladores
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
 
-  // Estado da UI
   String _userProfile = 'vendedor';
   bool _estaPesquisando = false;
-
-  // Estado dos Dados
   late Stream<List<Cliente>> _clientesStream;
   List<Usuario> _todosVendedores = [];
   String? _vendedorIdFiltro;
-  String _filtroTexto = "";
-  String _ordenarPor = "dataAtualizacao";
+  String _filtroTexto = '';
+  String _ordenarPor = 'dataAtualizacao';
   bool _descendente = true;
 
   @override
@@ -58,8 +50,8 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     _vendedorIdFiltro = _authService.getCurrentUser()?.uid;
     _clientesStream = _firestoreService.getTodosClientesStream(
       vendedorId: _vendedorIdFiltro,
-      ordenarPor: _ordenarPor,      // <-- Passa a ordenação padrão
-      descendente: _descendente,   // <-- Passa a direção padrão
+      ordenarPor: _ordenarPor,
+      descendente: _descendente,
     );
 
     _authService.getCurrentUserProfile().then((perfil) {
@@ -67,13 +59,20 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
       setState(() => _userProfile = perfil);
       if (perfil == 'admin') {
         _firestoreService.getTodosUsuarios().then((vendedores) {
-          if (mounted) setState(() => _todosVendedores = vendedores);
+          if (!mounted) return;
+          setState(() => _todosVendedores = vendedores);
         });
       }
     });
 
-    int initialIndex = widget.faseInicial != null ? FaseCliente.values.indexOf(widget.faseInicial!) : 0;
-    _tabController = TabController(length: FaseCliente.values.length, vsync: this, initialIndex: initialIndex);
+    final initialIndex = widget.faseInicial != null
+        ? FaseCliente.values.indexOf(widget.faseInicial!)
+        : 0;
+    _tabController = TabController(
+      length: FaseCliente.values.length,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
     _searchController.addListener(() {
       if (mounted) setState(() => _filtroTexto = _searchController.text);
     });
@@ -86,61 +85,45 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     super.dispose();
   }
 
-  // Funções de Callback
   void _handleSearchStateChange(bool isTyping) {
-    if (isTyping && mounted) {
-      // Apenas atualiza o estado para reconstruir com o novo texto do filtro
-      setState(() {});
-      return;
-    }
-    if (mounted) {
-      setState(() {
-        if (_estaPesquisando) {
-          _filtroTexto = "";
-          _searchController.clear();
-        }
-        _estaPesquisando = !_estaPesquisando;
-      });
-    }
+    if (isTyping) return; // Listener do controller já atualiza _filtroTexto
+    if (!mounted) return;
+    setState(() {
+      if (_estaPesquisando) {
+        _filtroTexto = '';
+        _searchController.clear();
+      }
+      _estaPesquisando = !_estaPesquisando;
+    });
   }
 
   void _handleVendedorChange(String? novoVendedorId) {
-    if (mounted) {
-      setState(() {
-        _vendedorIdFiltro = novoVendedorId;
-        // CORREÇÃO: Adicione os parâmetros de ordenação aqui também!
-        _clientesStream = _firestoreService.getTodosClientesStream(
-          vendedorId: _vendedorIdFiltro,
-          ordenarPor: _ordenarPor,
-          descendente: _descendente,
-        );
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _vendedorIdFiltro = novoVendedorId;
+      _clientesStream = _firestoreService.getTodosClientesStream(
+        vendedorId: _vendedorIdFiltro,
+        ordenarPor: _ordenarPor,
+        descendente: _descendente,
+      );
+    });
   }
 
   void _handleSortChange(String novaOrdem) {
-    if (mounted) {
-      setState(() {
-        if (_ordenarPor == novaOrdem) {
-          // Se estamos no mesmo campo, apenas invertemos a direção.
-          // Com os dois índices (ASC e DESC), o Firestore agora permite isso.
-          _descendente = !_descendente;
-        } else {
-          // Se estamos mudando para um novo campo de ordenação...
-          _ordenarPor = novaOrdem;
-
-          // ...definimos a direção inicial padrão para esse campo.
-          _descendente = (novaOrdem == 'dataAtualizacao'); // true para data, false para nome
-        }
-
-        // Recria o stream com os parâmetros corretos
-        _clientesStream = _firestoreService.getTodosClientesStream(
-          vendedorId: _vendedorIdFiltro,
-          ordenarPor: _ordenarPor,
-          descendente: _descendente,
-        );
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      if (_ordenarPor == novaOrdem) {
+        _descendente = !_descendente;
+      } else {
+        _ordenarPor = novaOrdem;
+        _descendente = novaOrdem == 'dataAtualizacao';
+      }
+      _clientesStream = _firestoreService.getTodosClientesStream(
+        vendedorId: _vendedorIdFiltro,
+        ordenarPor: _ordenarPor,
+        descendente: _descendente,
+      );
+    });
   }
 
   Future<void> _handleLogout() async {
@@ -149,16 +132,13 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
 
   void _abrirDashboard() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => DashboardScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const DashboardScreen()),
     );
   }
 
-  // Função para abrir a tela de adicionar cliente
   void _abrirAdicionarCliente() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const AdicionarClienteScreen()),
+      MaterialPageRoute(builder: (_) => const AdicionarClienteScreen()),
     );
   }
 
@@ -168,10 +148,14 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
       stream: _clientesStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Scaffold(appBar: AppBar(title: const Text("Erro")), body: Center(child: Text("Erro: ${snapshot.error}")));
+          return Scaffold(
+            body: Center(child: Text('Erro ao carregar dados: ${snapshot.error}')),
+          );
         }
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(appBar: AppBar(title: const Text("Carregando...")), body: const Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         final todosClientes = snapshot.data ?? [];
@@ -190,173 +174,170 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
             onLogout: _handleLogout,
             onShowDashboard: _abrirDashboard,
           ),
-          // Botão flutuante adicionado aqui
           floatingActionButton: FloatingActionButton(
             onPressed: _abrirAdicionarCliente,
             tooltip: 'Adicionar Cliente',
             child: const Icon(Icons.add),
           ),
           body: _estaPesquisando
-              ? _buildSearchResults(todosClientes) // Se estiver pesquisando, mostra a lista global
-              : TabBarView( // Caso contrário, mostra as abas
-            controller: _tabController,
-            children: FaseCliente.values.map((fase) {
-              final clientesDaAba = todosClientes.where((c) => c.fase == fase).toList();
-              return ClienteListFiltered(
-                clientes: clientesDaAba,
-                filtroNome: "", // O filtro de texto é aplicado globalmente, não aqui.
-                onTileTap: (ctx, cliente, svc) => _mostrarOpcoesCliente(ctx, cliente, svc),
-                onDismissed: (cliente) => _handleDismissed(context, cliente, _firestoreService),
-              );
-            }).toList(),
-          ),
+              ? _buildSearchResults(todosClientes)
+              : TabBarView(
+                  controller: _tabController,
+                  children: FaseCliente.values.map((fase) {
+                    final clientesDaAba =
+                        todosClientes.where((c) => c.fase == fase).toList();
+                    return ClienteListFiltered(
+                      clientes: clientesDaAba,
+                      filtroNome: '',
+                      onTileTap: _mostrarOpcoesCliente,
+                    );
+                  }).toList(),
+                ),
         );
       },
     );
   }
 
-  // Widget auxiliar que constrói a lista de resultados da busca global
   Widget _buildSearchResults(List<Cliente> todosClientes) {
     final busca = _filtroTexto.toLowerCase().trim();
-    final clientesFiltrados = todosClientes.where((c) {
+    final filtrados = todosClientes.where((c) {
       return c.nome.toLowerCase().contains(busca) ||
-          (c.nomeEsposa ?? "").toLowerCase().contains(busca) ||
-          (c.vendedorNome ?? "").toLowerCase().contains(busca);
+          (c.nomeEsposa ?? '').toLowerCase().contains(busca) ||
+          (c.vendedorNome ?? '').toLowerCase().contains(busca);
     }).toList();
 
     return ClienteListFiltered(
-      clientes: clientesFiltrados,
+      clientes: filtrados,
       filtroNome: _filtroTexto,
-      onTileTap: (ctx, cliente, svc) => _mostrarOpcoesCliente(ctx, cliente, svc),
-      onDismissed: (cliente) => _handleDismissed(context, cliente, _firestoreService),
+      onTileTap: _mostrarOpcoesCliente,
     );
   }
 
-  // Funções para interação com os clientes (menu de opções)
-  void _mostrarOpcoesCliente(BuildContext context, Cliente cliente, FirestoreService service) {
+  void _mostrarOpcoesCliente(
+      BuildContext context, Cliente cliente, FirestoreService service) {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) {
-        return Wrap(
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Editar Detalhes'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => EditarClienteDetalhesScreen(cliente: cliente),
-                ));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Ver Interações'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => InteracoesScreen(cliente: cliente),
-                ));
-              },
-            ),
-            if (cliente.telefoneContato != null && cliente.telefoneContato!.isNotEmpty)
-              ListTile(
-                leading: const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
-                title: const Text('Conversar no WhatsApp'),
-                onTap: () async {
-                  Navigator.of(ctx).pop(); // Fecha o menu de opções
-                  final urlService = UrlLauncherService();
-                  try {
-                    // A chamada do método agora usa 'telefoneContato'
-                    // A exclamação (!) é segura por causa do 'if' acima
-                    await urlService.abrirWhatsApp(cliente.telefoneContato!);
-                  } catch (e) {
-                    // Se der erro (ex: WhatsApp não instalado), mostra um aviso
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(e.toString())),
-                      );
-                    }
-                  }
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.move_up),
-              title: const Text('Mudar Fase'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _mostrarMudarFaseDialog(context, cliente, service);
-              },
-            ),
-            if (cliente.proximoContato != null)
-              ListTile(
-                leading: const Icon(Icons.event),
-                title: const Text('Adicionar à Agenda'),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _adicionarEventoNaAgenda(context, cliente);
-                },
-              ),
-            ListTile(
-              leading: Icon(Icons.delete, color: Colors.red.shade700),
-              title: Text('Apagar Cliente', style: TextStyle(color: Colors.red.shade700)),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _handleDismissed(context, cliente, service);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _mostrarMudarFaseDialog(BuildContext context, Cliente cliente, FirestoreService service) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Mudar Fase do Cliente'),
-          content: DropdownButton<FaseCliente>(
-            value: cliente.fase,
-            isExpanded: true,
-            onChanged: (FaseCliente? novaFase) {
-              if (novaFase != null) {
-                Navigator.of(ctx).pop();
-                if (novaFase == FaseCliente.perdido) {
-                  _confirmarPerda(context, cliente, service);
-                } else {
-                  service.atualizarFaseCliente(cliente.id!, novaFase);
-                }
-              }
+      builder: (ctx) => Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Editar Detalhes'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => EditarClienteDetalhesScreen(cliente: cliente),
+              ));
             },
-            items: FaseCliente.values.map<DropdownMenuItem<FaseCliente>>((FaseCliente fase) {
-              return DropdownMenuItem<FaseCliente>(value: fase, child: Text(fase.nomeDisplay));
-            }).toList(),
           ),
-        );
-      },
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('Ver Interações'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => InteracoesScreen(cliente: cliente),
+              ));
+            },
+          ),
+          if (cliente.telefoneContato?.isNotEmpty == true)
+            ListTile(
+              leading:
+                  const Icon(FontAwesomeIcons.whatsapp, color: Color(0xFF25D366)),
+              title: const Text('Conversar no WhatsApp'),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                try {
+                  await UrlLauncherService().abrirWhatsApp(cliente.telefoneContato!);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString())),
+                    );
+                  }
+                }
+              },
+            ),
+          ListTile(
+            leading: const Icon(Icons.swap_horiz_outlined),
+            title: const Text('Mudar Fase'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              _mostrarMudarFaseDialog(context, cliente, service);
+            },
+          ),
+          if (cliente.proximoContato != null)
+            ListTile(
+              leading: const Icon(Icons.event_outlined),
+              title: const Text('Adicionar à Agenda'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _adicionarEventoNaAgenda(cliente);
+              },
+            ),
+          ListTile(
+            leading: Icon(Icons.delete_outline, color: Colors.red.shade600),
+            title:
+                Text('Apagar Cliente', style: TextStyle(color: Colors.red.shade600)),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              _confirmarExclusao(context, cliente, service);
+            },
+          ),
+        ],
+      ),
     );
   }
 
-  void _confirmarPerda(BuildContext context, Cliente cliente, FirestoreService service) {
-    final TextEditingController motivoController = TextEditingController();
+  void _mostrarMudarFaseDialog(
+      BuildContext context, Cliente cliente, FirestoreService service) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar Perda'),
+        title: const Text('Mudar Fase'),
+        content: DropdownButton<FaseCliente>(
+          value: cliente.fase,
+          isExpanded: true,
+          onChanged: (novaFase) {
+            if (novaFase == null) return;
+            Navigator.of(ctx).pop();
+            if (novaFase == FaseCliente.perdido) {
+              _confirmarPerda(context, cliente, service);
+            } else {
+              service.atualizarFaseCliente(cliente.id!, novaFase);
+            }
+          },
+          items: FaseCliente.values
+              .map((f) => DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  void _confirmarPerda(
+      BuildContext context, Cliente cliente, FirestoreService service) {
+    final motivoCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Registrar Perda'),
         content: TextField(
-          controller: motivoController,
-          decoration: const InputDecoration(hintText: "Qual o motivo da perda?"),
+          controller: motivoCtrl,
+          decoration:
+              const InputDecoration(hintText: 'Qual o motivo da perda?'),
+          maxLines: 3,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
           TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
             onPressed: () {
               service.atualizarFaseCliente(
                 cliente.id!,
                 FaseCliente.perdido,
-                motivo: motivoController.text.trim(),
+                motivo: motivoCtrl.text.trim(),
               );
               Navigator.of(ctx).pop();
             },
@@ -367,42 +348,44 @@ class _ListaClientesScreenState extends State<ListaClientesScreen> with SingleTi
     );
   }
 
-  void _adicionarEventoNaAgenda(BuildContext context, Cliente cliente) {
+  void _adicionarEventoNaAgenda(Cliente cliente) {
     if (cliente.proximoContato == null) return;
-    final Event event = Event(
-      title: 'Contato Cliente: ${cliente.nome}',
-      description: 'Ligar para o cliente ${cliente.nome}.',
-      location: 'Telefone/CRM',
+    final event = Event(
+      title: 'Contato: ${cliente.nome}',
+      description: 'Ligar para ${cliente.nome}.',
+      location: 'CRM Villamor',
       startDate: cliente.proximoContato!,
       endDate: cliente.proximoContato!.add(const Duration(minutes: 30)),
     );
     Add2Calendar.addEvent2Cal(event);
   }
 
-  void _handleDismissed(BuildContext context, Cliente cliente, FirestoreService firestoreService) {
+  void _confirmarExclusao(
+      BuildContext context, Cliente cliente, FirestoreService firestoreService) {
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Confirmar Exclusão'),
-        content: Text('Tem certeza que deseja apagar permanentemente o cliente "${cliente.nome}"?'),
+        content: Text(
+            'Tem certeza que deseja apagar permanentemente "${cliente.nome}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
           TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             onPressed: () async {
+              final nav = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
               await firestoreService.deletarCliente(cliente.id!);
-
-              if (dialogContext.mounted) {
-                Navigator.of(dialogContext).pop();
-              }
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Cliente "${cliente.nome}" apagado.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
+              if (ctx.mounted) nav.pop();
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text('"${cliente.nome}" foi removido.'),
+                  backgroundColor: Colors.red.shade700,
+                ),
+              );
             },
             child: const Text('Apagar'),
           ),

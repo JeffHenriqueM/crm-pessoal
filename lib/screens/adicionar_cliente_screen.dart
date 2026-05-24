@@ -1,8 +1,5 @@
-// lib/screens/adicionar_cliente_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
@@ -19,37 +16,37 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firestoreService = FirestoreService();
 
-  // Controladores
   final _nomeController = TextEditingController();
   final _nomeEsposaController = TextEditingController();
   final _telefoneController = TextEditingController();
   final _motivoPerdaDescricaoController = TextEditingController();
 
-  // Estado do formulário
   FaseCliente _faseSelecionada = FaseCliente.prospeccao;
   String _tipoCliente = 'Casal';
   DateTime? _proximoContato;
   DateTime? _proximaVisita;
-  // NOVO CAMPO DE DATA
   DateTime? _dataCaptacao;
 
   String? _origemSelecionada;
-  final List<String> _origemOpcoes = ['Presencial', 'WhatsApp', 'Instagram'];
+  static const _origemOpcoes = ['Presencial', 'WhatsApp', 'Instagram'];
 
   String? _motivoPerdaSelecionado;
-  final List<String> _motivosOpcoes = [
-    'Financeiro', 'Distância', 'Não conhecem a Villamor', 'Sem interesse',
-    'Perfil Inadequado', 'Sem retorno', 'Outro'
+  static const _motivosOpcoes = [
+    'Financeiro',
+    'Distância',
+    'Não conhecem a Villamor',
+    'Sem interesse',
+    'Perfil Inadequado',
+    'Sem retorno',
+    'Outro',
   ];
+
   bool get _mostrarMotivoPerda => _faseSelecionada == FaseCliente.perdido;
 
-  // --- MUDANÇA: LISTAS SEPARADAS PARA VENDEDORES E CAPTADORES ---
   Usuario? _vendedorSelecionado;
-  Usuario? _captadorSelecionado; // Novo
-  List<Usuario> _listaDeVendedores = [];
-  List<Usuario> _listaDeCaptadores = []; // Novo
+  Usuario? _captadorSelecionado;
+  List<Usuario> _listaDeUsuarios = [];
   bool _carregandoUsuarios = true;
-  // --- FIM DA MUDANÇA ---
 
   @override
   void initState() {
@@ -57,32 +54,22 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
     _carregarDadosIniciais();
   }
 
-  // --- MUDANÇA: CARREGA VENDEDORES E CAPTADORES ---
   Future<void> _carregarDadosIniciais() async {
     try {
-      // Carrega as listas em paralelo para otimizar
-      final usuarios = _firestoreService.getTodosUsuarios();
-
-      final resultados = await Future.wait([usuarios, usuarios]);
-
-      if (mounted) {
-        setState(() {
-          _listaDeVendedores = resultados[0];
-          _listaDeCaptadores = resultados[1];
-          _carregandoUsuarios = false;
-        });
-      }
+      final usuarios = await _firestoreService.getTodosUsuarios();
+      if (!mounted) return;
+      setState(() {
+        _listaDeUsuarios = usuarios;
+        _carregandoUsuarios = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _carregandoUsuarios = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erro ao carregar usuários: $e")),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _carregandoUsuarios = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao carregar usuários: $e')),
+      );
     }
   }
-  // --- FIM DA MUDANÇA ---
-
 
   @override
   void dispose() {
@@ -112,11 +99,8 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
     });
   }
 
-  // --- MUDANÇA: ATUALIZADO PARA SALVAR OS NOVOS CAMPOS ---
   Future<void> _salvarCliente() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
     final novoCliente = Cliente(
       nome: _nomeController.text.trim(),
@@ -125,191 +109,236 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
       tipo: _tipoCliente,
       origem: _origemSelecionada,
       fase: _faseSelecionada,
-      dataCadastro: DateTime.now(), // Continua registrando a data de criação no sistema
+      dataCadastro: DateTime.now(),
       dataAtualizacao: DateTime.now(),
       proximoContato: _proximoContato,
       dataVisita: _proximaVisita,
       vendedorId: _vendedorSelecionado?.id,
       vendedorNome: _vendedorSelecionado?.nome,
-
-      // NOVOS CAMPOS SENDO SALVOS
       captadorId: _captadorSelecionado?.id,
       captadorNome: _captadorSelecionado?.nome,
-      dataEntradaSala: _dataCaptacao, // Usando a data do novo campo
-
+      dataEntradaSala: _dataCaptacao,
       motivoNaoVendaDropdown: _mostrarMotivoPerda ? _motivoPerdaSelecionado : null,
-      motivoNaoVenda: _mostrarMotivoPerda ? _motivoPerdaDescricaoController.text.trim() : null,
+      motivoNaoVenda: _mostrarMotivoPerda
+          ? _motivoPerdaDescricaoController.text.trim()
+          : null,
     );
 
     try {
       await _firestoreService.adicionarCliente(novoCliente);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cliente adicionado com sucesso!'), backgroundColor: Colors.green),
-        );
-        Navigator.of(context).pop();
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cliente adicionado com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.of(context).pop();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar cliente: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Erro ao salvar cliente: $e'),
+            backgroundColor: Colors.red.shade700),
+      );
     }
   }
-  // --- FIM DA MUDANÇA ---
 
-  // --- MUDANÇA: FUNÇÃO DE DATA AGORA É MAIS GENÉRICA ---
-  Future<void> _selecionarData(BuildContext context, Function(DateTime) onSelect) async {
-    final DateTime? dataSelecionada = await showDatePicker(
+  Future<void> _selecionarData(Function(DateTime) onSelect) async {
+    final data = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 365)), // 1 ano atrás
-      lastDate: DateTime.now().add(const Duration(days: 365 * 2)), // 2 anos para frente
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
     );
-
-    if (dataSelecionada != null) {
-      setState(() {
-        onSelect(dataSelecionada);
-      });
-    }
+    if (data != null && mounted) setState(() => onSelect(data));
   }
-  // --- FIM DA MUDANÇA ---
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Adicionar Novo Cliente')),
+      appBar: AppBar(title: const Text('Novo Cliente')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _sectionTitle('Dados Principais'),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _nomeController,
-                decoration: const InputDecoration(labelText: 'Nome Principal *', border: OutlineInputBorder()),
-                validator: (value) => value == null || value.trim().isEmpty ? 'O nome principal é obrigatório.' : null,
+                decoration: const InputDecoration(
+                  labelText: 'Nome Principal *',
+                  prefixIcon: Icon(Icons.person_outlined),
+                ),
+                textCapitalization: TextCapitalization.words,
+                validator: (v) =>
+                    (v?.trim().isEmpty ?? true) ? 'Nome é obrigatório.' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _tipoCliente,
-                decoration: const InputDecoration(labelText: 'Tipo de Cliente', border: OutlineInputBorder()),
-                items: ['Casal', 'Individual'].map((label) => DropdownMenuItem(child: Text(label), value: label)).toList(),
-                onChanged: (value) => setState(() => _tipoCliente = value!),
+                decoration: const InputDecoration(
+                  labelText: 'Tipo de Cliente',
+                  prefixIcon: Icon(Icons.group_outlined),
+                ),
+                items: ['Casal', 'Individual']
+                    .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                    .toList(),
+                onChanged: (v) => setState(() => _tipoCliente = v!),
               ),
               if (_tipoCliente == 'Casal') ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _nomeEsposaController,
-                  decoration: const InputDecoration(labelText: 'Nome do Cônjuge/Parceiro(a)', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: 'Nome do Cônjuge/Parceiro(a)',
+                    prefixIcon: Icon(Icons.favorite_border),
+                  ),
+                  textCapitalization: TextCapitalization.words,
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _telefoneController,
-                decoration: const InputDecoration(labelText: 'Telefone de Contato', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Telefone de Contato',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
                 keyboardType: TextInputType.phone,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              _sectionTitle('Origem e Fase'),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _origemSelecionada,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Origem do Cliente *', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Origem do Cliente *',
+                  prefixIcon: Icon(Icons.public_outlined),
+                ),
                 hint: const Text('Selecione a origem'),
-                validator: (value) => value == null ? 'A origem é obrigatória.' : null,
-                items: _origemOpcoes.map((origem) => DropdownMenuItem<String>(value: origem, child: Text(origem))).toList(),
-                onChanged: (String? newValue) => _atualizarFasePorOrigem(newValue),
+                validator: (v) => v == null ? 'A origem é obrigatória.' : null,
+                items: _origemOpcoes
+                    .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+                    .toList(),
+                onChanged: _atualizarFasePorOrigem,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               DropdownButtonFormField<FaseCliente>(
                 value: _faseSelecionada,
-                decoration: const InputDecoration(labelText: 'Fase do Funil', border: OutlineInputBorder()),
-                items: FaseCliente.values.map((fase) => DropdownMenuItem(value: fase, child: Text(fase.nomeDisplay))).toList(),
-                onChanged: (FaseCliente? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _faseSelecionada = newValue;
-                      if (_faseSelecionada != FaseCliente.perdido) {
-                        _motivoPerdaSelecionado = null;
-                        _motivoPerdaDescricaoController.clear();
-                      }
-                    });
-                  }
+                decoration: const InputDecoration(
+                  labelText: 'Fase do Funil',
+                  prefixIcon: Icon(Icons.flag_outlined),
+                ),
+                items: FaseCliente.values
+                    .map((f) => DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _faseSelecionada = v;
+                    if (v != FaseCliente.perdido) {
+                      _motivoPerdaSelecionado = null;
+                      _motivoPerdaDescricaoController.clear();
+                    }
+                  });
                 },
               ),
               if (_mostrarMotivoPerda) ...[
-                // ... seu código de motivo de perda ...
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _motivoPerdaSelecionado,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo da Perda',
+                    prefixIcon: Icon(Icons.mood_bad_outlined),
+                  ),
+                  items: _motivosOpcoes
+                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _motivoPerdaSelecionado = v),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _motivoPerdaDescricaoController,
+                  decoration: const InputDecoration(
+                    labelText: 'Detalhe do Motivo',
+                    prefixIcon: Icon(Icons.notes_outlined),
+                  ),
+                  maxLines: 2,
+                ),
               ],
-              const SizedBox(height: 16),
-
-              // --- MUDANÇA: NOVOS DROPDOWNS DE CAPTADOR E VENDEDOR ---
-              _carregandoUsuarios
-                  ? const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()))
-                  : Column(
-                children: [
-                  DropdownButtonFormField<Usuario>(
-                    value: _captadorSelecionado,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Captador *', border: OutlineInputBorder()),
-                    hint: const Text('Selecionar quem captou...'),
-                    validator: (value) => value == null ? 'É obrigatório informar o captador.' : null,
-                    items: _listaDeCaptadores.map((captador) => DropdownMenuItem<Usuario>(value: captador, child: Text(captador.nome))).toList(),
-                    onChanged: (Usuario? newValue) => setState(() => _captadorSelecionado = newValue),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<Usuario>(
-                    value: _vendedorSelecionado,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Vendedor Responsável *', border: OutlineInputBorder()),
-                    hint: const Text('Atribuir a...'),
-                    validator: (value) => value == null ? 'É obrigatório selecionar um vendedor.' : null,
-                    items: _listaDeVendedores.map((vendedor) => DropdownMenuItem<Usuario>(value: vendedor, child: Text(vendedor.nome))).toList(),
-                    onChanged: (Usuario? newValue) => setState(() => _vendedorSelecionado = newValue),
-                  ),
-                ],
-              ),
-              // --- FIM DA MUDANÇA ---
-
               const SizedBox(height: 24),
-              const Text('Datas Importantes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-
-              // --- MUDANÇA: ADICIONADO CAMPO DE DATA DA CAPTAÇÃO ---
-              _buildDateTile(
-                context: context,
-                title: 'Data da Captação',
-                date: _dataCaptacao,
-                onTap: () => _selecionarData(context, (date) => _dataCaptacao = date),
-                onClear: () => setState(() => _dataCaptacao = null),
-              ),
-              // --- FIM DA MUDANÇA ---
-
-              _buildDateTile(
-                context: context,
-                title: 'Próximo Contato',
-                date: _proximoContato,
-                onTap: () => _selecionarData(context, (date) => _proximoContato = date),
-                onClear: () => setState(() => _proximoContato = null),
-              ),
-              _buildDateTile(
-                context: context,
-                title: 'Próxima Visita',
-                date: _proximaVisita,
-                onTap: () => _selecionarData(context, (date) => _proximaVisita = date),
-                onClear: () => setState(() => _proximaVisita = null),
-              ),
+              _sectionTitle('Equipe Responsável'),
+              const SizedBox(height: 12),
+              if (_carregandoUsuarios)
+                const Center(
+                    child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(),
+                ))
+              else ...[
+                DropdownButtonFormField<Usuario>(
+                  value: _captadorSelecionado,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Captador *',
+                    prefixIcon: Icon(Icons.person_add_alt_1_outlined),
+                  ),
+                  hint: const Text('Quem captou o lead?'),
+                  validator: (v) =>
+                      v == null ? 'Informe o captador.' : null,
+                  items: _listaDeUsuarios
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _captadorSelecionado = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<Usuario>(
+                  value: _vendedorSelecionado,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Vendedor Responsável *',
+                    prefixIcon: Icon(Icons.store_outlined),
+                  ),
+                  hint: const Text('Atribuir a...'),
+                  validator: (v) =>
+                      v == null ? 'Selecione um vendedor.' : null,
+                  items: _listaDeUsuarios
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _vendedorSelecionado = v),
+                ),
+              ],
+              const SizedBox(height: 24),
+              _sectionTitle('Datas'),
+              const SizedBox(height: 8),
+              _buildDateTile('Data da Captação', _dataCaptacao,
+                  Icons.person_add_alt_1_outlined,
+                  () => _selecionarData((d) => _dataCaptacao = d),
+                  () => setState(() => _dataCaptacao = null)),
+              _buildDateTile('Próximo Contato', _proximoContato,
+                  Icons.phone_in_talk_outlined,
+                  () => _selecionarData((d) => _proximoContato = d),
+                  () => setState(() => _proximoContato = null)),
+              _buildDateTile('Próxima Visita', _proximaVisita,
+                  Icons.location_on_outlined,
+                  () => _selecionarData((d) => _proximaVisita = d),
+                  () => setState(() => _proximaVisita = null)),
               const SizedBox(height: 32),
-              ElevatedButton.icon(
+              FilledButton.icon(
                 onPressed: _salvarCliente,
-                icon: const Icon(Icons.save),
-                label: const Text('Salvar Cliente'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(fontSize: 16),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Salvar Cliente',
+                    style: TextStyle(fontSize: 16)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
                 ),
               ),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -317,21 +346,48 @@ class _AdicionarClienteScreenState extends State<AdicionarClienteScreen> {
     );
   }
 
-  Widget _buildDateTile({ required BuildContext context, required String title, required DateTime? date, required VoidCallback onTap, required VoidCallback onClear }) {
+  Widget _sectionTitle(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.primary,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  Widget _buildDateTile(
+    String title,
+    DateTime? date,
+    IconData icon,
+    VoidCallback onTap,
+    VoidCallback onClear,
+  ) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-        leading: Icon(title.contains('Captação') ? Icons.person_add_alt_1 : (title.contains('Contato') ? Icons.phone_in_talk : Icons.location_on)),
+        leading: Icon(icon, color: date != null ? cs.primary : cs.outline),
         title: Text(title),
         subtitle: Text(
-          date != null ? DateFormat('dd/MM/yyyy').format(date) : 'Não definido',
+          date != null
+              ? DateFormat('dd/MM/yyyy').format(date)
+              : 'Não definido',
           style: TextStyle(
-            color: date != null ? Theme.of(context).primaryColor : Colors.grey,
+            color: date != null ? cs.primary : cs.outline,
             fontWeight: date != null ? FontWeight.bold : FontWeight.normal,
           ),
         ),
         onTap: onTap,
-        trailing: date != null ? IconButton(icon: const Icon(Icons.clear, color: Colors.grey), onPressed: onClear, tooltip: 'Limpar Data') : null,
+        trailing: date != null
+            ? IconButton(
+                icon: Icon(Icons.clear, color: cs.outline),
+                onPressed: onClear,
+                tooltip: 'Limpar',
+              )
+            : null,
       ),
     );
   }

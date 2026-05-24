@@ -1,6 +1,5 @@
-// lib/screens/interacoes_screen.dart
-
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/interacao_model.dart';
 import '../services/firestore_service.dart';
@@ -9,137 +8,154 @@ class InteracoesScreen extends StatelessWidget {
   final Cliente cliente;
   const InteracoesScreen({super.key, required this.cliente});
 
-  // MÉTODOS DE DIÁLOGO E OPÇÕES
-
-  // Diálogo genérico para Adicionar/Editar
   void _mostrarDialogoInteracao(
       BuildContext context, FirestoreService service, Interacao? interacao) {
-
-    // Se for edição, pré-preenche com os dados existentes
     final isEditing = interacao != null;
-    final _tituloController = TextEditingController(text: interacao?.titulo);
-    final _notaController = TextEditingController(text: interacao?.nota);
-    final _formKey = GlobalKey<FormState>();
+    final tituloCtrl = TextEditingController(text: interacao?.titulo);
+    final notaCtrl = TextEditingController(text: interacao?.nota);
+    final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(isEditing ? 'Editar Interação' : 'Nova Interação'),
         content: Form(
-          key: _formKey,
+          key: formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
-                controller: _tituloController,
-                decoration: const InputDecoration(labelText: 'Título'),
-                validator: (v) => v!.isEmpty ? 'Insira um título.' : null,
+                controller: tituloCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Título',
+                  prefixIcon: Icon(Icons.title),
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Insira um título.' : null,
               ),
+              const SizedBox(height: 12),
               TextFormField(
-                controller: _notaController,
-                decoration: const InputDecoration(labelText: 'Nota'),
+                controller: notaCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nota',
+                  prefixIcon: Icon(Icons.notes),
+                  alignLabelWithHint: true,
+                ),
                 keyboardType: TextInputType.multiline,
-                maxLines: 3,
-                validator: (v) => v!.isEmpty ? 'Insira uma nota.' : null,
+                textCapitalization: TextCapitalization.sentences,
+                maxLines: 4,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Insira uma nota.' : null,
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('CANCELAR')),
-          ElevatedButton(
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
             onPressed: () async {
-              if (_formKey.currentState!.validate()) {
-                final interacaoAtualizada = Interacao(
-                  id: interacao?.id, // Mantém o ID se for edição
-                  titulo: _tituloController.text,
-                  nota: _notaController.text,
-                  // Mantém a data original se for edição, ou usa a data atual se for novo.
-                  dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
+              if (!formKey.currentState!.validate()) return;
+
+              final nova = Interacao(
+                id: interacao?.id,
+                titulo: tituloCtrl.text.trim(),
+                nota: notaCtrl.text.trim(),
+                dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
+              );
+
+              if (isEditing) {
+                await service.atualizarInteracao(cliente.id!, nova);
+              } else {
+                await service.adicionarInteracao(cliente.id!, nova);
+              }
+
+              if (ctx.mounted) {
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        'Interação ${isEditing ? 'atualizada' : 'registrada'}!'),
+                    backgroundColor: Colors.green.shade700,
+                  ),
                 );
-
-                if (isEditing) {
-                  await service.atualizarInteracao(cliente.id!, interacaoAtualizada);
-                } else {
-                  await service.adicionarInteracao(cliente.id!, interacaoAtualizada);
-                }
-
-                if (ctx.mounted) {
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(content: Text('Interação ${isEditing ? 'editada' : 'salva'}!')),
-                  );
-                }
               }
             },
-            child: Text(isEditing ? 'SALVAR EDIÇÃO' : 'SALVAR'),
+            child: Text(isEditing ? 'Salvar' : 'Registrar'),
           ),
         ],
       ),
     );
   }
 
-  // BottomSheet para Editar/Excluir
   void _mostrarOpcoesInteracao(
       BuildContext context, FirestoreService service, Interacao interacao) {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit, color: Colors.blue),
-              title: const Text('Editar Interação'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _mostrarDialogoInteracao(context, service, interacao);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text('Excluir Interação'),
-              onTap: () async {
-                Navigator.of(context).pop(); // Fecha o sheet
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: Icon(Icons.edit_outlined,
+                color: Theme.of(context).colorScheme.primary),
+            title: const Text('Editar'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              _mostrarDialogoInteracao(context, service, interacao);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text('Excluir'),
+            onTap: () async {
+              Navigator.of(ctx).pop();
 
-                // Pede confirmação antes de excluir
-                final bool? confirm = await showDialog(
-                  context: context,
-                  builder: (dialogCtx) => AlertDialog(
-                    title: const Text('Confirmar Exclusão'),
-                    content: const Text('Tem certeza que deseja excluir esta interação?'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.of(dialogCtx).pop(false), child: const Text('Não')),
-                      TextButton(onPressed: () => Navigator.of(dialogCtx).pop(true), child: const Text('Sim, Excluir')),
-                    ],
-                  ),
-                );
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (dctx) => AlertDialog(
+                  title: const Text('Confirmar Exclusão'),
+                  content: const Text('Deseja excluir esta interação?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dctx).pop(false),
+                      child: const Text('Não'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red.shade700),
+                      onPressed: () => Navigator.of(dctx).pop(true),
+                      child: const Text('Excluir'),
+                    ),
+                  ],
+                ),
+              );
 
-                if (confirm == true) {
-                  await service.excluirInteracao(cliente.id!, interacao.id!);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Interação excluída!')),
-                    );
-                  }
+              if (confirm == true && context.mounted) {
+                await service.excluirInteracao(cliente.id!, interacao.id!);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Interação excluída.')),
+                  );
                 }
-              },
-            ),
-          ],
-        );
-      },
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final FirestoreService firestoreService = FirestoreService();
+    final firestoreService = FirestoreService();
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Histórico: ${cliente.nome}'),
-        backgroundColor: Colors.teal,
-        foregroundColor: Colors.white,
       ),
       body: StreamBuilder<List<Interacao>>(
         stream: firestoreService.getInteracoesStream(cliente.id!),
@@ -154,37 +170,55 @@ class InteracoesScreen extends StatelessWidget {
           final interacoes = snapshot.data ?? [];
 
           if (interacoes.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(20.0),
-                child: Text(
-                  'Nenhuma interação registrada. Adicione a primeira!',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                  textAlign: TextAlign.center,
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.chat_bubble_outline,
+                        size: 56,
+                        color: cs.outline.withValues(alpha: 0.5)),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Nenhuma interação registrada.\nAdicione a primeira!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: cs.outline, fontSize: 15),
+                    ),
+                  ],
                 ),
               ),
             );
           }
 
           return ListView.builder(
+            padding: const EdgeInsets.only(bottom: 80, top: 4),
             itemCount: interacoes.length,
             itemBuilder: (context, index) {
-              final interacao = interacoes[index];
+              final i = interacoes[index];
               return Card(
-                elevation: 1,
-                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 child: ListTile(
-                  // NOVIDADE: Ao pressionar e segurar, abre as opções
-                  onLongPress: () => _mostrarOpcoesInteracao(context, firestoreService, interacao),
-
+                  onLongPress: () =>
+                      _mostrarOpcoesInteracao(context, firestoreService, i),
+                  onTap: () =>
+                      _mostrarOpcoesInteracao(context, firestoreService, i),
+                  leading: CircleAvatar(
+                    backgroundColor: cs.primaryContainer,
+                    child: Icon(
+                      Icons.chat_bubble_outline,
+                      size: 18,
+                      color: cs.onPrimaryContainer,
+                    ),
+                  ),
                   title: Text(
-                    interacao.titulo,
+                    i.titulo,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text(interacao.nota),
+                  subtitle: Text(i.nota, maxLines: 2, overflow: TextOverflow.ellipsis),
                   trailing: Text(
-                    '${interacao.dataInteracao.day}/${interacao.dataInteracao.month} - ${interacao.dataInteracao.hour}h${interacao.dataInteracao.minute}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    DateFormat('dd/MM\nHH:mm').format(i.dataInteracao),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: cs.outline),
                   ),
                 ),
               );
@@ -192,11 +226,11 @@ class InteracoesScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _mostrarDialogoInteracao(context, firestoreService, null), // Passa null para criar
-        backgroundColor: Colors.teal,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add_comment),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () =>
+            _mostrarDialogoInteracao(context, firestoreService, null),
+        icon: const Icon(Icons.add_comment_outlined),
+        label: const Text('Nova Interação'),
       ),
     );
   }

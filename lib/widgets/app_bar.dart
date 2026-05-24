@@ -1,9 +1,6 @@
-// lib/widgets/app_bar.dart
-
 import 'package:flutter/material.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
-// IMPORTANTE: Adicione o import para a tela de gerenciar usuários
 import '../screens/gerenciar_usuarios_screen.dart';
 
 class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -36,58 +33,72 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bool isSmallScreen = MediaQuery.of(context).size.width < 650;
 
     return AppBar(
+      leading: estaPesquisando
+          ? null
+          : Padding(
+              padding: const EdgeInsets.all(10),
+              child: Image.asset(
+                'assets/images/logo.png',
+                filterQuality: FilterQuality.medium,
+              ),
+            ),
       title: estaPesquisando
           ? TextField(
-        controller: searchController,
-        autofocus: true,
-        style: const TextStyle(color: Colors.white),
-        decoration: const InputDecoration(
-          hintText: 'Pesquisar clientes...',
-          hintStyle: TextStyle(color: Colors.white70),
-          border: InputBorder.none,
-        ),
-        onChanged: (value) => onSearchStateChange(true),
-      )
-          : const Text('CRM Pessoal'),
+              controller: searchController,
+              autofocus: true,
+              style: TextStyle(color: cs.onPrimary),
+              decoration: InputDecoration(
+                hintText: 'Pesquisar clientes...',
+                hintStyle: TextStyle(color: cs.onPrimary.withValues(alpha: 0.7)),
+                border: InputBorder.none,
+                filled: false,
+              ),
+              onChanged: (_) => onSearchStateChange(true),
+            )
+          : const Text('Villamor CRM'),
       actions: _buildActions(context, isSmallScreen),
-      bottom: estaPesquisando // Se estiver pesquisando...
-          ? null // ...não mostre a TabBar.
-          : TabBar( // Caso contrário, mostre.
-        controller: tabController,
-        isScrollable: true,
-        tabs: FaseCliente.values
-            .map((fase) => Tab(text: fase.nomeDisplay))
-            .toList(),
-      ),
+      bottom: estaPesquisando
+          ? null
+          : TabBar(
+              controller: tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: FaseCliente.values
+                  .map((fase) => Tab(text: fase.nomeDisplay))
+                  .toList(),
+            ),
     );
   }
 
   List<Widget> _buildActions(BuildContext context, bool isSmallScreen) {
-    final bool canShowVendedorFilter = userProfile == 'admin' && todosVendedores.isNotEmpty;
-    final bool isAdmin = userProfile == 'admin'; // Variável auxiliar para clareza
+    final cs = Theme.of(context).colorScheme;
+    final bool canShowVendedorFilter =
+        userProfile == 'admin' && todosVendedores.isNotEmpty;
+    final bool isAdmin = userProfile == 'admin';
 
     if (isSmallScreen) {
-      // --- TELA PEQUENA (IPHONE) ---
       return [
         IconButton(
-          icon: const Icon(Icons.bar_chart),
-          tooltip: 'Ver Dashboard',
+          icon: const Icon(Icons.bar_chart_rounded),
+          tooltip: 'Dashboard',
           onPressed: onShowDashboard,
         ),
         IconButton(
           icon: Icon(estaPesquisando ? Icons.close : Icons.search),
-          tooltip: 'Pesquisar',
+          tooltip: estaPesquisando ? 'Fechar busca' : 'Pesquisar',
           onPressed: () => onSearchStateChange(false),
         ),
         PopupMenuButton<String>(
-          tooltip: 'Mais Opções',
+          tooltip: 'Mais opções',
           onSelected: (value) {
-            if (value == 'manage_users') { // <-- LÓGICA PARA NAVEGAR
+            if (value == 'manage_users') {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const GerenciarUsuariosScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const GerenciarUsuariosScreen()),
               );
             } else if (value.startsWith('sort_')) {
               onSortChange(value.substring(5));
@@ -97,137 +108,121 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
               onVendedorChange(value == 'todos' ? null : value);
             }
           },
-          itemBuilder: (BuildContext context) {
-            List<PopupMenuEntry<String>> items = [];
+          itemBuilder: (ctx) {
+            final items = <PopupMenuEntry<String>>[];
 
-            // ===== INÍCIO DA CORREÇÃO (TELA PEQUENA) =====
             if (isAdmin) {
               items.add(const PopupMenuItem<String>(
                 value: 'manage_users',
-                child: Row(
-                  children: [
-                    Icon(Icons.manage_accounts, color: Colors.black),
-                    SizedBox(width: 8),
-                    Text('Gerenciar Usuários'),
-                  ],
+                child: ListTile(
+                  leading: Icon(Icons.manage_accounts_outlined),
+                  title: Text('Gerenciar Usuários'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
               ));
               items.add(const PopupMenuDivider());
             }
-            // ===== FIM DA CORREÇÃO =====
 
             if (canShowVendedorFilter) {
               items.add(const PopupMenuItem<String>(
                 enabled: false,
-                child: Text('Filtrar Vendedor',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Text('Filtrar por vendedor',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               ));
               items.add(
-                  const PopupMenuItem<String>(value: 'todos', child: Text('Todos')));
-              items.addAll(todosVendedores.map((vendedor) {
-                return PopupMenuItem<String>(
-                    value: vendedor.id, child: Text(vendedor.nome));
-              }).toList());
+                const PopupMenuItem<String>(value: 'todos', child: Text('Todos')));
+              items.addAll(todosVendedores.map((v) =>
+                  PopupMenuItem<String>(value: v.id, child: Text(v.nome))));
               items.add(const PopupMenuDivider());
             }
 
             items.add(const PopupMenuItem<String>(
               enabled: false,
-              child: Text('Ordenar Por',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: Text('Ordenar por',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
             ));
             items.add(const PopupMenuItem<String>(
-                value: 'dataAtualizacao', child: Text('Data')));
+                value: 'sort_dataAtualizacao', child: Text('Data')));
             items.add(const PopupMenuItem<String>(
-                value: 'nome', child: Text('Nome')));
+                value: 'sort_nome', child: Text('Nome')));
             items.add(const PopupMenuDivider());
-
-            items.add(
-                const PopupMenuItem<String>(value: 'logout', child: Text('Sair')));
+            items.add(const PopupMenuItem<String>(
+                value: 'logout', child: Text('Sair')));
 
             return items;
           },
         ),
       ];
-    } else {
-      // --- TELA GRANDE (MAC/WEB) ---
-      List<Widget> actions = [];
+    }
 
-      actions.add(IconButton(
-        icon: const Icon(Icons.bar_chart),
-        tooltip: 'Visualizar Dashboard',
+    // Tela grande
+    return [
+      IconButton(
+        icon: const Icon(Icons.bar_chart_rounded),
+        tooltip: 'Dashboard',
         onPressed: onShowDashboard,
-      ));
-
-      // ===== INÍCIO DA CORREÇÃO (TELA GRANDE) =====
-      if (isAdmin) {
-        actions.add(IconButton(
+      ),
+      if (isAdmin)
+        IconButton(
           icon: const Icon(Icons.manage_accounts_outlined),
           tooltip: 'Gerenciar Usuários',
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const GerenciarUsuariosScreen()),
-            );
-          },
-        ));
-      }
-      // ===== FIM DA CORREÇÃO =====
-
-      if (canShowVendedorFilter) {
-        actions.add(Center(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const GerenciarUsuariosScreen()),
+          ),
+        ),
+      if (canShowVendedorFilter)
+        Center(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: DropdownButton<String>(
               value: vendedorIdFiltro,
-              hint:
-              const Text('Vendedor', style: TextStyle(color: Colors.white70)),
+              hint: Text(
+                'Vendedor',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8)),
+              ),
               onChanged: onVendedorChange,
-              underline: Container(),
-              icon: const Icon(Icons.people, color: Colors.white),
-              dropdownColor: Colors.blue.shade700,
+              underline: const SizedBox.shrink(),
+              icon: Icon(Icons.people_outlined,
+                  color: Theme.of(context).colorScheme.onPrimary),
+              dropdownColor: cs.primary,
               items: [
-                const DropdownMenuItem<String>(
-                    value: null,
-                    child: Text('Todos', style: TextStyle(color: Colors.white))),
-                ...todosVendedores.map((vendedor) {
-                  return DropdownMenuItem<String>(
-                    value: vendedor.id,
-                    child: Text(vendedor.nome,
-                        style: const TextStyle(color: Colors.white)),
-                  );
-                }).toList()
+                DropdownMenuItem<String>(
+                  value: null,
+                  child: Text('Todos',
+                      style: TextStyle(color: cs.onPrimary)),
+                ),
+                ...todosVendedores.map((v) => DropdownMenuItem<String>(
+                      value: v.id,
+                      child: Text(v.nome,
+                          style: TextStyle(color: cs.onPrimary)),
+                    )),
               ],
             ),
           ),
-        ));
-      }
-
-      actions.add(IconButton(
+        ),
+      IconButton(
         icon: Icon(estaPesquisando ? Icons.close : Icons.search),
-        tooltip: 'Pesquisar',
+        tooltip: estaPesquisando ? 'Fechar busca' : 'Pesquisar',
         onPressed: () => onSearchStateChange(false),
-      ));
-
-      actions.add(PopupMenuButton<String>(
+      ),
+      PopupMenuButton<String>(
         icon: const Icon(Icons.sort),
         tooltip: 'Ordenar',
         onSelected: onSortChange,
-        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-          const PopupMenuItem<String>(
+        itemBuilder: (_) => const [
+          PopupMenuItem<String>(
               value: 'dataAtualizacao', child: Text('Ordenar por Data')),
-          const PopupMenuItem<String>(
-              value: 'nome', child: Text('Ordenar por Nome')),
+          PopupMenuItem<String>(value: 'nome', child: Text('Ordenar por Nome')),
         ],
-      ));
-
-      actions.add(IconButton(
+      ),
+      IconButton(
         icon: const Icon(Icons.logout),
         tooltip: 'Sair',
         onPressed: onLogout,
-      ));
-
-      return actions;
-    }
+      ),
+    ];
   }
 
   @override

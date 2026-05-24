@@ -1,116 +1,156 @@
-// lib/screens/gerenciar_usuarios_screen.dart
-
 import 'package:flutter/material.dart';
 import '../models/usuario_model.dart';
-import '../services/firestore_service.dart';
-// O AuthService é necessário para criar o usuário na autenticação do Firebase
 import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 
 class GerenciarUsuariosScreen extends StatefulWidget {
   const GerenciarUsuariosScreen({super.key});
 
   @override
-  State<GerenciarUsuariosScreen> createState() => _GerenciarUsuariosScreenState();
+  State<GerenciarUsuariosScreen> createState() =>
+      _GerenciarUsuariosScreenState();
 }
 
 class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  // Precisamos do AuthService para criar o login do novo usuário
   final AuthService _authService = AuthService();
+
+  static const _perfisDisponiveis = [
+    'admin',
+    'captador',
+    'vendedor',
+    'pós-venda',
+    'financeiro',
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gerenciar Usuários'),
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: const Text('Gerenciar Usuários')),
       body: FutureBuilder<List<Usuario>>(
         future: _firestoreService.getTodosUsuarios(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Nenhum usuário encontrado ou erro ao buscar.'));
+          if (snapshot.hasError ||
+              !snapshot.hasData ||
+              snapshot.data!.isEmpty) {
+            return const Center(
+                child: Text('Nenhum usuário encontrado.'));
           }
+
           final usuarios = snapshot.data!;
-          return ListView.builder(
+          return ListView.separated(
+            padding: const EdgeInsets.all(12),
             itemCount: usuarios.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 4),
             itemBuilder: (context, index) {
-              final usuario = usuarios[index];
-              return ListTile(
-                leading: const Icon(Icons.person),
-                title: Text(usuario.nome),
-                subtitle: Text(usuario.email),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Chip(
-                      label: Text(
-                        // Transforma o nome do perfil para ter a primeira letra maiúscula
-                        usuario.perfil.isNotEmpty ? usuario.perfil[0].toUpperCase() + usuario.perfil.substring(1) : '',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              final u = usuarios[index];
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: _corDePerfil(u.perfil, cs).withValues(alpha: 0.15),
+                    child: Icon(
+                      _iconeDePerfil(u.perfil),
+                      color: _corDePerfil(u.perfil, cs),
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(u.nome,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(u.email,
+                      style: TextStyle(color: cs.outline, fontSize: 12)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Chip(
+                        label: Text(_capitalize(u.perfil)),
+                        backgroundColor:
+                            _corDePerfil(u.perfil, cs).withValues(alpha: 0.15),
+                        side: BorderSide(
+                            color: _corDePerfil(u.perfil, cs).withValues(alpha: 0.4)),
+                        labelStyle: TextStyle(
+                          color: _corDePerfil(u.perfil, cs),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
-                      backgroundColor: _getCorPerfil(usuario.perfil), // Cor baseada no perfil
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      tooltip: 'Editar Usuário',
-                      onPressed: () => _mostrarDialogoEditarUsuario(context, usuario),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'Editar',
+                        onPressed: () =>
+                            _mostrarDialogoEditarUsuario(context, u),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _mostrarDialogoCriarUsuario(context),
-        tooltip: 'Adicionar Novo Usuário',
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.person_add_outlined),
+        label: const Text('Novo Usuário'),
       ),
     );
   }
 
-  // Função auxiliar para dar uma cor diferente a cada perfil
-  Color _getCorPerfil(String perfil) {
+  Color _corDePerfil(String perfil, ColorScheme cs) {
     switch (perfil.toLowerCase()) {
       case 'admin':
-        return Colors.red[700]!;
+        return Colors.red.shade700;
       case 'captador':
-        return Colors.green[600]!;
+        return Colors.green.shade600;
       case 'vendedor':
-        return Colors.blue[600]!;
+        return cs.primary;
       case 'pós-venda':
-        return Colors.orange[700]!;
+        return Colors.orange.shade700;
       case 'financeiro':
-        return Colors.purple[600]!;
+        return Colors.purple.shade600;
       default:
-        return Colors.blueGrey;
+        return cs.outline;
     }
   }
 
+  IconData _iconeDePerfil(String perfil) {
+    switch (perfil.toLowerCase()) {
+      case 'admin':
+        return Icons.admin_panel_settings_outlined;
+      case 'captador':
+        return Icons.person_add_alt_1_outlined;
+      case 'vendedor':
+        return Icons.store_outlined;
+      case 'pós-venda':
+        return Icons.support_agent_outlined;
+      case 'financeiro':
+        return Icons.account_balance_outlined;
+      default:
+        return Icons.person_outline;
+    }
+  }
+
+  String _capitalize(String s) =>
+      s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : s;
+
   void _mostrarDialogoCriarUsuario(BuildContext context) {
     final formKey = GlobalKey<FormState>();
-    final nomeController = TextEditingController();
-    final emailController = TextEditingController();
-    final senhaController = TextEditingController();
-    String perfilSelecionado = 'vendedor'; // Perfil padrão
-
-    // CORREÇÃO: Lista de perfis agora inclui 'captador'
-    final List<String> perfisDisponiveis = ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro'];
+    final nomeCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final senhaCtrl = TextEditingController();
+    String perfilSelecionado = 'vendedor';
 
     showDialog(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Criar Novo Usuário'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Novo Usuário'),
           content: Form(
             key: formKey,
             child: SingleChildScrollView(
@@ -118,30 +158,52 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextFormField(
-                    controller: nomeController,
-                    decoration: const InputDecoration(labelText: 'Nome Completo'),
-                    validator: (v) => v!.trim().isEmpty ? 'Nome é obrigatório' : null,
+                    controller: nomeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome Completo',
+                      prefixIcon: Icon(Icons.person_outlined),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                    validator: (v) =>
+                        (v?.trim().isEmpty ?? true) ? 'Nome é obrigatório' : null,
                   ),
+                  const SizedBox(height: 12),
                   TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(labelText: 'E-mail (para login)'),
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'E-mail',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
                     keyboardType: TextInputType.emailAddress,
-                    validator: (v) => v!.trim().isEmpty || !v.contains('@') ? 'E-mail inválido' : null,
+                    validator: (v) =>
+                        (v?.contains('@') != true) ? 'E-mail inválido' : null,
                   ),
+                  const SizedBox(height: 12),
                   TextFormField(
-                    controller: senhaController,
-                    decoration: const InputDecoration(labelText: 'Senha (mínimo 6 caracteres)'),
+                    controller: senhaCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Senha (mín. 6 caracteres)',
+                      prefixIcon: Icon(Icons.lock_outlined),
+                    ),
                     obscureText: true,
-                    validator: (v) => v!.trim().length < 6 ? 'Senha muito curta' : null,
+                    validator: (v) =>
+                        ((v?.length ?? 0) < 6) ? 'Senha muito curta' : null,
                   ),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: perfilSelecionado,
-                    decoration: const InputDecoration(labelText: 'Perfil'),
-                    items: perfisDisponiveis // Usando a lista atualizada
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p[0].toUpperCase() + p.substring(1))))
+                    decoration: const InputDecoration(
+                      labelText: 'Perfil',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                    items: _perfisDisponiveis
+                        .map((p) => DropdownMenuItem(
+                              value: p,
+                              child: Text(_capitalize(p)),
+                            ))
                         .toList(),
-                    onChanged: (value) {
-                      if (value != null) perfilSelecionado = value;
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => perfilSelecionado = v);
                     },
                   ),
                 ],
@@ -149,53 +211,41 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
               onPressed: () async {
-                if (formKey.currentState!.validate()) {
-                  Navigator.of(ctx).pop(); // Fecha o dialogo
-                  showDialog(context: context, builder: (_) => const Center(child: CircularProgressIndicator()));
-
-                  try {
-                    // Chama o método no AuthService para criar o usuário na autenticação
-                    await _authService.criarNovoUsuario(
-                      email: emailController.text.trim(),
-                      senha: senhaController.text.trim(),
-                      nome: nomeController.text.trim(),
-                      perfil: perfilSelecionado,
-                    );
-
-                    Navigator.of(context).pop(); // Fecha o loading
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário criado com sucesso!'), backgroundColor: Colors.green));
-                    setState(() {}); // Atualiza a lista na tela
-                  } catch (e) {
-                    Navigator.of(context).pop(); // Fecha o loading
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao criar usuário: ${e.toString()}'), backgroundColor: Colors.red));
-                  }
-                }
+                if (!formKey.currentState!.validate()) return;
+                Navigator.of(ctx).pop();
+                await _runWithLoading(context, () async {
+                  await _authService.criarNovoUsuario(
+                    email: emailCtrl.text.trim(),
+                    senha: senhaCtrl.text.trim(),
+                    nome: nomeCtrl.text.trim(),
+                    perfil: perfilSelecionado,
+                  );
+                  if (mounted) setState(() {});
+                });
               },
               child: const Text('Criar'),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 
   void _mostrarDialogoEditarUsuario(BuildContext context, Usuario usuario) {
     final formKey = GlobalKey<FormState>();
-    final nomeController = TextEditingController(text: usuario.nome);
-    final emailController = TextEditingController(text: usuario.email);
+    final nomeCtrl = TextEditingController(text: usuario.nome);
     String perfilSelecionado = usuario.perfil;
-
-    // CORREÇÃO: Lista de perfis agora inclui 'captador'
-    final List<String> perfisDisponiveis = ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro'];
-
 
     showDialog(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Editar Usuário'),
           content: Form(
             key: formKey,
@@ -204,23 +254,39 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextFormField(
-                    controller: nomeController,
-                    decoration: const InputDecoration(labelText: 'Nome Completo'),
-                    validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+                    controller: nomeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome Completo',
+                      prefixIcon: Icon(Icons.person_outlined),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                    validator: (v) =>
+                        (v?.trim().isEmpty ?? true) ? 'Campo obrigatório' : null,
                   ),
+                  const SizedBox(height: 12),
                   TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(labelText: 'E-mail (não editável)'),
+                    initialValue: usuario.email,
+                    decoration: const InputDecoration(
+                      labelText: 'E-mail',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
                     readOnly: true,
                   ),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: perfilSelecionado,
-                    decoration: const InputDecoration(labelText: 'Perfil'),
-                    items: perfisDisponiveis // Usando a lista atualizada
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p[0].toUpperCase() + p.substring(1))))
+                    decoration: const InputDecoration(
+                      labelText: 'Perfil',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                    items: _perfisDisponiveis
+                        .map((p) => DropdownMenuItem(
+                              value: p,
+                              child: Text(_capitalize(p)),
+                            ))
                         .toList(),
-                    onChanged: (value) {
-                      if (value != null) perfilSelecionado = value;
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => perfilSelecionado = v);
                     },
                   ),
                 ],
@@ -228,33 +294,59 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
               onPressed: () async {
-                if (formKey.currentState!.validate()) {
-                  Navigator.of(ctx).pop();
-                  showDialog(context: context, builder: (_) => const Center(child: CircularProgressIndicator()));
-
-                  try {
-                    await _firestoreService.atualizarUsuario(
-                      id: usuario.id,
-                      nome: nomeController.text,
-                      perfil: perfilSelecionado,
-                    );
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário atualizado com sucesso!'), backgroundColor: Colors.green));
-                    setState(() {});
-                  } catch (e) {
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao atualizar usuário: $e'), backgroundColor: Colors.red));
-                  }
-                }
+                if (!formKey.currentState!.validate()) return;
+                Navigator.of(ctx).pop();
+                await _runWithLoading(context, () async {
+                  await _firestoreService.atualizarUsuario(
+                    id: usuario.id,
+                    nome: nomeCtrl.text.trim(),
+                    perfil: perfilSelecionado,
+                  );
+                  if (mounted) setState(() {});
+                });
               },
               child: const Text('Salvar'),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
+  }
+
+  Future<void> _runWithLoading(
+      BuildContext context, Future<void> Function() action) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      await action();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Operação concluída com sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: ${e.toString()}'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
   }
 }
