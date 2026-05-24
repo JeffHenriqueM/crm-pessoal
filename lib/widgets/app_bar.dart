@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
 import '../models/fase_enum.dart';
-import '../models/usuario_model.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../theme/theme_controller.dart';
+import 'notificacao_bell.dart';
 
 class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool estaPesquisando;
   final String userProfile;
-  final List<Usuario> todosVendedores;
-  final String? vendedorIdFiltro;
+  final String? currentUserId;
   final TextEditingController searchController;
   final TabController tabController;
   final Function(bool) onSearchStateChange;
-  final Function(String?) onVendedorChange;
   final Function(String) onSortChange;
   final Future<void> Function() onLogout;
   final VoidCallback onShowDashboard;
@@ -21,12 +19,10 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
     super.key,
     required this.estaPesquisando,
     required this.userProfile,
-    required this.todosVendedores,
-    required this.vendedorIdFiltro,
+    required this.currentUserId,
     required this.searchController,
     required this.tabController,
     required this.onSearchStateChange,
-    required this.onVendedorChange,
     required this.onSortChange,
     required this.onLogout,
     required this.onShowDashboard,
@@ -76,12 +72,14 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
   }
 
   List<Widget> _buildActions(BuildContext context, bool isSmallScreen) {
-    final cs = Theme.of(context).colorScheme;
-    final bool canShowVendedorFilter =
-        userProfile == 'admin' && todosVendedores.isNotEmpty;
     final bool isAdmin = userProfile == 'admin';
 
-    // Botão de toggle de tema (reutilizado em ambos os layouts)
+    // Sino de notificações — admin vê todos, vendedor vê só os seus
+    final notifBell = NotificacaoBell(
+      vendedorId: isAdmin ? null : currentUserId,
+    );
+
+    // Toggle de tema
     final themeToggle = AnimatedBuilder(
       animation: ThemeController.instance,
       builder: (_, __) {
@@ -103,6 +101,7 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
           tooltip: 'Dashboard',
           onPressed: onShowDashboard,
         ),
+        notifBell,
         IconButton(
           icon: Icon(estaPesquisando ? Icons.close : Icons.search),
           tooltip: estaPesquisando ? 'Fechar busca' : 'Pesquisar',
@@ -122,8 +121,6 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
               onSortChange(value.substring(5));
             } else if (value == 'logout') {
               onLogout();
-            } else if (canShowVendedorFilter) {
-              onVendedorChange(value == 'todos' ? null : value);
             }
           },
           itemBuilder: (ctx) {
@@ -142,19 +139,6 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
               items.add(const PopupMenuDivider());
             }
 
-            if (canShowVendedorFilter) {
-              items.add(const PopupMenuItem<String>(
-                enabled: false,
-                child: Text('Filtrar por vendedor',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              ));
-              items.add(const PopupMenuItem<String>(
-                  value: 'todos', child: Text('Todos')));
-              items.addAll(todosVendedores.map((v) =>
-                  PopupMenuItem<String>(value: v.id, child: Text(v.nome))));
-              items.add(const PopupMenuDivider());
-            }
-
             items.add(const PopupMenuItem<String>(
               enabled: false,
               child: Text('Ordenar por',
@@ -166,7 +150,6 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
                 value: 'sort_nome', child: Text('Nome')));
             items.add(const PopupMenuDivider());
 
-            // Toggle de tema no menu
             final isDark = ThemeController.instance.isDark;
             items.add(PopupMenuItem<String>(
               value: 'toggle_theme',
@@ -189,7 +172,7 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
       ];
     }
 
-    // ── Tela grande ─────────────────────────────────────────────────────────
+    // ── Tela grande ──────────────────────────────────────────────────────────
     return [
       IconButton(
         icon: const Icon(Icons.bar_chart_rounded),
@@ -204,43 +187,12 @@ class ListaClientesAppBar extends StatelessWidget implements PreferredSizeWidget
             MaterialPageRoute(builder: (_) => const GerenciarUsuariosScreen()),
           ),
         ),
-      if (canShowVendedorFilter)
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: DropdownButton<String>(
-              value: vendedorIdFiltro,
-              hint: Text(
-                'Vendedor',
-                style:
-                    TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
-              ),
-              onChanged: onVendedorChange,
-              underline: const SizedBox.shrink(),
-              icon:
-                  Icon(Icons.people_outlined, color: cs.onSurfaceVariant),
-              items: [
-                DropdownMenuItem<String>(
-                  value: null,
-                  child: Text('Todos',
-                      style: TextStyle(color: cs.onSurface, fontSize: 14)),
-                ),
-                ...todosVendedores.map((v) => DropdownMenuItem<String>(
-                      value: v.id,
-                      child: Text(v.nome,
-                          style: TextStyle(
-                              color: cs.onSurface, fontSize: 14)),
-                    )),
-              ],
-            ),
-          ),
-        ),
+      notifBell,
       IconButton(
         icon: Icon(estaPesquisando ? Icons.close : Icons.search),
         tooltip: estaPesquisando ? 'Fechar busca' : 'Pesquisar',
         onPressed: () => onSearchStateChange(false),
       ),
-      // Toggle de tema
       themeToggle,
       PopupMenuButton<String>(
         icon: const Icon(Icons.sort),

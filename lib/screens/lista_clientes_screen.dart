@@ -4,7 +4,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/url_launcher_service.dart';
@@ -35,7 +34,6 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
   String _userProfile = 'vendedor';
   bool _estaPesquisando = false;
   late Stream<List<Cliente>> _clientesStream;
-  List<Usuario> _todosVendedores = [];
   String? _vendedorIdFiltro;
   String _filtroTexto = '';
   String _ordenarPor = 'dataAtualizacao';
@@ -59,28 +57,14 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
       if (!mounted) return;
       setState(() => _userProfile = perfil);
       if (perfil == 'admin') {
-        _firestoreService.getTodosUsuarios().then((vendedores) {
-          if (!mounted) return;
-          setState(() {
-            _todosVendedores = vendedores;
-            // Se veio do dashboard admin com filtro de vendedor, aplicar
-            if (widget.vendedorIdInicial != null) {
-              _vendedorIdFiltro = widget.vendedorIdInicial;
-              _clientesStream = _firestoreService.getTodosClientesStream(
-                vendedorId: _vendedorIdFiltro,
-                ordenarPor: _ordenarPor,
-                descendente: _descendente,
-              );
-            } else {
-              // Admin sem filtro inicial vê todos
-              _vendedorIdFiltro = null;
-              _clientesStream = _firestoreService.getTodosClientesStream(
-                vendedorId: null,
-                ordenarPor: _ordenarPor,
-                descendente: _descendente,
-              );
-            }
-          });
+        // Admin vê todos, com filtro opcional vindo do dashboard
+        setState(() {
+          _vendedorIdFiltro = widget.vendedorIdInicial; // null = todos
+          _clientesStream = _firestoreService.getTodosClientesStream(
+            vendedorId: _vendedorIdFiltro,
+            ordenarPor: _ordenarPor,
+            descendente: _descendente,
+          );
         });
       }
     });
@@ -114,18 +98,6 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
         _searchController.clear();
       }
       _estaPesquisando = !_estaPesquisando;
-    });
-  }
-
-  void _handleVendedorChange(String? novoVendedorId) {
-    if (!mounted) return;
-    setState(() {
-      _vendedorIdFiltro = novoVendedorId;
-      _clientesStream = _firestoreService.getTodosClientesStream(
-        vendedorId: _vendedorIdFiltro,
-        ordenarPor: _ordenarPor,
-        descendente: _descendente,
-      );
     });
   }
 
@@ -184,12 +156,10 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
           appBar: ListaClientesAppBar(
             estaPesquisando: _estaPesquisando,
             userProfile: _userProfile,
-            todosVendedores: _todosVendedores,
-            vendedorIdFiltro: _vendedorIdFiltro,
+            currentUserId: _authService.getCurrentUser()?.uid,
             searchController: _searchController,
             tabController: _tabController,
             onSearchStateChange: _handleSearchStateChange,
-            onVendedorChange: _handleVendedorChange,
             onSortChange: _handleSortChange,
             onLogout: _handleLogout,
             onShowDashboard: _abrirDashboard,
