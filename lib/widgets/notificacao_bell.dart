@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
@@ -5,37 +6,34 @@ import '../models/fase_enum.dart';
 import '../screens/interacoes_screen.dart';
 import '../services/firestore_service.dart';
 
-// ── Modelo de categoria de notificação ───────────────────────────────────────
+// ── Modelo interno ────────────────────────────────────────────────────────────
 class _NotifCategoria {
   final String titulo;
   final IconData icone;
   final Color cor;
   final List<_NotifItem> itens;
-
-  const _NotifCategoria({
-    required this.titulo,
-    required this.icone,
-    required this.cor,
-    required this.itens,
-  });
+  const _NotifCategoria(
+      {required this.titulo,
+      required this.icone,
+      required this.cor,
+      required this.itens});
 }
 
 class _NotifItem {
   final Cliente cliente;
   final String subtitulo;
-
   const _NotifItem({required this.cliente, required this.subtitulo});
 }
 
-// ── Widget principal ──────────────────────────────────────────────────────────
+// ── Widget: sino com badge ────────────────────────────────────────────────────
 class NotificacaoBell extends StatelessWidget {
-  /// null = admin vê todos; uid = vendedor vê só os seus
   final String? vendedorId;
-
   const NotificacaoBell({super.key, required this.vendedorId});
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return StreamBuilder<List<Cliente>>(
       stream:
           FirestoreService().getTodosClientesStream(vendedorId: vendedorId),
@@ -45,20 +43,51 @@ class NotificacaoBell extends StatelessWidget {
         final total =
             categorias.fold<int>(0, (s, c) => s + c.itens.length);
 
-        return Badge(
-          isLabelVisible: total > 0,
-          label: Text(
-            total > 99 ? '99+' : '$total',
-            style: const TextStyle(fontSize: 10),
-          ),
-          alignment: const AlignmentDirectional(10, -8),
-          child: IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: total > 0
-                ? '$total notificação${total != 1 ? 'ões' : ''}'
-                : 'Sem notificações',
-            onPressed: () => _mostrarPainel(context, categorias, total),
-          ),
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              icon: Icon(
+                total > 0
+                    ? Icons.notifications_rounded
+                    : Icons.notifications_outlined,
+                color: cs.onSurface,
+              ),
+              tooltip: total > 0
+                  ? '$total notificaç${total == 1 ? 'ão' : 'ões'} pendente${total != 1 ? 's' : ''}'
+                  : 'Sem notificações',
+              onPressed: () =>
+                  _mostrarPainel(context, categorias, total),
+            ),
+            // Badge manual — mais visível e preciso que o widget Badge
+            if (total > 0)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade600,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: cs.surface, width: 1.5),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 16),
+                    child: Text(
+                      total > 99 ? '99+' : '$total',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        height: 1.2,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -70,7 +99,6 @@ class NotificacaoBell extends StatelessWidget {
     final inicioDoDia = DateTime(hoje.year, hoje.month, hoje.day);
     final fimDoDia = inicioDoDia.add(const Duration(days: 1));
 
-    // Exclui fechados e perdidos de todos os alertas
     final ativos = todos.where((c) =>
         c.fase != FaseCliente.fechado && c.fase != FaseCliente.perdido);
 
@@ -82,13 +110,13 @@ class NotificacaoBell extends StatelessWidget {
             c.proximoContato!.isBefore(fimDoDia))
         .map((c) => _NotifItem(
               cliente: c,
-              subtitulo: c.vendedorNome != null && vendedorId == null
-                  ? 'Vendedor: ${c.vendedorNome}'
+              subtitulo: vendedorId == null && c.vendedorNome != null
+                  ? c.vendedorNome!
                   : 'Contato programado para hoje',
             ))
         .toList();
 
-    // 2. Contatos atrasados (mais urgentes primeiro)
+    // 2. Contatos atrasados (mais antigo primeiro)
     final atrasados = ativos
         .where((c) =>
             c.proximoContato != null &&
@@ -97,12 +125,12 @@ class NotificacaoBell extends StatelessWidget {
       ..sort((a, b) => a.proximoContato!.compareTo(b.proximoContato!));
     final itensAtrasados = atrasados.map((c) {
       final dias = inicioDoDia.difference(c.proximoContato!).inDays;
-      final sufixo = vendedorId == null && c.vendedorNome != null
+      final quem = vendedorId == null && c.vendedorNome != null
           ? ' · ${c.vendedorNome}'
           : '';
       return _NotifItem(
         cliente: c,
-        subtitulo: '$dias dia${dias != 1 ? 's' : ''} em atraso$sufixo',
+        subtitulo: '$dias dia${dias != 1 ? 's' : ''} em atraso$quem',
       );
     }).toList();
 
@@ -114,16 +142,14 @@ class NotificacaoBell extends StatelessWidget {
             c.dataVisita!.isBefore(fimDoDia))
         .map((c) {
       final hora = DateFormat('HH:mm').format(c.dataVisita!);
-      final sufixo = vendedorId == null && c.vendedorNome != null
+      final quem = vendedorId == null && c.vendedorNome != null
           ? ' · ${c.vendedorNome}'
           : '';
       return _NotifItem(
-        cliente: c,
-        subtitulo: 'Visita às $hora$sufixo',
-      );
+          cliente: c, subtitulo: 'Visita às $hora$quem');
     }).toList();
 
-    // 4. Em negociação sem atualização há mais de 7 dias
+    // 4. Negociação parada +7 dias
     final semUpdate = ativos
         .where((c) =>
             c.fase == FaseCliente.negociacao &&
@@ -132,163 +158,191 @@ class NotificacaoBell extends StatelessWidget {
       ..sort((a, b) => a.dataAtualizacao.compareTo(b.dataAtualizacao));
     final itensSemUpdate = semUpdate.map((c) {
       final dias = hoje.difference(c.dataAtualizacao).inDays;
-      final sufixo = vendedorId == null && c.vendedorNome != null
+      final quem = vendedorId == null && c.vendedorNome != null
           ? ' · ${c.vendedorNome}'
           : '';
       return _NotifItem(
-        cliente: c,
-        subtitulo: 'Sem atualização há $dias dias$sufixo',
-      );
+          cliente: c,
+          subtitulo: 'Sem atualização há $dias dias$quem');
     }).toList();
 
-    final categorias = <_NotifCategoria>[];
-
-    if (contatosHoje.isNotEmpty) {
-      categorias.add(_NotifCategoria(
-        titulo: 'Ligar hoje',
-        icone: Icons.phone_outlined,
-        cor: Colors.blue.shade700,
-        itens: contatosHoje,
-      ));
-    }
-    if (itensAtrasados.isNotEmpty) {
-      categorias.add(_NotifCategoria(
-        titulo: 'Contatos em atraso',
-        icone: Icons.access_time_outlined,
-        cor: const Color(0xFFB45309), // amber corporativo
-        itens: itensAtrasados,
-      ));
-    }
-    if (visitasHoje.isNotEmpty) {
-      categorias.add(_NotifCategoria(
-        titulo: 'Visitas hoje',
-        icone: Icons.location_on_outlined,
-        cor: Colors.teal.shade700,
-        itens: visitasHoje,
-      ));
-    }
-    if (itensSemUpdate.isNotEmpty) {
-      categorias.add(_NotifCategoria(
-        titulo: 'Negociação parada',
-        icone: Icons.pause_circle_outline,
-        cor: Colors.purple.shade600,
-        itens: itensSemUpdate,
-      ));
-    }
-
-    return categorias;
+    return [
+      if (contatosHoje.isNotEmpty)
+        _NotifCategoria(
+          titulo: 'Ligar hoje',
+          icone: Icons.phone_outlined,
+          cor: Colors.blue.shade700,
+          itens: contatosHoje,
+        ),
+      if (itensAtrasados.isNotEmpty)
+        _NotifCategoria(
+          titulo: 'Contatos em atraso',
+          icone: Icons.access_time_outlined,
+          cor: const Color(0xFFB45309),
+          itens: itensAtrasados,
+        ),
+      if (visitasHoje.isNotEmpty)
+        _NotifCategoria(
+          titulo: 'Visitas hoje',
+          icone: Icons.location_on_outlined,
+          cor: Colors.teal.shade700,
+          itens: visitasHoje,
+        ),
+      if (itensSemUpdate.isNotEmpty)
+        _NotifCategoria(
+          titulo: 'Negociação parada',
+          icone: Icons.pause_circle_outline,
+          cor: Colors.purple.shade600,
+          itens: itensSemUpdate,
+        ),
+    ];
   }
 
-  // ── Painel de notificações ─────────────────────────────────────────────────
-  void _mostrarPainel(BuildContext context, List<_NotifCategoria> categorias,
-      int total) {
-    final cs = Theme.of(context).colorScheme;
+  // ── Painel lateral deslizante ─────────────────────────────────────────────
+  void _mostrarPainel(BuildContext context,
+      List<_NotifCategoria> categorias, int total) {
+    final larguraTela = MediaQuery.of(context).size.width;
+    final larguraPainel = min(380.0, larguraTela * 0.88);
 
-    showModalBottomSheet(
+    showGeneralDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.92,
-          builder: (_, scrollController) => Column(
+      barrierDismissible: true,
+      barrierLabel: 'Fechar notificações',
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      transitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (ctx, _, __) => Align(
+        alignment: Alignment.centerRight,
+        child: _PainelLateral(
+          largura: larguraPainel,
+          categorias: categorias,
+          total: total,
+        ),
+      ),
+      transitionBuilder: (ctx, anim, _, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
+    );
+  }
+}
+
+// ── Painel lateral ────────────────────────────────────────────────────────────
+class _PainelLateral extends StatelessWidget {
+  final double largura;
+  final List<_NotifCategoria> categorias;
+  final int total;
+
+  const _PainelLateral({
+    required this.largura,
+    required this.categorias,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    return Material(
+      elevation: 16,
+      color: isLight ? Colors.white : const Color(0xFF1F2937),
+      shadowColor: Colors.black.withValues(alpha: 0.3),
+      child: SafeArea(
+        child: SizedBox(
+          width: largura,
+          height: double.infinity,
+          child: Column(
             children: [
-              // Handle + cabeçalho
+              // ── Cabeçalho fixo ─────────────────────────────────────
               Container(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Column(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                        color: cs.outlineVariant, width: 1),
+                  ),
+                ),
+                child: Row(
                   children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: cs.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
+                    Icon(Icons.notifications_outlined,
+                        color: cs.primary, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Notificações',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
                       ),
                     ),
-                    Row(
-                      children: [
-                        Icon(Icons.notifications_outlined,
-                            color: cs.primary, size: 22),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Notificações',
+                    const Spacer(),
+                    if (total > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '$total pendente${total != 1 ? 's' : ''}',
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: cs.onSurface,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onPrimaryContainer,
                           ),
                         ),
-                        const Spacer(),
-                        if (total > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: cs.primaryContainer,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              '$total pendente${total != 1 ? 's' : ''}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onPrimaryContainer,
-                              ),
-                            ),
-                          ),
-                      ],
+                      ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon:
+                          Icon(Icons.close, color: cs.onSurfaceVariant),
+                      tooltip: 'Fechar',
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                    const SizedBox(height: 4),
-                    Divider(color: cs.outlineVariant),
                   ],
                 ),
               ),
 
-              // Conteúdo scrollável
+              // ── Conteúdo scrollável ────────────────────────────────
               Expanded(
                 child: total == 0
                     ? _buildVazia(cs)
                     : ListView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                        padding: const EdgeInsets.only(bottom: 24),
                         children: categorias
                             .map((cat) =>
-                                _buildCategoria(ctx, cat, cs))
+                                _buildCategoria(context, cat, cs))
                             .toList(),
                       ),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
   Widget _buildVazia(ColorScheme cs) {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.check_circle_outline,
-              size: 56, color: Colors.green.shade600),
+              size: 52, color: Colors.green.shade600),
           const SizedBox(height: 16),
-          Text(
-            'Tudo em dia!',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: cs.onSurface,
-            ),
-          ),
+          Text('Tudo em dia!',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface)),
           const SizedBox(height: 4),
-          Text(
-            'Nenhuma pendência no momento.',
-            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-          ),
+          Text('Nenhuma pendência no momento.',
+              style:
+                  TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
         ],
       ),
     );
@@ -301,37 +355,39 @@ class NotificacaoBell extends StatelessWidget {
       children: [
         // Header da categoria
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
                   color: cat.cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(cat.icone, color: cat.cor, size: 16),
+                child: Icon(cat.icone, color: cat.cor, size: 14),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 cat.titulo,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: cat.cor,
+                  letterSpacing: 0.3,
                 ),
               ),
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
                   color: cat.cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '${cat.itens.length}',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: cat.cor,
                   ),
@@ -344,7 +400,11 @@ class NotificacaoBell extends StatelessWidget {
         // Itens
         ...cat.itens.map((item) => _buildItem(context, item, cat.cor, cs)),
 
-        const Divider(height: 1, indent: 20, endIndent: 20),
+        Divider(
+            height: 1,
+            indent: 20,
+            endIndent: 20,
+            color: cs.outlineVariant),
       ],
     );
   }
@@ -354,29 +414,30 @@ class NotificacaoBell extends StatelessWidget {
     final inicial = item.cliente.nome.isNotEmpty
         ? item.cliente.nome[0].toUpperCase()
         : '?';
+    final nomeCompleto = item.cliente.nomeEsposa?.isNotEmpty == true
+        ? '${item.cliente.nome} e ${item.cliente.nomeEsposa}'
+        : item.cliente.nome;
 
     return InkWell(
       onTap: () {
-        Navigator.of(context).pop(); // fecha o painel
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => InteracoesScreen(cliente: item.cliente),
-          ),
-        );
+        Navigator.of(context).pop(); // fecha painel
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => InteracoesScreen(cliente: item.cliente),
+        ));
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(
           children: [
             CircleAvatar(
-              radius: 18,
+              radius: 17,
               backgroundColor: cor.withValues(alpha: 0.12),
               child: Text(
                 inicial,
                 style: TextStyle(
                   color: cor,
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontSize: 13,
                 ),
               ),
             ),
@@ -386,9 +447,7 @@ class NotificacaoBell extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item.cliente.nomeEsposa?.isNotEmpty == true
-                        ? '${item.cliente.nome} e ${item.cliente.nomeEsposa}'
-                        : item.cliente.nome,
+                    nomeCompleto,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -408,7 +467,7 @@ class NotificacaoBell extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 18, color: cs.outline),
+            Icon(Icons.chevron_right, size: 16, color: cs.outline),
           ],
         ),
       ),
