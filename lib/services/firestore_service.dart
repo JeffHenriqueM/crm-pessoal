@@ -5,6 +5,7 @@ import 'package:rxdart/rxdart.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
+import '../models/negociacao_model.dart';
 import '../models/usuario_model.dart';
 
 class FirestoreService {
@@ -135,6 +136,58 @@ class FirestoreService {
       'tipo': 'sistema',
       'autorNome': 'Sistema',
     });
+  }
+
+  // --- NEGOCIAÇÕES ---
+
+  Stream<List<Negociacao>> getNegociacoesStream(String clienteId) {
+    return _db
+        .collection(_colClientes)
+        .doc(clienteId)
+        .collection('negociacoes')
+        .orderBy('dataCriacao', descending: false)
+        .snapshots()
+        .map((s) =>
+            s.docs.map((d) => Negociacao.fromFirestore(d)).toList());
+  }
+
+  Future<void> adicionarNegociacao(
+      String clienteId, Negociacao negociacao) async {
+    final dados = negociacao.toFirestore();
+    dados['dataCriacao'] = FieldValue.serverTimestamp();
+    await _db
+        .collection(_colClientes)
+        .doc(clienteId)
+        .collection('negociacoes')
+        .add(dados);
+    await _db.collection(_colClientes).doc(clienteId).update({
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
+  Future<void> atualizarNegociacao(
+      String clienteId, Negociacao negociacao) async {
+    final dados = negociacao.toFirestore();
+    // mantém o dataCriacao original
+    dados.remove('dataCriacao');
+    await _db
+        .collection(_colClientes)
+        .doc(clienteId)
+        .collection('negociacoes')
+        .doc(negociacao.id)
+        .update(dados);
+  }
+
+  Future<void> deletarNegociacao(
+      String clienteId, String negociacaoId) async {
+    await _db
+        .collection(_colClientes)
+        .doc(clienteId)
+        .collection('negociacoes')
+        .doc(negociacaoId)
+        .delete();
   }
 
   // --- USUÁRIOS ---
