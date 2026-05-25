@@ -11,7 +11,6 @@ import '../widgets/app_bar.dart';
 import '../widgets/cliente_list_filtered.dart';
 import '../widgets/editar_cliente_detalhes_screen.dart';
 import 'adicionar_cliente_screen.dart';
-import 'dashboard_screen.dart';
 import 'interacoes_screen.dart';
 
 class ListaClientesScreen extends StatefulWidget {
@@ -31,7 +30,6 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
 
-  String _userProfile = 'vendedor';
   bool _estaPesquisando = false;
   late Stream<List<Cliente>> _clientesStream;
   String? _vendedorIdFiltro;
@@ -55,7 +53,6 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
 
     _authService.getCurrentUserProfile().then((perfil) {
       if (!mounted) return;
-      setState(() => _userProfile = perfil);
       if (perfil == 'admin') {
         // Admin vê todos, com filtro opcional vindo do dashboard
         setState(() {
@@ -118,16 +115,6 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     });
   }
 
-  Future<void> _handleLogout() async {
-    await _authService.signOut();
-  }
-
-  void _abrirDashboard() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const DashboardScreen()),
-    );
-  }
-
   void _abrirAdicionarCliente() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AdicionarClienteScreen()),
@@ -155,14 +142,10 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
         return Scaffold(
           appBar: ListaClientesAppBar(
             estaPesquisando: _estaPesquisando,
-            userProfile: _userProfile,
-            currentUserId: _authService.getCurrentUser()?.uid,
             searchController: _searchController,
             tabController: _tabController,
             onSearchStateChange: _handleSearchStateChange,
             onSortChange: _handleSortChange,
-            onLogout: _handleLogout,
-            onShowDashboard: _abrirDashboard,
           ),
           floatingActionButton: FloatingActionButton(
             onPressed: _abrirAdicionarCliente,
