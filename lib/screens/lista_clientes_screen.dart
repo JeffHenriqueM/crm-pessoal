@@ -10,13 +10,15 @@ import '../utils/url_launcher_service.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/cliente_list_filtered.dart';
 import '../widgets/editar_cliente_detalhes_screen.dart';
+import '../widgets/kanban_view.dart';
 import 'adicionar_cliente_screen.dart';
 import 'interacoes_screen.dart';
 
 class ListaClientesScreen extends StatefulWidget {
   final FaseCliente? faseInicial;
   final String? vendedorIdInicial;
-  const ListaClientesScreen({super.key, this.faseInicial, this.vendedorIdInicial});
+  const ListaClientesScreen(
+      {super.key, this.faseInicial, this.vendedorIdInicial});
 
   @override
   State<ListaClientesScreen> createState() => _ListaClientesScreenState();
@@ -30,12 +32,16 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
 
+  String _userProfile = 'vendedor';
   bool _estaPesquisando = false;
+  bool _usarKanban = false;
   late Stream<List<Cliente>> _clientesStream;
   String? _vendedorIdFiltro;
   String _filtroTexto = '';
   String _ordenarPor = 'dataAtualizacao';
   bool _descendente = true;
+
+  bool get _isAdmin => _userProfile == 'admin';
 
   @override
   void initState() {
@@ -53,10 +59,10 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
 
     _authService.getCurrentUserProfile().then((perfil) {
       if (!mounted) return;
+      setState(() => _userProfile = perfil);
       if (perfil == 'admin') {
-        // Admin vê todos, com filtro opcional vindo do dashboard
         setState(() {
-          _vendedorIdFiltro = widget.vendedorIdInicial; // null = todos
+          _vendedorIdFiltro = widget.vendedorIdInicial;
           _clientesStream = _firestoreService.getTodosClientesStream(
             vendedorId: _vendedorIdFiltro,
             ordenarPor: _ordenarPor,
@@ -87,7 +93,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
   }
 
   void _handleSearchStateChange(bool isTyping) {
-    if (isTyping) return; // Listener do controller já atualiza _filtroTexto
+    if (isTyping) return;
     if (!mounted) return;
     setState(() {
       if (_estaPesquisando) {
@@ -115,6 +121,18 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     });
   }
 
+  void _handleToggleView() {
+    setState(() {
+      _usarKanban = !_usarKanban;
+      // Ao entrar no kanban, fecha a busca se estava aberta
+      if (_usarKanban && _estaPesquisando) {
+        _estaPesquisando = false;
+        _filtroTexto = '';
+        _searchController.clear();
+      }
+    });
+  }
+
   void _abrirAdicionarCliente() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AdicionarClienteScreen()),
@@ -128,7 +146,8 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Scaffold(
-            body: Center(child: Text('Erro ao carregar dados: ${snapshot.error}')),
+            body: Center(
+                child: Text('Erro ao carregar dados: ${snapshot.error}')),
           );
         }
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -142,32 +161,51 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
         return Scaffold(
           appBar: ListaClientesAppBar(
             estaPesquisando: _estaPesquisando,
+            usarKanban: _usarKanban,
             searchController: _searchController,
             tabController: _tabController,
             onSearchStateChange: _handleSearchStateChange,
             onSortChange: _handleSortChange,
+            onToggleView: _handleToggleView,
           ),
           floatingActionButton: FloatingActionButton(
             onPressed: _abrirAdicionarCliente,
             tooltip: 'Adicionar Cliente',
             child: const Icon(Icons.add),
           ),
-          body: _estaPesquisando
-              ? _buildSearchResults(todosClientes)
-              : TabBarView(
-                  controller: _tabController,
-                  children: FaseCliente.values.map((fase) {
-                    final clientesDaAba =
-                        todosClientes.where((c) => c.fase == fase).toList();
-                    return ClienteListFiltered(
-                      clientes: clientesDaAba,
-                      filtroNome: '',
-                      onTileTap: _mostrarOpcoesCliente,
-                    );
-                  }).toList(),
-                ),
+          body: _buildBody(todosClientes),
         );
       },
+    );
+  }
+
+  Widget _buildBody(List<Cliente> todosClientes) {
+    // ── Kanban ──────────────────────────────────────────────────────
+    if (_usarKanban) {
+      return KanbanView(
+        clientes: todosClientes,
+        isAdmin: _isAdmin,
+        onCardTap: _mostrarOpcoesCliente,
+      );
+    }
+
+    // ── Busca ────────────────────────────────────────────────────────
+    if (_estaPesquisando) {
+      return _buildSearchResults(todosClientes);
+    }
+
+    // ── Lista por abas ───────────────────────────────────────────────
+    return TabBarView(
+      controller: _tabController,
+      children: FaseCliente.values.map((fase) {
+        final clientesDaAba =
+            todosClientes.where((c) => c.fase == fase).toList();
+        return ClienteListFiltered(
+          clientes: clientesDaAba,
+          filtroNome: '',
+          onTileTap: _mostrarOpcoesCliente,
+        );
+      }).toList(),
     );
   }
 
@@ -186,6 +224,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     );
   }
 
+  // ── Bottom sheet de opções ────────────────────────────────────────────────
   void _mostrarOpcoesCliente(
       BuildContext context, Cliente cliente, FirestoreService service) {
     showModalBottomSheet(
@@ -198,7 +237,8 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
             onTap: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => EditarClienteDetalhesScreen(cliente: cliente),
+                builder: (_) =>
+                    EditarClienteDetalhesScreen(cliente: cliente),
               ));
             },
           ),
@@ -214,13 +254,14 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
           ),
           if (cliente.telefoneContato?.isNotEmpty == true)
             ListTile(
-              leading:
-                  const Icon(FontAwesomeIcons.whatsapp, color: Color(0xFF25D366)),
+              leading: const Icon(FontAwesomeIcons.whatsapp,
+                  color: Color(0xFF25D366)),
               title: const Text('Conversar no WhatsApp'),
               onTap: () async {
                 Navigator.of(ctx).pop();
                 try {
-                  await UrlLauncherService().abrirWhatsApp(cliente.telefoneContato!);
+                  await UrlLauncherService()
+                      .abrirWhatsApp(cliente.telefoneContato!);
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -281,7 +322,8 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
             }
           },
           items: FaseCliente.values
-              .map((f) => DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
+              .map((f) =>
+                  DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
               .toList(),
         ),
       ),
@@ -334,8 +376,8 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     Add2Calendar.addEvent2Cal(event);
   }
 
-  void _confirmarExclusao(
-      BuildContext context, Cliente cliente, FirestoreService firestoreService) {
+  void _confirmarExclusao(BuildContext context, Cliente cliente,
+      FirestoreService firestoreService) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
