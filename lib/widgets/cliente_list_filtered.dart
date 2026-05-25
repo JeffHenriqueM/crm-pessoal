@@ -6,7 +6,7 @@ import '../services/firestore_service.dart';
 
 class ClienteListFiltered extends StatelessWidget {
   final List<Cliente> clientes;
-  final Function(BuildContext, Cliente, FirestoreService) onTileTap;
+  final Function(Cliente) onTileTap;
   final String filtroNome;
 
   const ClienteListFiltered({
@@ -130,7 +130,7 @@ class ClienteListFiltered extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => onTileTap(context, cliente, service),
+        onTap: () => onTileTap(cliente),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(

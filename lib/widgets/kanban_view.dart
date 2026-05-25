@@ -8,7 +8,7 @@ import '../services/firestore_service.dart';
 class KanbanView extends StatelessWidget {
   final List<Cliente> clientes;
   final bool isAdmin;
-  final Function(BuildContext, Cliente, FirestoreService) onCardTap;
+  final Function(Cliente) onCardTap;
 
   const KanbanView({
     super.key,
@@ -80,7 +80,7 @@ class _KanbanColumn extends StatefulWidget {
   final List<Cliente> clientes;
   final Color cor;
   final bool isAdmin;
-  final Function(BuildContext, Cliente, FirestoreService) onCardTap;
+  final Function(Cliente) onCardTap;
 
   const _KanbanColumn({
     required this.fase,
@@ -282,7 +282,7 @@ class _KanbanColumnState extends State<_KanbanColumn> {
             cliente: cliente,
             cor: widget.cor,
             isAdmin: widget.isAdmin,
-            onTap: () => widget.onCardTap(context, cliente, _service),
+            onTap: () => widget.onCardTap(cliente),
           ),
         );
       },

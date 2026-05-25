@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
+import '../screens/negociacoes_screen.dart';
 import '../screens/vendedor_home_screen.dart';
 import '../services/auth_service.dart';
 import '../theme/theme_controller.dart';
@@ -57,6 +58,11 @@ class _MainShellState extends State<MainShell> {
           label: 'Leads',
         ),
         const _NavItem(
+          icon: Icons.handshake_outlined,
+          activeIcon: Icons.handshake_rounded,
+          label: 'Negociações',
+        ),
+        const _NavItem(
           icon: Icons.bar_chart_outlined,
           activeIcon: Icons.bar_chart_rounded,
           label: 'Dashboard',
@@ -74,6 +80,10 @@ class _MainShellState extends State<MainShell> {
     if (!_isListaProfile)
       VendedorHomeScreen(currentUserId: widget.currentUserId),
     const ListaClientesScreen(),
+    NegociacoesScreen(
+      userProfile: widget.userProfile,
+      currentUserId: widget.currentUserId,
+    ),
     const DashboardScreen(),
     if (_isAdmin) const GerenciarUsuariosScreen(),
   ];

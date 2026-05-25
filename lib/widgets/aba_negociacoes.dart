@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/negociacao_model.dart';
+import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
 
 final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 final _moedaCompacta = NumberFormat.currency(
     locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
 
-// ── Aba principal ─────────────────────────────────────────────────────────────
+// ── Aba principal (usada dentro da FichaClienteScreen) ────────────────────────
 class AbaNegociacoes extends StatelessWidget {
   final String clienteId;
-  final int proximoNumero; // para sugerir "Proposta N"
+  final int proximoNumero;
 
   const AbaNegociacoes({
     super.key,
@@ -70,53 +71,21 @@ class AbaNegociacoes extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: _NegociacaoCard(
                 negociacao: neg,
-                onEdit: () => _abrirFormulario(
-                    context, service, neg, proximo,
-                    editando: neg),
+                onEdit: () => abrirFormularioNegociacao(
+                  context,
+                  clienteId: clienteId,
+                  service: service,
+                  proximoNumero: proximo,
+                  editando: neg,
+                ),
                 onDelete: () => _confirmarExclusao(context, service, neg),
                 onStatusChange: (s) => service.atualizarNegociacao(
-                    clienteId,
-                    _comStatus(neg, s)),
+                    neg.copyWith(status: s)),
               ),
             );
           },
         );
       },
-    );
-  }
-
-  Negociacao _comStatus(Negociacao neg, StatusNegociacao s) {
-    return Negociacao(
-      id: neg.id,
-      titulo: neg.titulo,
-      valorOriginal: neg.valorOriginal,
-      tipoDesconto: neg.tipoDesconto,
-      desconto: neg.desconto,
-      valorEntrada: neg.valorEntrada,
-      quantidadeParcelas: neg.quantidadeParcelas,
-      valorParcelaOverride: neg.valorParcelaOverride,
-      status: s,
-      dataCriacao: neg.dataCriacao,
-      observacoes: neg.observacoes,
-    );
-  }
-
-  void _abrirFormulario(
-    BuildContext context,
-    FirestoreService service,
-    Negociacao? base,
-    int proximo, {
-    Negociacao? editando,
-  }) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _FormularioNegociacao(
-        clienteId: clienteId,
-        service: service,
-        editando: editando,
-        sugestaoTitulo: editando?.titulo ?? 'Proposta $proximo',
-      ),
     );
   }
 
@@ -139,7 +108,7 @@ class AbaNegociacoes extends StatelessWidget {
             ),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await service.deletarNegociacao(clienteId, neg.id!);
+              await service.deletarNegociacao(neg.id!);
             },
             child: const Text('Excluir'),
           ),
@@ -149,21 +118,32 @@ class AbaNegociacoes extends StatelessWidget {
   }
 }
 
-// ── FAB público (chamado pela InteracoesScreen) ───────────────────────────────
+// ── FAB público ───────────────────────────────────────────────────────────────
+/// [onSaveLocal]: se fornecido, a proposta é salva localmente (cliente novo).
+/// [currentUserId] / [currentUserName]: usados para pré-selecionar o embaixador.
 void abrirFormularioNegociacao(
   BuildContext context, {
-  required String clienteId,
-  required FirestoreService service,
+  String? clienteId,
+  String? clienteNome,
+  FirestoreService? service,
   required int proximoNumero,
+  Negociacao? editando,
+  void Function(Negociacao)? onSaveLocal,
+  String? currentUserId,
+  String? currentUserName,
 }) {
   showDialog(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => _FormularioNegociacao(
       clienteId: clienteId,
+      clienteNome: clienteNome,
       service: service,
-      editando: null,
-      sugestaoTitulo: 'Proposta $proximoNumero',
+      editando: editando,
+      sugestaoTitulo: editando?.titulo ?? 'Proposta $proximoNumero',
+      onSaveLocal: onSaveLocal,
+      currentUserId: currentUserId,
+      currentUserName: currentUserName,
     ),
   );
 }
@@ -188,6 +168,14 @@ class _NegociacaoCard extends StatelessWidget {
     StatusNegociacao.recusada: Color(0xFFC62828),
   };
 
+  static const _aprovacaoCores = {
+    StatusAprovacao.semSolicitacao: Colors.transparent,
+    StatusAprovacao.pendente: Color(0xFFF57F17),
+    StatusAprovacao.aprovada: Color(0xFF2E7D32),
+    StatusAprovacao.negada: Color(0xFFC62828),
+    StatusAprovacao.aguardandoAtualizacao: Color(0xFF6A1B9A),
+  };
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -196,6 +184,7 @@ class _NegociacaoCard extends StatelessWidget {
     final temParcelas =
         negociacao.quantidadeParcelas != null &&
             negociacao.quantidadeParcelas! > 0;
+    final isEspecial = negociacao.tipo == TipoNegociacao.especial;
 
     return Card(
       elevation: 1,
@@ -216,9 +205,14 @@ class _NegociacaoCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Cabeçalho ──────────────────────────────────────
+              // ── Cabeçalho ─────────────────────────────────────
               Row(
                 children: [
+                  if (isEspecial) ...[
+                    Icon(Icons.star_rounded,
+                        size: 16, color: Colors.amber.shade700),
+                    const SizedBox(width: 4),
+                  ],
                   Expanded(
                     child: Text(
                       negociacao.titulo,
@@ -228,6 +222,12 @@ class _NegociacaoCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Badge aprovação (se especial e solicitada)
+                  if (isEspecial &&
+                      negociacao.statusAprovacao != StatusAprovacao.semSolicitacao) ...[
+                    _aprovacaoChip(negociacao.statusAprovacao),
+                    const SizedBox(width: 6),
+                  ],
                   // Chip de status
                   PopupMenuButton<StatusNegociacao>(
                     tooltip: 'Alterar status',
@@ -268,11 +268,29 @@ class _NegociacaoCard extends StatelessWidget {
                 ],
               ),
 
+              // Embaixador
+              if (negociacao.embaixadorNome != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.person_outlined,
+                        size: 12,
+                        color: cs.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(
+                      negociacao.embaixadorNome!,
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ],
+
               Divider(
                   height: 16,
                   color: cs.outlineVariant.withValues(alpha: 0.5)),
 
-              // ── Valores ────────────────────────────────────────
+              // ── Valores ───────────────────────────────────────
               _linha(cs, 'Valor original',
                   _moeda.format(negociacao.valorOriginal)),
               if (temDesconto) ...[
@@ -280,7 +298,6 @@ class _NegociacaoCard extends StatelessWidget {
                 _linhaDesconto(cs),
               ],
               const SizedBox(height: 6),
-              // Total em destaque
               Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
@@ -309,8 +326,7 @@ class _NegociacaoCard extends StatelessWidget {
                 ),
               ),
 
-              if (negociacao.valorEntrada != null ||
-                  temParcelas) ...[
+              if (negociacao.valorEntrada != null || temParcelas) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -343,6 +359,57 @@ class _NegociacaoCard extends StatelessWidget {
                 ),
               ],
 
+              // Condição especial
+              if (isEspecial &&
+                  negociacao.condicaoEspecial?.isNotEmpty == true) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Colors.amber.shade700.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.star_outlined,
+                          size: 14, color: Colors.amber.shade700),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          negociacao.condicaoEspecial!,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurface),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Prazo de resposta
+              if (isEspecial && negociacao.prazoResposta != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.timer_outlined,
+                        size: 13, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Prazo: ${DateFormat('dd/MM/yyyy').format(negociacao.prazoResposta!)}',
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Observações
               if (negociacao.observacoes?.isNotEmpty == true) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -354,13 +421,44 @@ class _NegociacaoCard extends StatelessWidget {
                 ),
               ],
 
-              // ── Rodapé ─────────────────────────────────────────
+              // Comentário de aprovação
+              if (negociacao.comentarioAprovacao?.isNotEmpty == true) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.comment_outlined,
+                          size: 13, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          negociacao.comentarioAprovacao!,
+                          style: TextStyle(
+                              fontSize: 11, color: cs.onSurfaceVariant),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // ── Rodapé ────────────────────────────────────────
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    DateFormat('dd/MM/yyyy').format(negociacao.dataCriacao),
+                    DateFormat('dd/MM/yyyy')
+                        .format(negociacao.dataCriacao),
                     style: TextStyle(
                         fontSize: 11, color: cs.onSurfaceVariant),
                   ),
@@ -391,6 +489,26 @@ class _NegociacaoCard extends StatelessWidget {
     );
   }
 
+  Widget _aprovacaoChip(StatusAprovacao status) {
+    final cor = _aprovacaoCores[status] ?? Colors.grey;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        status.nomeDisplay,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: cor,
+        ),
+      ),
+    );
+  }
+
   Widget _linha(ColorScheme cs, String label, String valor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -414,8 +532,7 @@ class _NegociacaoCard extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: TextStyle(fontSize: 12, color: cs.error)),
+        Text(label, style: TextStyle(fontSize: 12, color: cs.error)),
         Text(valor,
             style: TextStyle(
                 fontSize: 12,
@@ -460,16 +577,24 @@ class _NegociacaoCard extends StatelessWidget {
 
 // ── Formulário de negociação ──────────────────────────────────────────────────
 class _FormularioNegociacao extends StatefulWidget {
-  final String clienteId;
-  final FirestoreService service;
+  final String? clienteId;
+  final String? clienteNome;
+  final FirestoreService? service;
   final Negociacao? editando;
   final String sugestaoTitulo;
+  final void Function(Negociacao)? onSaveLocal;
+  final String? currentUserId;
+  final String? currentUserName;
 
   const _FormularioNegociacao({
-    required this.clienteId,
-    required this.service,
+    this.clienteId,
+    this.clienteNome,
+    this.service,
     required this.editando,
     required this.sugestaoTitulo,
+    this.onSaveLocal,
+    this.currentUserId,
+    this.currentUserName,
   });
 
   @override
@@ -486,11 +611,20 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   late final TextEditingController _parcelasCtrl;
   late final TextEditingController _valorParcelaCtrl;
   late final TextEditingController _obsCtrl;
+  late final TextEditingController _condicaoEspecialCtrl;
 
   TipoDesconto _tipoDesconto = TipoDesconto.fixo;
+  TipoNegociacao _tipoNegociacao = TipoNegociacao.tabela;
   StatusNegociacao _status = StatusNegociacao.ativa;
+  DateTime? _prazoResposta;
+  bool _solicitarAprovacao = false;
   bool _parcelaManual = false;
   bool _salvando = false;
+
+  // Embaixador
+  List<Usuario> _usuarios = [];
+  Usuario? _embaixador;
+  bool _carregandoUsuarios = true;
 
   @override
   void initState() {
@@ -507,7 +641,12 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     _parcelasCtrl = TextEditingController(
         text: e?.quantidadeParcelas?.toString() ?? '');
     _tipoDesconto = e?.tipoDesconto ?? TipoDesconto.fixo;
+    _tipoNegociacao = e?.tipo ?? TipoNegociacao.tabela;
     _status = e?.status ?? StatusNegociacao.ativa;
+    _prazoResposta = e?.prazoResposta;
+    _condicaoEspecialCtrl =
+        TextEditingController(text: e?.condicaoEspecial ?? '');
+    _solicitarAprovacao = e?.statusAprovacao == StatusAprovacao.pendente;
 
     final parcelaInicial = e?.valorParcelaOverride != null
         ? _fmt(e!.valorParcelaOverride!)
@@ -515,8 +654,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     _valorParcelaCtrl =
         TextEditingController(text: parcelaInicial);
     _parcelaManual = e?.valorParcelaOverride != null;
-    _obsCtrl =
-        TextEditingController(text: e?.observacoes ?? '');
+    _obsCtrl = TextEditingController(text: e?.observacoes ?? '');
 
     // Listeners para recalcular
     for (final ctrl in [
@@ -528,13 +666,38 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       ctrl.addListener(_recalcular);
     }
     _valorParcelaCtrl.addListener(_onParcelaEditada);
+
+    _carregarUsuarios();
+  }
+
+  Future<void> _carregarUsuarios() async {
+    try {
+      final service = widget.service ?? FirestoreService();
+      final lista = await service.getTodosUsuarios(apenasAtivos: true);
+      if (!mounted) return;
+      setState(() {
+        _usuarios = lista;
+        _carregandoUsuarios = false;
+        // Pré-seleciona embaixador: quem está editando, ou usuário logado
+        final editId = widget.editando?.embaixadorId;
+        final fallbackId = widget.currentUserId;
+        if (editId != null) {
+          try { _embaixador = _usuarios.firstWhere((u) => u.id == editId); } catch (_) {}
+        } else if (fallbackId != null) {
+          try { _embaixador = _usuarios.firstWhere((u) => u.id == fallbackId); } catch (_) {}
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _carregandoUsuarios = false);
+    }
   }
 
   @override
   void dispose() {
     for (final c in [
       _tituloCtrl, _valorOriginalCtrl, _descontoCtrl,
-      _valorEntradaCtrl, _parcelasCtrl, _valorParcelaCtrl, _obsCtrl,
+      _valorEntradaCtrl, _parcelasCtrl, _valorParcelaCtrl,
+      _obsCtrl, _condicaoEspecialCtrl,
     ]) {
       c.dispose();
     }
@@ -570,15 +733,9 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   void _recalcular() {
     if (!_parcelaManual) {
       final calc = _parcelaCalculada;
-      if (calc != null) {
-        _atualizandoParcela = true;
-        _valorParcelaCtrl.text = _fmt(calc);
-        _atualizandoParcela = false;
-      } else {
-        _atualizandoParcela = true;
-        _valorParcelaCtrl.text = '';
-        _atualizandoParcela = false;
-      }
+      _atualizandoParcela = true;
+      _valorParcelaCtrl.text = calc != null ? _fmt(calc) : '';
+      _atualizandoParcela = false;
     }
     if (mounted) setState(() {});
   }
@@ -595,12 +752,51 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     });
   }
 
+  Future<void> _selecionarPrazo() async {
+    final hoje = DateTime.now();
+    final limite = hoje.add(const Duration(days: 7));
+    final data = await showDatePicker(
+      context: context,
+      initialDate: _prazoResposta ?? limite,
+      firstDate: hoje,
+      lastDate: limite,
+      helpText: 'Prazo máximo: 7 dias',
+    );
+    if (data != null && mounted) setState(() => _prazoResposta = data);
+  }
+
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _salvando = true);
 
     final neg = Negociacao(
       id: widget.editando?.id,
+      clienteId: widget.editando?.clienteId ?? widget.clienteId,
+      clienteNome: widget.editando?.clienteNome ?? widget.clienteNome,
+      tipo: _tipoNegociacao,
+      condicaoEspecial: _tipoNegociacao == TipoNegociacao.especial &&
+              _condicaoEspecialCtrl.text.trim().isNotEmpty
+          ? _condicaoEspecialCtrl.text.trim()
+          : null,
+      prazoResposta:
+          _tipoNegociacao == TipoNegociacao.especial ? _prazoResposta : null,
+      statusAprovacao: _tipoNegociacao == TipoNegociacao.especial &&
+              _solicitarAprovacao
+          ? StatusAprovacao.pendente
+          : (widget.editando?.statusAprovacao ?? StatusAprovacao.semSolicitacao),
+      dataSolicitacaoAprovacao: _tipoNegociacao == TipoNegociacao.especial &&
+              _solicitarAprovacao &&
+              widget.editando?.dataSolicitacaoAprovacao == null
+          ? DateTime.now()
+          : widget.editando?.dataSolicitacaoAprovacao,
+      dataAprovacao: widget.editando?.dataAprovacao,
+      aprovadoPorId: widget.editando?.aprovadoPorId,
+      aprovadoPorNome: widget.editando?.aprovadoPorNome,
+      comentarioAprovacao: widget.editando?.comentarioAprovacao,
+      embaixadorId: _embaixador?.id,
+      embaixadorNome: _embaixador?.nome,
+      criadoPorId: widget.editando?.criadoPorId,
+      criadoPorNome: widget.editando?.criadoPorNome,
       titulo: _tituloCtrl.text.trim(),
       valorOriginal: _parse(_valorOriginalCtrl.text),
       tipoDesconto: _tipoDesconto,
@@ -621,12 +817,16 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     );
 
     try {
-      if (widget.editando != null) {
-        await widget.service.atualizarNegociacao(widget.clienteId, neg);
+      if (widget.onSaveLocal != null) {
+        widget.onSaveLocal!(neg);
+        if (mounted) Navigator.of(context).pop();
+      } else if (widget.editando != null) {
+        await widget.service!.atualizarNegociacao(neg);
+        if (mounted) Navigator.of(context).pop();
       } else {
-        await widget.service.adicionarNegociacao(widget.clienteId, neg);
+        await widget.service!.adicionarNegociacao(neg);
+        if (mounted) Navigator.of(context).pop();
       }
-      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       setState(() => _salvando = false);
       if (mounted) {
@@ -644,6 +844,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isEditing = widget.editando != null;
+    final isEspecial = _tipoNegociacao == TipoNegociacao.especial;
 
     return AlertDialog(
       title: Row(
@@ -655,7 +856,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       ),
       contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       content: SizedBox(
-        width: 480,
+        width: 520,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -663,6 +864,37 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Tipo da negociação ────────────────────────
+                _sectionLabel(cs, 'Tipo de Negociação'),
+                const SizedBox(height: 8),
+                SegmentedButton<TipoNegociacao>(
+                  segments: const [
+                    ButtonSegment(
+                      value: TipoNegociacao.tabela,
+                      icon: Icon(Icons.table_chart_outlined, size: 16),
+                      label: Text('Valor de Tabela'),
+                    ),
+                    ButtonSegment(
+                      value: TipoNegociacao.especial,
+                      icon: Icon(Icons.star_outlined, size: 16),
+                      label: Text('Negociação Especial'),
+                    ),
+                  ],
+                  selected: {_tipoNegociacao},
+                  onSelectionChanged: (s) => setState(() {
+                    _tipoNegociacao = s.first;
+                    if (_tipoNegociacao == TipoNegociacao.tabela) {
+                      _solicitarAprovacao = false;
+                    }
+                  }),
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    textStyle: WidgetStatePropertyAll(
+                        const TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // ── Título ────────────────────────────────────
                 TextFormField(
                   controller: _tituloCtrl,
@@ -675,6 +907,26 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                       ? 'Informe um título'
                       : null,
                 ),
+                const SizedBox(height: 14),
+
+                // ── Embaixador ────────────────────────────────
+                _carregandoUsuarios
+                    ? const LinearProgressIndicator()
+                    : DropdownButtonFormField<Usuario>(
+                        value: _embaixador,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Embaixador',
+                          prefixIcon: Icon(Icons.person_outlined),
+                        ),
+                        hint: const Text('Selecione o embaixador'),
+                        items: _usuarios
+                            .map((u) => DropdownMenuItem(
+                                value: u, child: Text(u.nome)))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _embaixador = v),
+                      ),
                 const SizedBox(height: 14),
 
                 // ── Valor original ────────────────────────────
@@ -723,7 +975,6 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Toggle R$ / %
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: SegmentedButton<TipoDesconto>(
@@ -823,7 +1074,8 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                     labelText: _parcelaManual
                         ? 'Valor da parcela (manual)'
                         : 'Valor da parcela (calculado)',
-                    prefixIcon: const Icon(Icons.receipt_long_outlined),
+                    prefixIcon:
+                        const Icon(Icons.receipt_long_outlined),
                     suffixIcon: _parcelaManual
                         ? IconButton(
                             icon: const Icon(Icons.refresh),
@@ -836,9 +1088,44 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'[\d.,]')),
                   ],
                 ),
+                // Aviso de divergência
+                if (_parcelaManual && _parcelaCalculada != null)
+                  Builder(builder: (context) {
+                    final cs = Theme.of(context).colorScheme;
+                    final manual = _parse(_valorParcelaCtrl.text);
+                    if ((manual - _parcelaCalculada!).abs() > 0.01) {
+                      return Container(
+                        margin: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer
+                              .withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                size: 16, color: cs.error),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Negociação divergente do valor calculado '
+                                '(${_moeda.format(_parcelaCalculada!)})',
+                                style: TextStyle(
+                                    fontSize: 12, color: cs.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
                 const SizedBox(height: 14),
 
                 // ── Status ────────────────────────────────────
@@ -870,6 +1157,106 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                   maxLines: 3,
                   textCapitalization: TextCapitalization.sentences,
                 ),
+
+                // ── Seção Especial ────────────────────────────
+                if (isEspecial) ...[
+                  const SizedBox(height: 20),
+                  Divider(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.star_rounded,
+                          size: 16, color: Colors.amber.shade700),
+                      const SizedBox(width: 6),
+                      _sectionLabel(cs, 'Condições Especiais'),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _condicaoEspecialCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Condição especial de fechamento',
+                      prefixIcon:
+                          Icon(Icons.star_outlined,
+                              color: Colors.amber.shade700),
+                      alignLabelWithHint: true,
+                    ),
+                    maxLines: 3,
+                    textCapitalization: TextCapitalization.sentences,
+                    validator: isEspecial
+                        ? (v) => v?.trim().isEmpty == true
+                            ? 'Descreva a condição especial'
+                            : null
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Prazo de resposta
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _selecionarPrazo,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: cs.outline),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.timer_outlined,
+                              color: _prazoResposta != null
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant,
+                              size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _prazoResposta != null
+                                  ? 'Prazo: ${DateFormat('dd/MM/yyyy').format(_prazoResposta!)}'
+                                  : 'Prazo de resposta (máx. 7 dias)',
+                              style: TextStyle(
+                                color: _prazoResposta != null
+                                    ? cs.onSurface
+                                    : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          if (_prazoResposta != null)
+                            IconButton(
+                              icon: Icon(Icons.clear,
+                                  size: 18, color: cs.outline),
+                              onPressed: () =>
+                                  setState(() => _prazoResposta = null),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Solicitar aprovação
+                  CheckboxListTile(
+                    value: _solicitarAprovacao,
+                    onChanged: (v) =>
+                        setState(() => _solicitarAprovacao = v ?? false),
+                    title: const Text(
+                      'Solicitar aprovação da Gerência',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: const Text(
+                      'O gerente será notificado para aprovar esta condição',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    secondary: const Icon(Icons.admin_panel_settings_outlined),
+                    contentPadding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                ],
+
                 const SizedBox(height: 16),
               ],
             ),
@@ -895,6 +1282,18 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
           onPressed: _salvando ? null : _salvar,
         ),
       ],
+    );
+  }
+
+  Widget _sectionLabel(ColorScheme cs, String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: cs.primary,
+        letterSpacing: 0.3,
+      ),
     );
   }
 }

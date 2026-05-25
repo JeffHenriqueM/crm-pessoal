@@ -45,7 +45,7 @@ class FirestoreService {
         .switchMap((stream) => stream);
   }
 
-  Future<void> adicionarCliente(Cliente cliente) async {
+  Future<String> adicionarCliente(Cliente cliente) async {
     final dados = cliente.toFirestore();
     dados['criadoPorId'] = _currentUserId;
     dados['criadoPorNome'] = _currentUserName;
@@ -53,7 +53,8 @@ class FirestoreService {
     dados['atualizadoPorNome'] = _currentUserName;
     dados['dataCadastro'] = FieldValue.serverTimestamp();
     dados['dataAtualizacao'] = FieldValue.serverTimestamp();
-    await _db.collection(_colClientes).add(dados);
+    final docRef = await _db.collection(_colClientes).add(dados);
+    return docRef.id;
   }
 
   Future<void> atualizarFaseCliente(String id, FaseCliente novaFase,
@@ -138,65 +139,142 @@ class FirestoreService {
     });
   }
 
-  // --- NEGOCIAÇÕES ---
+  // --- NEGOCIAÇÕES (coleção raiz) ---
 
+  static const _colNegociacoes = 'negociacoes';
+
+  /// Stream de negociações filtrado por clienteId (aba do cliente).
   Stream<List<Negociacao>> getNegociacoesStream(String clienteId) {
     return _db
-        .collection(_colClientes)
-        .doc(clienteId)
-        .collection('negociacoes')
+        .collection(_colNegociacoes)
+        .where('clienteId', isEqualTo: clienteId)
         .orderBy('dataCriacao', descending: false)
         .snapshots()
-        .map((s) =>
-            s.docs.map((d) => Negociacao.fromFirestore(d)).toList());
+        .map((s) => s.docs.map((d) => Negociacao.fromFirestore(d)).toList());
   }
 
-  Future<void> adicionarNegociacao(
-      String clienteId, Negociacao negociacao) async {
+  /// Stream global: admin vê todas; embaixador vê as suas.
+  Stream<List<Negociacao>> getNegociacoesGlobaisStream({
+    String? embaixadorId,
+    String? statusAprovacao,
+  }) {
+    Query query = _db.collection(_colNegociacoes);
+    if (embaixadorId != null && embaixadorId.isNotEmpty) {
+      query = query.where('embaixadorId', isEqualTo: embaixadorId);
+    }
+    if (statusAprovacao != null && statusAprovacao.isNotEmpty) {
+      query = query.where('statusAprovacao', isEqualTo: statusAprovacao);
+    }
+    return query
+        .orderBy('dataCriacao', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) => Negociacao.fromFirestore(d)).toList());
+  }
+
+  /// Stream de negociações especiais pendentes de aprovação (para admin).
+  Stream<List<Negociacao>> getNegociacoesPendentesStream() {
+    return _db
+        .collection(_colNegociacoes)
+        .where('statusAprovacao', isEqualTo: 'pendente')
+        .orderBy('dataSolicitacaoAprovacao', descending: false)
+        .snapshots()
+        .map((s) => s.docs.map((d) => Negociacao.fromFirestore(d)).toList());
+  }
+
+  Future<String> adicionarNegociacao(Negociacao negociacao) async {
     final dados = negociacao.toFirestore();
     dados['dataCriacao'] = FieldValue.serverTimestamp();
-    await _db
-        .collection(_colClientes)
-        .doc(clienteId)
-        .collection('negociacoes')
-        .add(dados);
-    await _db.collection(_colClientes).doc(clienteId).update({
-      'dataAtualizacao': FieldValue.serverTimestamp(),
-      'atualizadoPorId': _currentUserId,
-      'atualizadoPorNome': _currentUserName,
-    });
+    dados['criadoPorId'] = _currentUserId;
+    dados['criadoPorNome'] = _currentUserName;
+    dados['editadoPorId'] = _currentUserId;
+    dados['editadoPorNome'] = _currentUserName;
+    final docRef = await _db.collection(_colNegociacoes).add(dados);
+    // Atualiza dataAtualizacao do cliente vinculado, se houver
+    if (negociacao.clienteId != null) {
+      await _db.collection(_colClientes).doc(negociacao.clienteId).update({
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+        'atualizadoPorId': _currentUserId,
+        'atualizadoPorNome': _currentUserName,
+      });
+    }
+    return docRef.id;
   }
 
-  Future<void> atualizarNegociacao(
-      String clienteId, Negociacao negociacao) async {
+  Future<void> atualizarNegociacao(Negociacao negociacao) async {
     final dados = negociacao.toFirestore();
-    // mantém o dataCriacao original
-    dados.remove('dataCriacao');
+    dados.remove('dataCriacao'); // mantém o original
+    dados['editadoPorId'] = _currentUserId;
+    dados['editadoPorNome'] = _currentUserName;
     await _db
-        .collection(_colClientes)
-        .doc(clienteId)
-        .collection('negociacoes')
-        .doc(negociacao.id)
+        .collection(_colNegociacoes)
+        .doc(negociacao.id!)
         .update(dados);
   }
 
-  Future<void> deletarNegociacao(
-      String clienteId, String negociacaoId) async {
-    await _db
-        .collection(_colClientes)
-        .doc(clienteId)
-        .collection('negociacoes')
-        .doc(negociacaoId)
-        .delete();
+  Future<void> deletarNegociacao(String negociacaoId) async {
+    await _db.collection(_colNegociacoes).doc(negociacaoId).delete();
+  }
+
+  // ── Fluxo de aprovação ────────────────────────────────────────────────────
+
+  Future<void> solicitarAprovacao(
+      String negId, {DateTime? prazoResposta}) async {
+    final dados = <String, dynamic>{
+      'statusAprovacao': 'pendente',
+      'dataSolicitacaoAprovacao': FieldValue.serverTimestamp(),
+      'editadoPorId': _currentUserId,
+      'editadoPorNome': _currentUserName,
+    };
+    if (prazoResposta != null) {
+      dados['prazoResposta'] = Timestamp.fromDate(prazoResposta);
+    }
+    await _db.collection(_colNegociacoes).doc(negId).update(dados);
+  }
+
+  Future<void> aprovarNegociacao(String negId, {String? comentario}) async {
+    await _db.collection(_colNegociacoes).doc(negId).update({
+      'statusAprovacao': 'aprovada',
+      'dataAprovacao': FieldValue.serverTimestamp(),
+      'aprovadoPorId': _currentUserId,
+      'aprovadoPorNome': _currentUserName,
+      'comentarioAprovacao': comentario,
+      'editadoPorId': _currentUserId,
+      'editadoPorNome': _currentUserName,
+    });
+  }
+
+  Future<void> negarNegociacao(String negId, {String? comentario}) async {
+    await _db.collection(_colNegociacoes).doc(negId).update({
+      'statusAprovacao': 'negada',
+      'comentarioAprovacao': comentario,
+      'editadoPorId': _currentUserId,
+      'editadoPorNome': _currentUserName,
+    });
+  }
+
+  Future<void> solicitarAtualizacaoNegociacao(
+      String negId, {String? comentario}) async {
+    await _db.collection(_colNegociacoes).doc(negId).update({
+      'statusAprovacao': 'aguardandoAtualizacao',
+      'comentarioAprovacao': comentario,
+      'editadoPorId': _currentUserId,
+      'editadoPorNome': _currentUserName,
+    });
   }
 
   // --- USUÁRIOS ---
 
-  Future<List<Usuario>> getTodosUsuarios({String? perfil}) async {
+  Future<List<Usuario>> getTodosUsuarios({
+    String? perfil,
+    bool apenasAtivos = false,
+  }) async {
     try {
       Query query = _db.collection('usuarios');
       if (perfil != null && perfil.isNotEmpty) {
         query = query.where('perfil', isEqualTo: perfil);
+      }
+      if (apenasAtivos) {
+        query = query.where('ativo', isEqualTo: true);
       }
       final snapshot = await query.get();
       return snapshot.docs

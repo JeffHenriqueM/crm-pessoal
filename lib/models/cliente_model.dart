@@ -10,6 +10,7 @@ class Cliente {
   final String? nomeEsposa;
   final String? origem;
   final String? telefoneContato;
+  final String? telefone2;
   final DateTime dataCadastro;
   final DateTime dataAtualizacao;
   final DateTime? proximoContato;
@@ -35,6 +36,7 @@ class Cliente {
     required this.dataAtualizacao,
     this.nomeEsposa,
     this.telefoneContato,
+    this.telefone2,
     this.proximoContato,
     this.dataVisita,
     this.origem,
@@ -60,6 +62,7 @@ class Cliente {
       'nomeEsposa': nomeEsposa,
       'origem' : origem,
       'telefoneContato': telefoneContato,
+      'telefone2': telefone2,
       'dataCadastro': Timestamp.fromDate(dataCadastro),
       'dataAtualizacao': Timestamp.fromDate(dataAtualizacao),
       'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato!) : null,
@@ -106,6 +109,7 @@ class Cliente {
       dataAtualizacao: (data['dataAtualizacao'] as Timestamp?)?.toDate() ?? DateTime.now(),
       nomeEsposa: data['nomeEsposa'],
       telefoneContato: data['telefoneContato'],
+      telefone2: data['telefone2'],
       proximoContato: (data['proximoContato'] as Timestamp?)?.toDate(),
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
       motivoNaoVenda: data['motivoNaoVenda'],

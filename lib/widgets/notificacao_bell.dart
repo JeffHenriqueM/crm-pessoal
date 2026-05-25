@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-import '../screens/interacoes_screen.dart';
+import '../screens/ficha_cliente_screen.dart';
 import '../services/firestore_service.dart';
 
 // ── Modelo interno ────────────────────────────────────────────────────────────
@@ -422,7 +422,7 @@ class _PainelLateral extends StatelessWidget {
       onTap: () {
         Navigator.of(context).pop(); // fecha painel
         Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => InteracoesScreen(cliente: item.cliente),
+          builder: (_) => FichaClienteScreen(cliente: item.cliente),
         ));
       },
       child: Padding(

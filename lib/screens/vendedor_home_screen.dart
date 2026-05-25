@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-import '../screens/interacoes_screen.dart';
+import '../screens/ficha_cliente_screen.dart';
 import '../services/firestore_service.dart';
 import '../widgets/aba_agenda.dart';
 
@@ -216,7 +216,7 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
   void _abrirCliente(BuildContext context, Cliente cliente) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => InteracoesScreen(cliente: cliente),
+        builder: (_) => FichaClienteScreen(cliente: cliente),
       ),
     );
   }
