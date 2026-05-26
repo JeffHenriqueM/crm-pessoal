@@ -51,12 +51,10 @@ class FichaAtendimentoData {
 // ── Gerador de PDF ───────────────────────────────────────────────────────────
 class FichaAtendimentoPdf {
   static final _dataHoraFmt = DateFormat('dd/MM/yyyy HH:mm');
-  static final _dataFmt = DateFormat('dd/MM/yyyy');
 
   // Cores
   static const _preto = PdfColors.black;
   static const _cinzaClaro = PdfColors.grey300;
-  static const _laranja = PdfColor(0.90, 0.45, 0.0);
 
   // ── Método público ─────────────────────────────────────────────────────────
   static Future<void> gerar(FichaAtendimentoData data) async {
@@ -179,14 +177,10 @@ class FichaAtendimentoPdf {
         pw.SizedBox(height: 4),
 
         // Rodapé esquerdo — papéis da equipe
-        _rodapeItem('Data:', _dataFmt.format(d.dataEntrada)),
-        _rodapeItem('Gerente:', null),
-        _rodapeItem('Supervisor de MKT:', null),
-        _rodapeItem('Promotor de MKT:', null),
+        _rodapeItem('Gerente:', 'Marcio'),
+        _rodapeItem('Promotor de MKT:', d.captadorNome),
         _rodapeItem('Liner:', d.linerNome),
         _rodapeItem('Closer:', d.vendedorNome),
-        _rodapeItem('Pep:', d.captadorNome),
-        _rodapeItem('MNV:', null),
         _rodapeItem('Brinde:', d.brinde),
       ],
     );
@@ -283,7 +277,7 @@ class FichaAtendimentoPdf {
               pw.SizedBox(width: 12),
               pw.Expanded(
                 child:
-                    _labelComValorOuLinha('Sistema:', d.captadorNome),
+                    _labelComValorOuLinha('Sistema:', 'Villamor CRM'),
               ),
             ],
           ),
@@ -324,7 +318,7 @@ class FichaAtendimentoPdf {
         )),
         pw.SizedBox(height: 3),
 
-        // Telefone titular com destaque laranja
+        // Telefone titular
         _linhaGrade(
           pw.Row(
             children: [
@@ -332,13 +326,13 @@ class FichaAtendimentoPdf {
                   style: pw.TextStyle(
                       fontSize: 9,
                       fontWeight: pw.FontWeight.bold,
-                      color: _laranja)),
+                      color: _preto)),
               pw.Text(
                 d.telefone ?? '_________________________________',
                 style: pw.TextStyle(
                     fontSize: 9,
                     fontWeight: pw.FontWeight.bold,
-                    color: d.telefone != null ? _laranja : _cinzaClaro),
+                    color: d.telefone != null ? _preto : _cinzaClaro),
               ),
             ],
           ),
@@ -357,7 +351,7 @@ class FichaAtendimentoPdf {
         )),
         pw.SizedBox(height: 3),
 
-        // Telefone cônjuge com destaque laranja
+        // Telefone cônjuge
         _linhaGrade(
           pw.Row(
             children: [
@@ -365,13 +359,13 @@ class FichaAtendimentoPdf {
                   style: pw.TextStyle(
                       fontSize: 9,
                       fontWeight: pw.FontWeight.bold,
-                      color: _laranja)),
+                      color: _preto)),
               pw.Text(
                 d.telefoneConjuge ?? '_________________________',
                 style: pw.TextStyle(
                     fontSize: 9,
                     fontWeight: pw.FontWeight.bold,
-                    color: d.telefoneConjuge != null ? _laranja : _cinzaClaro),
+                    color: d.telefoneConjuge != null ? _preto : _cinzaClaro),
               ),
             ],
           ),
@@ -391,8 +385,7 @@ class FichaAtendimentoPdf {
         pw.SizedBox(height: 3),
         pw.SizedBox(height: 6),
 
-        // Valor de diária + linhas em branco para notas
-        _labelComLinha('Valor de diária:'),
+        // Linhas em branco para notas
         for (int i = 0; i < 6; i++) ...[
           pw.SizedBox(height: 9),
           pw.Divider(color: _cinzaClaro, thickness: 0.4),
@@ -403,7 +396,7 @@ class FichaAtendimentoPdf {
         pw.Divider(color: _cinzaClaro, thickness: 0.7),
         pw.SizedBox(height: 6),
 
-        // Hospede / Salas / Aptos
+        // Hospede / Salas / Aptos / Quarto
         pw.Row(
           children: [
             pw.Text('HOSPEDE  ',
@@ -414,6 +407,12 @@ class FichaAtendimentoPdf {
             pw.SizedBox(width: 12),
             _checkbox(), pw.SizedBox(width: 4),
             pw.Text('NÃO', style: const pw.TextStyle(fontSize: 9)),
+            pw.SizedBox(width: 12),
+            pw.Text('QUARTO: ',
+                style: const pw.TextStyle(fontSize: 9)),
+            pw.Text('____________',
+                style: pw.TextStyle(
+                    fontSize: 9, color: _cinzaClaro)),
           ],
         ),
         pw.SizedBox(height: 5),

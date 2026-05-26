@@ -376,7 +376,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _profissaoCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Profissão',
-                            prefixIcon: Icon(Icons.work_outlined),
+                            prefixIcon: Icon(Icons.work_outline),
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -431,7 +431,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _profissaoConjugeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Profissão',
-                            prefixIcon: Icon(Icons.work_outlined),
+                            prefixIcon: Icon(Icons.work_outline),
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
