@@ -12,6 +12,8 @@ class ListaClientesAppBar extends StatelessWidget
   final Function(bool) onSearchStateChange;
   final Function(String) onSortChange;
   final VoidCallback onToggleView;
+  final VoidCallback? onFiltroTap;
+  final int filtrosAtivos;
 
   const ListaClientesAppBar({
     super.key,
@@ -22,6 +24,8 @@ class ListaClientesAppBar extends StatelessWidget
     required this.onSearchStateChange,
     required this.onSortChange,
     required this.onToggleView,
+    this.onFiltroTap,
+    this.filtrosAtivos = 0,
   });
 
   @override
@@ -70,6 +74,46 @@ class ListaClientesAppBar extends StatelessWidget
             icon: Icon(estaPesquisando ? Icons.close : Icons.search),
             tooltip: estaPesquisando ? 'Fechar busca' : 'Pesquisar',
             onPressed: () => onSearchStateChange(false),
+          ),
+        // Filtros avançados
+        if (!usarKanban)
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.filter_list,
+                  color: filtrosAtivos > 0
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                tooltip: 'Filtros',
+                onPressed: onFiltroTap,
+              ),
+              if (filtrosAtivos > 0)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$filtrosAtivos',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         // Ordenação
         if (!usarKanban)
