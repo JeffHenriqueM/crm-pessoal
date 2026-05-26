@@ -470,6 +470,49 @@ class _KanbanCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+
+              // ── Badge rastreamento de mensagem (#16) ──────────────
+              if (cliente.statusMensagem == 'nao_enviada' ||
+                  cliente.statusMensagem == 'enviada_sem_resposta') ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: cliente.statusMensagem == 'nao_enviada'
+                        ? cs.errorContainer
+                        : Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        cliente.statusMensagem == 'nao_enviada'
+                            ? Icons.message_outlined
+                            : Icons.schedule_outlined,
+                        size: 10,
+                        color: cliente.statusMensagem == 'nao_enviada'
+                            ? cs.onErrorContainer
+                            : Colors.amber.shade900,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        cliente.statusMensagem == 'nao_enviada'
+                            ? 'Msg. não enviada'
+                            : 'Aguardando resposta',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: cliente.statusMensagem == 'nao_enviada'
+                              ? cs.onErrorContainer
+                              : Colors.amber.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

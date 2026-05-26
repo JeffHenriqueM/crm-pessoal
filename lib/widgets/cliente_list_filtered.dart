@@ -236,6 +236,55 @@ class ClienteListFiltered extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
+
+                    // ── Badge rastreamento de mensagem (#16) ──────────
+                    if (cliente.statusMensagem == 'nao_enviada' ||
+                        cliente.statusMensagem == 'enviada_sem_resposta') ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: cliente.statusMensagem == 'nao_enviada'
+                                  ? cs.errorContainer
+                                  : Colors.amber.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  cliente.statusMensagem == 'nao_enviada'
+                                      ? Icons.message_outlined
+                                      : Icons.schedule_outlined,
+                                  size: 11,
+                                  color: cliente.statusMensagem == 'nao_enviada'
+                                      ? cs.onErrorContainer
+                                      : Colors.amber.shade900,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  cliente.statusMensagem == 'nao_enviada'
+                                      ? 'Mensagem não enviada'
+                                      : 'Aguardando resposta',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        cliente.statusMensagem == 'nao_enviada'
+                                            ? cs.onErrorContainer
+                                            : Colors.amber.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

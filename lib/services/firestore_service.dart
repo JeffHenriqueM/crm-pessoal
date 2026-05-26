@@ -218,17 +218,67 @@ class FirestoreService {
   }
 
   Future<void> _adicionarInteracaoAutomatica(
-      String clienteId, String texto) async {
+    String clienteId,
+    String texto, {
+    String titulo = 'Evento do Sistema',
+    String tipo = 'sistema',
+  }) async {
     await _db
         .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
         .add({
-      'titulo': 'Evento do Sistema',
+      'titulo': titulo,
       'nota': texto,
       'dataInteracao': FieldValue.serverTimestamp(),
-      'tipo': 'sistema',
+      'tipo': tipo,
       'autorNome': 'Sistema',
+    });
+  }
+
+  /// Registra o resultado do rastreamento de mensagem:
+  /// salva interação automática + atualiza statusMensagem no cliente.
+  Future<void> registrarRastreamentoMensagem({
+    required String clienteId,
+    required String status,
+    String? motivo,
+  }) async {
+    String titulo, nota;
+    switch (status) {
+      case 'nao_enviada':
+        titulo = 'Mensagem não enviada';
+        nota = (motivo != null && motivo.isNotEmpty)
+            ? 'Motivo: $motivo'
+            : 'Mensagem não foi enviada ao cliente.';
+      case 'enviada_sem_resposta':
+        titulo = 'Mensagem enviada — aguardando resposta';
+        nota = 'Mensagem enviada. Cliente ainda sem retorno.';
+      case 'enviada_com_resposta':
+        titulo = 'Mensagem enviada — obteve resposta';
+        nota = 'Mensagem enviada e cliente respondeu.';
+      default:
+        return;
+    }
+
+    await _db.collection(_colClientes).doc(clienteId).update({
+      'statusMensagem': status,
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
+    });
+    await _adicionarInteracaoAutomatica(
+      clienteId,
+      nota,
+      titulo: titulo,
+      tipo: 'mensagem',
+    );
+  }
+
+  /// Limpa o statusMensagem (chamado quando nova data de contato é confirmada).
+  Future<void> limparStatusMensagem(String clienteId) async {
+    await _db.collection(_colClientes).doc(clienteId).update({
+      'statusMensagem': null,
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
     });
   }
 

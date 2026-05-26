@@ -38,6 +38,10 @@ class Cliente {
   final String? linerId;
   final String? linerNome;
 
+  // ── Rastreamento de mensagens (#16) ───────────────────────────────────────
+  // Valores: null | 'nao_enviada' | 'enviada_sem_resposta' | 'enviada_com_resposta'
+  final String? statusMensagem;
+
   Cliente({
     this.id,
     required this.nome,
@@ -71,6 +75,7 @@ class Cliente {
     this.profissaoConjuge,
     this.linerId,
     this.linerNome,
+    this.statusMensagem,
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -107,6 +112,7 @@ class Cliente {
       'profissaoConjuge': profissaoConjuge,
       'linerId': linerId,
       'linerNome': linerNome,
+      'statusMensagem': statusMensagem,
     };
   }
 
@@ -161,6 +167,7 @@ class Cliente {
       profissaoConjuge: data['profissaoConjuge'],
       linerId: data['linerId'],
       linerNome: data['linerNome'],
+      statusMensagem: data['statusMensagem'] as String?,
     );
   }
 }
