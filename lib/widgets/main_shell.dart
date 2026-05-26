@@ -55,7 +55,6 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.view_kanban_outlined,     activeIcon: Icons.view_kanban,          label: 'Leads'),
         _NavItem(icon: Icons.handshake_outlined,       activeIcon: Icons.handshake_rounded,    label: 'Negociações'),
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
-        _NavItem(icon: Icons.manage_accounts_outlined, activeIcon: Icons.manage_accounts,      label: 'Usuários'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
       ];
     }
@@ -83,7 +82,6 @@ class _MainShellState extends State<MainShell> {
       const ListaClientesScreen(),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId),
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
-      const GerenciarUsuariosScreen(),
       const CampanhasScreen(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
@@ -117,6 +115,206 @@ class _MainShellState extends State<MainShell> {
     setState(() => _sidebarExpanded = novoEstado);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('sidebar_expanded', novoEstado);
+  }
+
+  // ── Configurações ─────────────────────────────────────────────────────────
+  void _abrirConfiguracoes(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return AnimatedBuilder(
+          animation: ThemeController.instance,
+          builder: (_, __) {
+            final isDark = ThemeController.instance.isDark;
+            final cs = Theme.of(ctx).colorScheme;
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Configurações',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Aparência',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.outline,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        // Card Light Mode
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isDark
+                                ? ThemeController.instance.toggle
+                                : null,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 20, horizontal: 12),
+                              decoration: BoxDecoration(
+                                color: !isDark
+                                    ? cs.primaryContainer
+                                    : cs.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: !isDark
+                                      ? cs.primary
+                                      : cs.outlineVariant,
+                                  width: !isDark ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.light_mode_rounded,
+                                    size: 32,
+                                    color: !isDark
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Light Mode',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: !isDark
+                                          ? cs.primary
+                                          : cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  if (!isDark) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: cs.primary,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        'Ativo',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onPrimary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Card Dark Mode
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: !isDark
+                                ? ThemeController.instance.toggle
+                                : null,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 20, horizontal: 12),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? cs.primaryContainer
+                                    : cs.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isDark
+                                      ? cs.primary
+                                      : cs.outlineVariant,
+                                  width: isDark ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.dark_mode_rounded,
+                                    size: 32,
+                                    color: isDark
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Dark Mode',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? cs.primary
+                                          : cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  if (isDark) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: cs.primary,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        'Ativo',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onPrimary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -331,6 +529,37 @@ class _MainShellState extends State<MainShell> {
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 4),
 
+          // ── Configurações ──────────────────────────────────────────────
+          if (_sidebarExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+              child: ListTile(
+                leading: Icon(Icons.settings_outlined,
+                    color: cs.onSurfaceVariant, size: 20),
+                title: Text('Configurações',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                horizontalTitleGap: 8,
+                dense: true,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onTap: () => _abrirConfiguracoes(context),
+              ),
+            )
+          else
+            Center(
+              child: Tooltip(
+                message: 'Configurações',
+                preferBelow: false,
+                child: IconButton(
+                  icon: Icon(Icons.settings_outlined,
+                      color: cs.onSurfaceVariant, size: 20),
+                  onPressed: () => _abrirConfiguracoes(context),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
+
           // ── Notificações ───────────────────────────────────────────────
           if (_sidebarExpanded)
             Padding(
@@ -355,58 +584,47 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
 
-          // ── Tema ──────────────────────────────────────────────────────
-          AnimatedBuilder(
-            animation: ThemeController.instance,
-            builder: (_, __) {
-              final isDark = ThemeController.instance.isDark;
-
-              if (!_sidebarExpanded) {
-                return Center(
-                  child: Tooltip(
-                    message: isDark ? 'Modo claro' : 'Modo escuro',
-                    preferBelow: false,
-                    child: IconButton(
-                      icon: Icon(
-                        isDark
-                            ? Icons.light_mode_outlined
-                            : Icons.dark_mode_outlined,
-                        color: cs.onSurfaceVariant,
-                        size: 20,
-                      ),
-                      onPressed: ThemeController.instance.toggle,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                );
-              }
-
-              return Padding(
+          // ── Usuários (admin only) ──────────────────────────────────────
+          if (_isAdmin)
+            if (_sidebarExpanded)
+              Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                 child: ListTile(
-                  leading: Icon(
-                    isDark
-                        ? Icons.light_mode_outlined
-                        : Icons.dark_mode_outlined,
-                    color: cs.onSurfaceVariant,
-                    size: 20,
-                  ),
-                  title: Text(
-                    isDark ? 'Modo claro' : 'Modo escuro',
-                    style: TextStyle(fontSize: 14, color: cs.onSurface),
-                  ),
+                  leading: Icon(Icons.manage_accounts_outlined,
+                      color: cs.onSurfaceVariant, size: 20),
+                  title: Text('Usuários',
+                      style: TextStyle(fontSize: 14, color: cs.onSurface)),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 12),
                   horizontalTitleGap: 8,
                   dense: true,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
-                  onTap: ThemeController.instance.toggle,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const GerenciarUsuariosScreen()),
+                  ),
                 ),
-              );
-            },
-          ),
+              )
+            else
+              Center(
+                child: Tooltip(
+                  message: 'Usuários',
+                  preferBelow: false,
+                  child: IconButton(
+                    icon: Icon(Icons.manage_accounts_outlined,
+                        color: cs.onSurfaceVariant, size: 20),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const GerenciarUsuariosScreen()),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
 
           // ── Sair ──────────────────────────────────────────────────────
           if (_sidebarExpanded)
