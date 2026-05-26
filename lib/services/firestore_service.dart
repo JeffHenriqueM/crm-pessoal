@@ -58,6 +58,18 @@ class FirestoreService {
     return docRef.id;
   }
 
+  /// Retorna o próximo número de atendimento (atômico via transação Firestore).
+  Future<int> proximoNumeroAtendimento() async {
+    final ref = _db.collection('config').doc('contadores');
+    return await _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final atual = (snap.data()?['atendimentos'] ?? 0) as int;
+      final proximo = atual + 1;
+      tx.set(ref, {'atendimentos': proximo}, SetOptions(merge: true));
+      return proximo;
+    });
+  }
+
   Future<void> atualizarFaseCliente(String id, FaseCliente novaFase,
       {String? motivo}) async {
     await _db.collection(_colClientes).doc(id).update({

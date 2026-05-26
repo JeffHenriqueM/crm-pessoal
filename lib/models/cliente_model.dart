@@ -26,6 +26,10 @@ class Cliente {
   final String? criadoPorNome;
   final String? atualizadoPorId;
   final String? atualizadoPorNome;
+  // ── Campos de recepção ────────────────────────────────────────────────────
+  final String? brinde;
+  final String? sala;
+  final int? numeroAtendimento;
 
   Cliente({
     this.id,
@@ -51,6 +55,9 @@ class Cliente {
     this.criadoPorNome,
     this.atualizadoPorId,
     this.atualizadoPorNome,
+    this.brinde,
+    this.sala,
+    this.numeroAtendimento,
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -78,6 +85,9 @@ class Cliente {
       'criadoPorNome': criadoPorNome,
       'atualizadoPorId': atualizadoPorId,
       'atualizadoPorNome': atualizadoPorNome,
+      'brinde': brinde,
+      'sala': sala,
+      'numeroAtendimento': numeroAtendimento,
     };
   }
 
@@ -123,6 +133,9 @@ class Cliente {
       criadoPorNome: data['criadoPorNome'],
       atualizadoPorId: data['atualizadoPorId'],
       atualizadoPorNome: data['atualizadoPorNome'],
+      brinde: data['brinde'],
+      sala: data['sala'],
+      numeroAtendimento: data['numeroAtendimento'] as int?,
     );
   }
 }
