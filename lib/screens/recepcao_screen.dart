@@ -92,11 +92,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
   String?   _brinde;
   Usuario?  _captador;
 
-  // Vendedor — modo FTB ou liner+closer
-  bool     _doisVendedores = false;
-  Usuario? _vendedor; // FTB
-  Usuario? _liner;    // quem apresenta
-  Usuario? _closer;   // quem fecha
+  // Na recepção, apenas o Liner (apresentador) é atribuído.
+  // O Closer pode ser adicionado depois na ficha do cliente.
+  Usuario? _liner;
 
   List<Usuario> _usuarios          = [];
   bool          _carregandoUsuarios = true;
@@ -151,11 +149,11 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
       final agora = DateTime.now();
       final numeroAtendimento = await _service.proximoNumeroAtendimento();
 
-      // Define vendedor, liner e closer conforme o modo
-      final String? vendedorId   = _doisVendedores ? _closer?.id   : _vendedor?.id;
-      final String? vendedorNome = _doisVendedores ? _closer?.nome  : _vendedor?.nome;
-      final String? linerId      = _doisVendedores ? _liner?.id     : null;
-      final String? linerNome    = _doisVendedores ? _liner?.nome   : null;
+      // Recepção atribui apenas o Liner. Closer = null até ser definido depois.
+      final String? linerId   = _liner?.id;
+      final String? linerNome = _liner?.nome;
+      const String? vendedorId   = null;
+      const String? vendedorNome = null;
 
       final cliente = Cliente(
         nome: _nomeCtrl.text.trim(),
@@ -246,12 +244,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
       c.clear();
     }
     _captador = null;
-    _vendedor = null;
     _liner = null;
-    _closer = null;
     _brinde = null;
     _sala = 'Villa';
-    _doisVendedores = false;
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -326,7 +321,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _idadeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Idade',
-                            prefixIcon: Icon(Icons.cake_outlined),
+                            prefixIcon: Icon(Icons.cake_outlined, size: 18),
+                            prefixIconConstraints:
+                                BoxConstraints(minWidth: 36, minHeight: 36),
                           ),
                           keyboardType: TextInputType.number,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -339,7 +336,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _profissaoCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Profissão',
-                            prefixIcon: Icon(Icons.work_outline),
+                            prefixIcon: Icon(Icons.work_outline, size: 18),
+                            prefixIconConstraints:
+                                BoxConstraints(minWidth: 36, minHeight: 36),
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -381,7 +380,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _idadeConjugeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Idade',
-                            prefixIcon: Icon(Icons.cake_outlined),
+                            prefixIcon: Icon(Icons.cake_outlined, size: 18),
+                            prefixIconConstraints:
+                                BoxConstraints(minWidth: 36, minHeight: 36),
                           ),
                           keyboardType: TextInputType.number,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -394,7 +395,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _profissaoConjugeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Profissão',
-                            prefixIcon: Icon(Icons.work_outline),
+                            prefixIcon: Icon(Icons.work_outline, size: 18),
+                            prefixIconConstraints:
+                                BoxConstraints(minWidth: 36, minHeight: 36),
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -437,105 +440,24 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                         onChanged: (v) => setState(() => _captador = v),
                         validator: (v) => v == null ? 'Selecione o captador' : null,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
 
-                      // Toggle: dois vendedores?
-                      Container(
-                        decoration: BoxDecoration(
-                          color: _doisVendedores
-                              ? cs.secondaryContainer.withValues(alpha: 0.4)
-                              : cs.surfaceContainerHighest.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: _doisVendedores
-                                ? cs.secondary
-                                : cs.outlineVariant,
-                            width: _doisVendedores ? 1.5 : 1,
-                          ),
+                      // Vendedor (Liner) — Closer pode ser adicionado depois
+                      DropdownButtonFormField<Usuario>(
+                        value: _liner,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Vendedor *',
+                          prefixIcon: Icon(Icons.record_voice_over_outlined),
                         ),
-                        child: SwitchListTile(
-                          dense: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                          title: const Text(
-                            'Houve outro vendedor no atendimento?',
-                            style: TextStyle(fontSize: 14),
-                          ),
-                          subtitle: Text(
-                            _doisVendedores
-                                ? 'Liner + Closer — ambos aparecerão na lista de leads'
-                                : 'Não — vendedor único (FTB)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _doisVendedores
-                                  ? cs.secondary
-                                  : cs.onSurfaceVariant,
-                            ),
-                          ),
-                          value: _doisVendedores,
-                          onChanged: (v) => setState(() {
-                            _doisVendedores = v;
-                            _vendedor = null;
-                            _liner = null;
-                            _closer = null;
-                          }),
-                        ),
+                        hint: const Text('Selecione'),
+                        items: _usuarios.map((u) =>
+                          DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
+                        onChanged: (v) => setState(() => _liner = v),
+                        validator: (v) => v == null ? 'Selecione o vendedor' : null,
                       ),
                       const SizedBox(height: 14),
 
-                      // Modo FTB — vendedor único
-                      if (!_doisVendedores)
-                        DropdownButtonFormField<Usuario>(
-                          value: _vendedor,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            labelText: 'Vendedor (FTB) *',
-                            prefixIcon: const Icon(Icons.handshake_outlined),
-                            suffixIcon: Tooltip(
-                              message: 'FTB = Full Table Buy — vendedor único',
-                              child: Icon(Icons.info_outline,
-                                  size: 16, color: cs.onSurfaceVariant),
-                            ),
-                          ),
-                          hint: const Text('Selecione'),
-                          items: _usuarios.map((u) =>
-                            DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
-                          onChanged: (v) => setState(() => _vendedor = v),
-                          validator: (v) => v == null ? 'Selecione o vendedor' : null,
-                        )
-
-                      // Modo Liner + Closer
-                      else ...[
-                        DropdownButtonFormField<Usuario>(
-                          value: _liner,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Liner (apresenta) *',
-                            prefixIcon: Icon(Icons.record_voice_over_outlined),
-                          ),
-                          hint: const Text('Selecione'),
-                          items: _usuarios.map((u) =>
-                            DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
-                          onChanged: (v) => setState(() => _liner = v),
-                          validator: (v) => v == null ? 'Selecione o liner' : null,
-                        ),
-                        const SizedBox(height: 14),
-                        DropdownButtonFormField<Usuario>(
-                          value: _closer,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Closer (fecha) *',
-                            prefixIcon: Icon(Icons.handshake_outlined),
-                          ),
-                          hint: const Text('Selecione'),
-                          items: _usuarios.map((u) =>
-                            DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
-                          onChanged: (v) => setState(() => _closer = v),
-                          validator: (v) => v == null ? 'Selecione o closer' : null,
-                        ),
-                      ],
-
-                      const SizedBox(height: 14),
                       // Brinde
                       DropdownButtonFormField<String>(
                         value: _brinde,
