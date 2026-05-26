@@ -50,8 +50,8 @@ class _MainShellState extends State<MainShell> {
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
-    icon: Icons.meeting_room_outlined,
-    activeIcon: Icons.meeting_room,
+    icon: Icons.how_to_reg_outlined,
+    activeIcon: Icons.how_to_reg,
     label: 'Recepção',
   );
 

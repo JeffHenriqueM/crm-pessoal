@@ -11,6 +11,29 @@ import '../services/ficha_pdf.dart';
 import '../services/firestore_service.dart';
 import 'ficha_cliente_screen.dart';
 
+// ── Máscara de telefone (XX) XXXXX-XXXX ─────────────────────────────────────
+class _PhoneFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buf = StringBuffer();
+    for (var i = 0; i < digits.length && i < 11; i++) {
+      if (i == 0) buf.write('(');
+      if (i == 2) buf.write(') ');
+      if (i == 7) buf.write('-');
+      buf.write(digits[i]);
+    }
+    final s = buf.toString();
+    return TextEditingValue(
+      text: s,
+      selection: TextSelection.collapsed(offset: s.length),
+    );
+  }
+}
+
 // ── Shell da recepção (app bar + 2 abas) ────────────────────────────────────
 class RecepcaoShell extends StatelessWidget {
   final String? currentUserId;
@@ -108,6 +131,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
   @override
   void initState() {
     super.initState();
+    _pontoCapCtrl.text = 'Hotel'; // sala default = Villa
     _carregarUsuarios();
   }
 
@@ -125,18 +149,21 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
 
   Future<void> _carregarUsuarios() async {
     try {
-      final lista = await _service.getTodosUsuarios(apenasAtivos: true);
+      // Carrega sem filtro Firestore (evita problema com campo 'ativo' ausente)
+      // e filtra client-side por perfil e ativo.
+      final lista = await _service.getTodosUsuarios();
       if (mounted) {
         setState(() {
+          const perfisValidos = ['captador', 'vendedor', 'admin', 'super admin'];
           _usuarios = lista
-              .where((u) => ['captador', 'vendedor', 'admin', 'super admin']
-                  .contains(u.perfil))
+              .where((u) => u.ativo && perfisValidos.contains(u.perfil))
               .toList()
             ..sort((a, b) => a.nome.compareTo(b.nome));
           _carregandoUsuarios = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Recepção] Erro ao carregar usuários: $e');
       if (mounted) setState(() => _carregandoUsuarios = false);
     }
   }
@@ -247,6 +274,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
     _liner = null;
     _brinde = null;
     _sala = 'Villa';
+    _pontoCapCtrl.text = 'Hotel';
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -280,7 +308,19 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           ),
                           items: _salas.map((s) =>
                             DropdownMenuItem(value: s, child: Text(s))).toList(),
-                          onChanged: (v) => setState(() => _sala = v ?? _sala),
+                          onChanged: (v) {
+                            final novaSala = v ?? _sala;
+                            setState(() {
+                              // Auto-preenche ponto de captação se ainda no valor automático
+                              final autoAtual = _sala == 'Villa' ? 'Hotel' : 'WhatsApp';
+                              final autoNovo  = novaSala == 'Villa' ? 'Hotel' : 'WhatsApp';
+                              if (_pontoCapCtrl.text.isEmpty ||
+                                  _pontoCapCtrl.text == autoAtual) {
+                                _pontoCapCtrl.text = autoNovo;
+                              }
+                              _sala = novaSala;
+                            });
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -321,9 +361,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _idadeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Idade',
-                            prefixIcon: Icon(Icons.cake_outlined, size: 18),
-                            prefixIconConstraints:
-                                BoxConstraints(minWidth: 36, minHeight: 36),
+                            hintText: 'anos',
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 14),
                           ),
                           keyboardType: TextInputType.number,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -336,9 +376,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _profissaoCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Profissão',
-                            prefixIcon: Icon(Icons.work_outline, size: 18),
-                            prefixIconConstraints:
-                                BoxConstraints(minWidth: 36, minHeight: 36),
+                            prefixIcon: Icon(Icons.work_outline),
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -353,9 +391,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                         hintText: '(XX) XXXXX-XXXX',
                       ),
                       keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-+]'))
-                      ],
+                      inputFormatters: [_PhoneFormatter()],
                     ),
                   ],
                 ),
@@ -380,9 +416,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _idadeConjugeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Idade',
-                            prefixIcon: Icon(Icons.cake_outlined, size: 18),
-                            prefixIconConstraints:
-                                BoxConstraints(minWidth: 36, minHeight: 36),
+                            hintText: 'anos',
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 14),
                           ),
                           keyboardType: TextInputType.number,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -395,9 +431,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           controller: _profissaoConjugeCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Profissão',
-                            prefixIcon: Icon(Icons.work_outline, size: 18),
-                            prefixIconConstraints:
-                                BoxConstraints(minWidth: 36, minHeight: 36),
+                            prefixIcon: Icon(Icons.work_outline),
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -412,9 +446,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                         hintText: '(XX) XXXXX-XXXX',
                       ),
                       keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-+]'))
-                      ],
+                      inputFormatters: [_PhoneFormatter()],
                     ),
                   ],
                 ),
