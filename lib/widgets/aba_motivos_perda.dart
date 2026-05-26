@@ -337,15 +337,18 @@ class AbaMotivosPerda extends StatelessWidget {
   }
 
   Widget _clienteTile(Cliente c, ColorScheme cs) {
-    final obs = c.motivoNaoVenda?.trim() ?? '';
+    final detalhe = c.motivoNaoVenda?.trim() ?? '';
+    final temDropdown = c.motivoNaoVendaDropdown?.isNotEmpty == true;
     final fmt = DateFormat('dd/MM/yy');
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Avatar
           CircleAvatar(
-            radius: 14,
+            radius: 15,
             backgroundColor: cs.primaryContainer,
             child: Text(
               c.nome.isNotEmpty ? c.nome[0].toUpperCase() : '?',
@@ -361,6 +364,7 @@ class AbaMotivosPerda extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Nome + data
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -378,18 +382,70 @@ class AbaMotivosPerda extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (c.vendedorNome != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    c.vendedorNome!,
-                    style: TextStyle(fontSize: 11, color: cs.primary),
-                  ),
-                ],
-                if (obs.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    obs.length > 120 ? '${obs.substring(0, 117)}...' : obs,
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+
+                // Embaixador + chip de origem da classificação
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    if (c.vendedorNome != null) ...[
+                      Icon(Icons.person_outlined,
+                          size: 11, color: cs.primary),
+                      const SizedBox(width: 3),
+                      Text(
+                        c.vendedorNome!,
+                        style: TextStyle(fontSize: 11, color: cs.primary),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    // Chip: "preenchido" ou "auto-classificado"
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: temDropdown
+                            ? Colors.green.withValues(alpha: 0.12)
+                            : Colors.orange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        temDropdown ? '✓ classificado' : '⚡ auto',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: temDropdown
+                              ? Colors.green.shade700
+                              : Colors.orange.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Detalhe do motivo (texto completo)
+                if (detalhe.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border(
+                        left: BorderSide(
+                          color: cs.outlineVariant,
+                          width: 3,
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      detalhe,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
                   ),
                 ],
               ],
