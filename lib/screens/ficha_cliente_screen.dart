@@ -68,8 +68,15 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
 
   static const _origens = ['Presencial', 'WhatsApp', 'Instagram'];
   static const _motivos = [
-    'Financeiro', 'Distância', 'Não conhecem a Villamor',
-    'Sem interesse', 'Perfil Inadequado', 'Sem retorno', 'Outro',
+    'Sem interesse',
+    'Sem retorno',
+    'Financeiro',
+    'Vieram pelo brinde/voucher',
+    'Não conhecem a Villamor',
+    'Perfil Inadequado',
+    'Quer decidir depois',
+    'Proposta não aprovada',
+    'Outro',
   ];
 
   // ── Init / Dispose ───────────────────────────────────────────────────────────

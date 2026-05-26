@@ -6,6 +6,7 @@ import '../services/firestore_service.dart';
 import '../widgets/aba_admin_overview.dart';
 import '../widgets/aba_agenda.dart';
 import '../widgets/aba_estatisticas.dart';
+import '../widgets/aba_motivos_perda.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -72,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin';
 
     return DefaultTabController(
-      length: isAdmin ? 3 : 2,
+      length: isAdmin ? 4 : 2,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -121,7 +122,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
         bottom: const TabBar(
           indicatorWeight: 3,
-          isScrollable: false,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: [
             Tab(
               text: 'Equipe',
@@ -134,6 +136,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(
               text: 'Agenda',
               icon: Icon(Icons.calendar_month_outlined),
+            ),
+            Tab(
+              text: 'Perdas',
+              icon: Icon(Icons.person_off_outlined),
             ),
           ],
         ),
@@ -170,6 +176,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               AbaEstatisticas(clientes: clientesFiltrados),
               // Aba 2: Agenda (responde ao filtro de vendedor)
               AbaAgenda(events: eventos),
+              // Aba 3: Motivos de perda (sempre todos os clientes)
+              AbaMotivosPerda(clientes: todosClientes),
             ],
           );
         },
