@@ -27,21 +27,46 @@ class FirestoreService {
     return Stream.fromFuture(_getCurrentUserProfile())
         .asyncMap((perfil) {
           debugPrint('[Firestore] perfil=$perfil | filtro=$vendedorId | ordenar=$ordenarPor');
-          final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro'];
-          Query query = _db.collection(_colClientes);
+          final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro', 'super admin'];
+          final uid = _currentUserId;
 
+          // Admins e perfis com visão total
           if (perfisComVisaoTotal.contains(perfil)) {
+            Query query = _db.collection(_colClientes);
             if (vendedorId != null && vendedorId.isNotEmpty) {
               query = query.where('vendedorId', isEqualTo: vendedorId);
             }
-          } else {
-            query = query.where('vendedorId', isEqualTo: _currentUserId);
+            query = query.orderBy(ordenarPor, descending: descendente);
+            return query.snapshots().map(
+                (s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
           }
 
-          query = query.orderBy(ordenarPor, descending: descendente);
+          // Vendedor/captador: vê leads onde é vendedor (closer/FTB) OU liner
+          final streamVendedor = _db
+              .collection(_colClientes)
+              .where('vendedorId', isEqualTo: uid)
+              .snapshots()
+              .map((s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
 
-          return query.snapshots().map(
-              (s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+          final streamLiner = _db
+              .collection(_colClientes)
+              .where('linerId', isEqualTo: uid)
+              .snapshots()
+              .map((s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+
+          return Rx.combineLatest2<List<Cliente>, List<Cliente>, List<Cliente>>(
+            streamVendedor,
+            streamLiner,
+            (vendedores, liners) {
+              final vistos = <String>{};
+              final result = <Cliente>[];
+              for (final c in [...vendedores, ...liners]) {
+                if (c.id != null && vistos.add(c.id!)) result.add(c);
+              }
+              result.sort((a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
+              return result;
+            },
+          );
         })
         .switchMap((stream) => stream);
   }

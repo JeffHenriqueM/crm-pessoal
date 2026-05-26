@@ -21,7 +21,8 @@ class FichaAtendimentoData {
   final String? telefoneConjuge;
   final String? brinde;
   final String? captadorNome;
-  final String? vendedorNome;
+  final String? linerNome;
+  final String? vendedorNome; // closer ou FTB
   final String sala;
   final String? pontoCapatcao;
   final int? numeroAtendimento;
@@ -38,6 +39,7 @@ class FichaAtendimentoData {
     this.telefoneConjuge,
     this.brinde,
     this.captadorNome,
+    this.linerNome,
     this.vendedorNome,
     required this.sala,
     this.pontoCapatcao,
@@ -181,7 +183,7 @@ class FichaAtendimentoPdf {
         _rodapeItem('Gerente:', null),
         _rodapeItem('Supervisor de MKT:', null),
         _rodapeItem('Promotor de MKT:', null),
-        _rodapeItem('Liner:', null),
+        _rodapeItem('Liner:', d.linerNome),
         _rodapeItem('Closer:', d.vendedorNome),
         _rodapeItem('Pep:', d.captadorNome),
         _rodapeItem('MNV:', null),

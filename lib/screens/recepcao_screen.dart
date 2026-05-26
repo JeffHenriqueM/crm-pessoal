@@ -1,7 +1,4 @@
 // lib/screens/recepcao_screen.dart
-//
-// Shell + Tela de recepção: cadastro rápido de casal em sala.
-// Perfil 'recepcao' cai diretamente nesta tela (sem sidebar CRM).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,11 +26,8 @@ class RecepcaoShell extends StatelessWidget {
           automaticallyImplyLeading: false,
           title: Row(
             children: [
-              Image.asset(
-                'assets/images/logo.png',
-                height: 28,
-                filterQuality: FilterQuality.medium,
-              ),
+              Image.asset('assets/images/logo.png',
+                  height: 28, filterQuality: FilterQuality.medium),
               const SizedBox(width: 10),
               const Text('Recepção — Villamor'),
             ],
@@ -60,17 +54,14 @@ class RecepcaoShell extends StatelessWidget {
           ),
         ),
         body: const TabBarView(
-          children: [
-            RecepcaoScreen(),
-            _RecepcaoLeadsTab(),
-          ],
+          children: [RecepcaoScreen(), _RecepcaoLeadsTab()],
         ),
       ),
     );
   }
 }
 
-// ── Tela principal ───────────────────────────────────────────────────────────
+// ── Formulário de registro ───────────────────────────────────────────────────
 class RecepcaoScreen extends StatefulWidget {
   const RecepcaoScreen({super.key});
 
@@ -82,28 +73,34 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
   final _formKey = GlobalKey<FormState>();
   final _service = FirestoreService();
 
-  // Campos — titular
-  final _nomeCtrl       = TextEditingController();
-  final _idadeCtrl      = TextEditingController();
-  final _profissaoCtrl  = TextEditingController();
-  final _telefoneCtrl   = TextEditingController();
+  // Titular
+  final _nomeCtrl        = TextEditingController();
+  final _idadeCtrl       = TextEditingController();
+  final _profissaoCtrl   = TextEditingController();
+  final _telefoneCtrl    = TextEditingController();
 
-  // Campos — cônjuge
-  final _conjugeCtrl         = TextEditingController();
-  final _idadeConjugeCtrl    = TextEditingController();
+  // Cônjuge
+  final _conjugeCtrl          = TextEditingController();
+  final _idadeConjugeCtrl     = TextEditingController();
   final _profissaoConjugeCtrl = TextEditingController();
-  final _telefoneConjugeCtrl = TextEditingController();
+  final _telefoneConjugeCtrl  = TextEditingController();
 
-  // Campos gerais
+  // Geral
   final _pontoCapCtrl = TextEditingController();
 
-  String _sala    = 'Villa';
-  String? _brinde;
-  Usuario? _captador;
-  Usuario? _vendedor;
-  List<Usuario> _usuarios = [];
-  bool _carregandoUsuarios = true;
-  bool _salvando = false;
+  String    _sala   = 'Villa';
+  String?   _brinde;
+  Usuario?  _captador;
+
+  // Vendedor — modo FTB ou liner+closer
+  bool     _doisVendedores = false;
+  Usuario? _vendedor; // FTB
+  Usuario? _liner;    // quem apresenta
+  Usuario? _closer;   // quem fecha
+
+  List<Usuario> _usuarios          = [];
+  bool          _carregandoUsuarios = true;
+  bool          _salvando           = false;
 
   FichaAtendimentoData? _ultimaFicha;
 
@@ -154,6 +151,12 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
       final agora = DateTime.now();
       final numeroAtendimento = await _service.proximoNumeroAtendimento();
 
+      // Define vendedor, liner e closer conforme o modo
+      final String? vendedorId   = _doisVendedores ? _closer?.id   : _vendedor?.id;
+      final String? vendedorNome = _doisVendedores ? _closer?.nome  : _vendedor?.nome;
+      final String? linerId      = _doisVendedores ? _liner?.id     : null;
+      final String? linerNome    = _doisVendedores ? _liner?.nome   : null;
+
       final cliente = Cliente(
         nome: _nomeCtrl.text.trim(),
         tipo: 'Casal',
@@ -170,8 +173,10 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
         origem: _pontoCapCtrl.text.trim().isEmpty ? null : _pontoCapCtrl.text.trim(),
         captadorId: _captador?.id,
         captadorNome: _captador?.nome,
-        vendedorId: _vendedor?.id,
-        vendedorNome: _vendedor?.nome,
+        vendedorId: vendedorId,
+        vendedorNome: vendedorNome,
+        linerId: linerId,
+        linerNome: linerNome,
         numeroAtendimento: numeroAtendimento,
         dataEntradaSala: agora,
         dataCadastro: agora,
@@ -191,7 +196,8 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
         telefoneConjuge: cliente.telefone2,
         brinde: cliente.brinde,
         captadorNome: cliente.captadorNome,
-        vendedorNome: cliente.vendedorNome,
+        linerNome: linerNome,
+        vendedorNome: vendedorNome,
         sala: _sala,
         pontoCapatcao: cliente.origem,
         numeroAtendimento: numeroAtendimento,
@@ -204,48 +210,48 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
         setState(() {
           _ultimaFicha = fichaData;
           _salvando = false;
-          _nomeCtrl.clear();
-          _idadeCtrl.clear();
-          _profissaoCtrl.clear();
-          _telefoneCtrl.clear();
-          _conjugeCtrl.clear();
-          _idadeConjugeCtrl.clear();
-          _profissaoConjugeCtrl.clear();
-          _telefoneConjugeCtrl.clear();
-          _pontoCapCtrl.clear();
-          _captador = null;
-          _vendedor = null;
-          _brinde = null;
-          _sala = 'Villa';
+          _limparForm();
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Atendimento Nº ${numeroAtendimento.toString().padLeft(6, '0')} '
-              'registrado! Ficha aberta para impressão.',
-            ),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Reimprimir',
-              textColor: Colors.white,
-              onPressed: () => FichaAtendimentoPdf.gerar(fichaData),
-            ),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            'Atendimento Nº ${numeroAtendimento.toString().padLeft(6, '0')} registrado!',
           ),
-        );
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Reimprimir',
+            textColor: Colors.white,
+            onPressed: () => FichaAtendimentoPdf.gerar(fichaData),
+          ),
+        ));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _salvando = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao salvar: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erro ao salvar: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ));
       }
     }
+  }
+
+  void _limparForm() {
+    for (final c in [
+      _nomeCtrl, _idadeCtrl, _profissaoCtrl, _telefoneCtrl,
+      _conjugeCtrl, _idadeConjugeCtrl, _profissaoConjugeCtrl,
+      _telefoneConjugeCtrl, _pontoCapCtrl,
+    ]) {
+      c.clear();
+    }
+    _captador = null;
+    _vendedor = null;
+    _liner = null;
+    _closer = null;
+    _brinde = null;
+    _sala = 'Villa';
+    _doisVendedores = false;
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -256,9 +262,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
 
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(
-        horizontal: isWide ? 80 : 16,
-        vertical: 24,
-      ),
+          horizontal: isWide ? 80 : 16, vertical: 24),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
@@ -267,165 +271,136 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Sala / Ponto de Captação ───────────────────────────────
-                _sectionCard(
-                  cs,
-                  icon: Icons.meeting_room_outlined,
-                  title: 'Entrada',
+                // ── Entrada ───────────────────────────────────────────────
+                _card(cs, icon: Icons.meeting_room_outlined, title: 'Entrada',
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 160,
-                          child: DropdownButtonFormField<String>(
-                            value: _sala,
-                            decoration: const InputDecoration(
-                              labelText: 'Sala',
-                              prefixIcon: Icon(Icons.villa_outlined),
-                            ),
-                            items: _salas
-                                .map((s) => DropdownMenuItem(
-                                    value: s, child: Text(s)))
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _sala = v ?? _sala),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      SizedBox(
+                        width: 150,
+                        child: DropdownButtonFormField<String>(
+                          value: _sala,
+                          decoration: const InputDecoration(
+                            labelText: 'Sala',
+                            prefixIcon: Icon(Icons.villa_outlined),
                           ),
+                          items: _salas.map((s) =>
+                            DropdownMenuItem(value: s, child: Text(s))).toList(),
+                          onChanged: (v) => setState(() => _sala = v ?? _sala),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _pontoCapCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Ponto de Captação',
-                              prefixIcon: Icon(Icons.location_on_outlined),
-                            ),
-                            textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _pontoCapCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Ponto de Captação',
+                            prefixIcon: Icon(Icons.location_on_outlined),
                           ),
+                          textCapitalization: TextCapitalization.words,
                         ),
-                      ],
-                    ),
+                      ),
+                    ]),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                // ── Titular ────────────────────────────────────────────────
-                _sectionCard(
-                  cs,
-                  icon: Icons.person_outlined,
-                  title: 'Titular',
+                // ── Titular ───────────────────────────────────────────────
+                _card(cs, icon: Icons.person_outlined, title: 'Titular',
                   children: [
                     TextFormField(
                       controller: _nomeCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Nome *',
                         prefixIcon: Icon(Icons.badge_outlined),
-                        hintText: 'Nome completo',
                       ),
                       textCapitalization: TextCapitalization.words,
                       validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Informe o nome'
-                          : null,
+                          ? 'Informe o nome' : null,
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 100,
-                          child: TextFormField(
-                            controller: _idadeCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Idade',
-                              prefixIcon: Icon(Icons.cake_outlined),
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly
-                            ],
+                    const SizedBox(height: 12),
+                    // Idade (flex 2) + Profissão (flex 5)
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _idadeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Idade',
+                            prefixIcon: Icon(Icons.cake_outlined),
                           ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _profissaoCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Profissão',
-                              prefixIcon: Icon(Icons.work_outline),
-                            ),
-                            textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 5,
+                        child: TextFormField(
+                          controller: _profissaoCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Profissão',
+                            prefixIcon: Icon(Icons.work_outline),
                           ),
+                          textCapitalization: TextCapitalization.words,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _telefoneCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Telefone *',
+                        labelText: 'Telefone',
                         prefixIcon: Icon(Icons.phone_outlined),
                         hintText: '(XX) XXXXX-XXXX',
                       ),
                       keyboardType: TextInputType.phone,
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'[\d\s()\-+]'))
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-+]'))
                       ],
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Informe o telefone'
-                          : null,
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                // ── Cônjuge ────────────────────────────────────────────────
-                _sectionCard(
-                  cs,
-                  icon: Icons.favorite_outline,
-                  title: 'Cônjuge',
+                // ── Cônjuge ───────────────────────────────────────────────
+                _card(cs, icon: Icons.favorite_outline, title: 'Cônjuge',
                   children: [
                     TextFormField(
                       controller: _conjugeCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Nome',
                         prefixIcon: Icon(Icons.badge_outlined),
-                        hintText: 'Nome completo',
                       ),
                       textCapitalization: TextCapitalization.words,
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 100,
-                          child: TextFormField(
-                            controller: _idadeConjugeCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Idade',
-                              prefixIcon: Icon(Icons.cake_outlined),
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly
-                            ],
+                    const SizedBox(height: 12),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _idadeConjugeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Idade',
+                            prefixIcon: Icon(Icons.cake_outlined),
                           ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _profissaoConjugeCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Profissão',
-                              prefixIcon: Icon(Icons.work_outline),
-                            ),
-                            textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 5,
+                        child: TextFormField(
+                          controller: _profissaoConjugeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Profissão',
+                            prefixIcon: Icon(Icons.work_outline),
                           ),
+                          textCapitalization: TextCapitalization.words,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _telefoneConjugeCtrl,
                       decoration: const InputDecoration(
@@ -435,19 +410,15 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                       ),
                       keyboardType: TextInputType.phone,
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'[\d\s()\-+]'))
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-+]'))
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                // ── Equipe ─────────────────────────────────────────────────
-                _sectionCard(
-                  cs,
-                  icon: Icons.groups_outlined,
-                  title: 'Equipe',
+                // ── Equipe ────────────────────────────────────────────────
+                _card(cs, icon: Icons.groups_outlined, title: 'Equipe',
                   children: [
                     if (_carregandoUsuarios)
                       const LinearProgressIndicator()
@@ -460,34 +431,111 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           labelText: 'Captador *',
                           prefixIcon: Icon(Icons.person_pin_outlined),
                         ),
-                        hint: const Text('Selecione o captador'),
-                        items: _usuarios
-                            .map((u) => DropdownMenuItem(
-                                value: u, child: Text(u.nome)))
-                            .toList(),
+                        hint: const Text('Selecione'),
+                        items: _usuarios.map((u) =>
+                          DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
                         onChanged: (v) => setState(() => _captador = v),
-                        validator: (v) =>
-                            v == null ? 'Selecione o captador' : null,
+                        validator: (v) => v == null ? 'Selecione o captador' : null,
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
 
-                      // Vendedor
-                      DropdownButtonFormField<Usuario>(
-                        value: _vendedor,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Vendedor',
-                          prefixIcon: Icon(Icons.handshake_outlined),
+                      // Toggle: dois vendedores?
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _doisVendedores
+                              ? cs.secondaryContainer.withValues(alpha: 0.4)
+                              : cs.surfaceContainerHighest.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _doisVendedores
+                                ? cs.secondary
+                                : cs.outlineVariant,
+                            width: _doisVendedores ? 1.5 : 1,
+                          ),
                         ),
-                        hint: const Text('Selecione o vendedor'),
-                        items: _usuarios
-                            .map((u) => DropdownMenuItem(
-                                value: u, child: Text(u.nome)))
-                            .toList(),
-                        onChanged: (v) => setState(() => _vendedor = v),
+                        child: SwitchListTile(
+                          dense: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                          title: const Text(
+                            'Houve outro vendedor no atendimento?',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          subtitle: Text(
+                            _doisVendedores
+                                ? 'Liner + Closer — ambos aparecerão na lista de leads'
+                                : 'Não — vendedor único (FTB)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _doisVendedores
+                                  ? cs.secondary
+                                  : cs.onSurfaceVariant,
+                            ),
+                          ),
+                          value: _doisVendedores,
+                          onChanged: (v) => setState(() {
+                            _doisVendedores = v;
+                            _vendedor = null;
+                            _liner = null;
+                            _closer = null;
+                          }),
+                        ),
                       ),
                       const SizedBox(height: 14),
 
+                      // Modo FTB — vendedor único
+                      if (!_doisVendedores)
+                        DropdownButtonFormField<Usuario>(
+                          value: _vendedor,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: 'Vendedor (FTB) *',
+                            prefixIcon: const Icon(Icons.handshake_outlined),
+                            suffixIcon: Tooltip(
+                              message: 'FTB = Full Table Buy — vendedor único',
+                              child: Icon(Icons.info_outline,
+                                  size: 16, color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                          hint: const Text('Selecione'),
+                          items: _usuarios.map((u) =>
+                            DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
+                          onChanged: (v) => setState(() => _vendedor = v),
+                          validator: (v) => v == null ? 'Selecione o vendedor' : null,
+                        )
+
+                      // Modo Liner + Closer
+                      else ...[
+                        DropdownButtonFormField<Usuario>(
+                          value: _liner,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Liner (apresenta) *',
+                            prefixIcon: Icon(Icons.record_voice_over_outlined),
+                          ),
+                          hint: const Text('Selecione'),
+                          items: _usuarios.map((u) =>
+                            DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
+                          onChanged: (v) => setState(() => _liner = v),
+                          validator: (v) => v == null ? 'Selecione o liner' : null,
+                        ),
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<Usuario>(
+                          value: _closer,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Closer (fecha) *',
+                            prefixIcon: Icon(Icons.handshake_outlined),
+                          ),
+                          hint: const Text('Selecione'),
+                          items: _usuarios.map((u) =>
+                            DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
+                          onChanged: (v) => setState(() => _closer = v),
+                          validator: (v) => v == null ? 'Selecione o closer' : null,
+                        ),
+                      ],
+
+                      const SizedBox(height: 14),
                       // Brinde
                       DropdownButtonFormField<String>(
                         value: _brinde,
@@ -497,10 +545,8 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           prefixIcon: Icon(Icons.card_giftcard_outlined),
                         ),
                         hint: const Text('Selecione o brinde'),
-                        items: _brindes
-                            .map((b) => DropdownMenuItem(
-                                value: b, child: Text(b)))
-                            .toList(),
+                        items: _brindes.map((b) =>
+                          DropdownMenuItem(value: b, child: Text(b))).toList(),
                         onChanged: (v) => setState(() => _brinde = v),
                       ),
                     ],
@@ -508,7 +554,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                 ),
                 const SizedBox(height: 28),
 
-                // ── Botão salvar ───────────────────────────────────────────
+                // ── Botão salvar ──────────────────────────────────────────
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -516,31 +562,23 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                     onPressed: _salvando ? null : _salvar,
                     icon: _salvando
                         ? SizedBox(
-                            width: 18,
-                            height: 18,
+                            width: 18, height: 18,
                             child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: cs.onPrimary,
-                            ),
-                          )
+                                strokeWidth: 2, color: cs.onPrimary))
                         : const Icon(Icons.print_outlined),
                     label: Text(
-                      _salvando
-                          ? 'Registrando...'
-                          : 'Registrar e Imprimir Ficha',
+                      _salvando ? 'Registrando...' : 'Registrar e Imprimir Ficha',
                       style: const TextStyle(fontSize: 15),
                     ),
                   ),
                 ),
 
-                // ── Reimprimir último ──────────────────────────────────────
                 if (_ultimaFicha != null) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () =>
-                          FichaAtendimentoPdf.gerar(_ultimaFicha!),
+                      onPressed: () => FichaAtendimentoPdf.gerar(_ultimaFicha!),
                       icon: const Icon(Icons.replay_outlined, size: 18),
                       label: Text(
                         'Reimprimir última ficha '
@@ -550,7 +588,6 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 40),
               ],
             ),
@@ -560,9 +597,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
     );
   }
 
-  // ── Helper: card de seção ─────────────────────────────────────────────────
-  Widget _sectionCard(
-    ColorScheme cs, {
+  Widget _card(ColorScheme cs, {
     required IconData icon,
     required String title,
     required List<Widget> children,
@@ -578,21 +613,16 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: cs.primary, size: 20),
-                const SizedBox(width: 10),
-                Text(
-                  title,
+            Row(children: [
+              Icon(icon, color: cs.primary, size: 20),
+              const SizedBox(width: 10),
+              Text(title,
                   style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface)),
+            ]),
+            const SizedBox(height: 14),
             const Divider(height: 1),
             const SizedBox(height: 16),
             ...children,
@@ -603,7 +633,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
   }
 }
 
-// ── Aba "Meus Leads" (perfil recepção) ───────────────────────────────────────
+// ── Aba "Meus Leads" ─────────────────────────────────────────────────────────
 class _RecepcaoLeadsTab extends StatefulWidget {
   const _RecepcaoLeadsTab();
 
@@ -612,7 +642,7 @@ class _RecepcaoLeadsTab extends StatefulWidget {
 }
 
 class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
-  final _service = FirestoreService();
+  final _service   = FirestoreService();
   final _searchCtrl = TextEditingController();
   String _busca = '';
 
@@ -634,212 +664,146 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Column(
-      children: [
-        // Barra de busca
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: TextField(
-            controller: _searchCtrl,
-            decoration: InputDecoration(
-              hintText: 'Buscar por nome...',
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: _busca.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () => _searchCtrl.clear(),
-                    )
-                  : null,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-            ),
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: TextField(
+          controller: _searchCtrl,
+          decoration: InputDecoration(
+            hintText: 'Buscar por nome...',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            suffixIcon: _busca.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _searchCtrl.clear)
+                : null,
           ),
         ),
-
-        // Lista de leads
-        Expanded(
-          child: StreamBuilder<List<Cliente>>(
-            stream: _service.getClientesRecepcaoStream(),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Center(child: Text('Erro: ${snap.error}'));
-              }
-
-              var leads = snap.data ?? [];
-
-              // Filtro de busca local
-              if (_busca.isNotEmpty) {
-                final q = _busca.toLowerCase();
-                leads = leads
-                    .where((c) =>
-                        c.nome.toLowerCase().contains(q) ||
-                        (c.nomeEsposa?.toLowerCase().contains(q) ?? false) ||
-                        (c.telefoneContato?.contains(q) ?? false))
-                    .toList();
-              }
-
-              if (leads.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.people_outline,
-                          size: 52,
-                          color:
-                              cs.outline.withValues(alpha: 0.4)),
-                      const SizedBox(height: 14),
-                      Text(
-                        _busca.isNotEmpty
-                            ? 'Nenhum resultado para "$_busca"'
-                            : 'Nenhum lead registrado ainda.',
-                        style: TextStyle(color: cs.outline, fontSize: 14),
-                      ),
-                    ],
+      ),
+      Expanded(
+        child: StreamBuilder<List<Cliente>>(
+          stream: _service.getClientesRecepcaoStream(),
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            var leads = snap.data ?? [];
+            if (_busca.isNotEmpty) {
+              final q = _busca.toLowerCase();
+              leads = leads.where((c) =>
+                c.nome.toLowerCase().contains(q) ||
+                (c.nomeEsposa?.toLowerCase().contains(q) ?? false) ||
+                (c.telefoneContato?.contains(q) ?? false)).toList();
+            }
+            if (leads.isEmpty) {
+              return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.people_outline, size: 52,
+                    color: cs.outline.withValues(alpha: 0.4)),
+                const SizedBox(height: 14),
+                Text(_busca.isNotEmpty
+                    ? 'Nenhum resultado para "$_busca"'
+                    : 'Nenhum lead registrado ainda.',
+                  style: TextStyle(color: cs.outline, fontSize: 14)),
+              ]));
+            }
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+              itemCount: leads.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, i) {
+                final c = leads[i];
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: cs.outlineVariant),
                   ),
-                );
-              }
-
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                itemCount: leads.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 6),
-                itemBuilder: (context, i) {
-                  final c = leads[i];
-                  return Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: cs.outlineVariant),
-                    ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FichaClienteScreen(
-                            cliente: c,
-                            userProfile: 'recepcao',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => FichaClienteScreen(
+                          cliente: c, userProfile: 'recepcao'))),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      child: Row(children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor: cs.primaryContainer,
+                          child: Text(
+                            c.nome.isNotEmpty ? c.nome[0].toUpperCase() : '?',
+                            style: TextStyle(
+                                color: cs.onPrimaryContainer,
+                                fontWeight: FontWeight.bold),
                           ),
                         ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        child: Row(
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Avatar
-                            CircleAvatar(
-                              radius: 22,
-                              backgroundColor:
-                                  cs.primaryContainer,
-                              child: Text(
-                                c.nome.isNotEmpty
-                                    ? c.nome[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                    color: cs.onPrimaryContainer,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-
-                            // Dados
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    c.nome,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14),
-                                  ),
-                                  if (c.nomeEsposa?.isNotEmpty == true)
-                                    Text(
-                                      '+ ${c.nomeEsposa}',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: cs.onSurfaceVariant),
-                                    ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      if (c.telefoneContato?.isNotEmpty ==
-                                          true) ...[
-                                        Icon(Icons.phone_outlined,
-                                            size: 12,
-                                            color: cs.onSurfaceVariant),
-                                        const SizedBox(width: 3),
-                                        Text(c.telefoneContato!,
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color:
-                                                    cs.onSurfaceVariant)),
-                                        const SizedBox(width: 10),
-                                      ],
-                                      if (c.sala?.isNotEmpty == true) ...[
-                                        Icon(Icons.meeting_room_outlined,
-                                            size: 12,
-                                            color: cs.onSurfaceVariant),
-                                        const SizedBox(width: 3),
-                                        Text(c.sala!,
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color:
-                                                    cs.onSurfaceVariant)),
-                                      ],
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Data + atendimento nº
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                if (c.numeroAtendimento != null)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 7, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: cs.primaryContainer,
-                                      borderRadius:
-                                          BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '#${c.numeroAtendimento!.toString().padLeft(6, '0')}',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: cs.onPrimaryContainer,
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                const SizedBox(height: 4),
-                                if (c.dataEntradaSala != null)
-                                  Text(
-                                    _dataFmt.format(c.dataEntradaSala!),
+                            Text(c.nome,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 14)),
+                            if (c.nomeEsposa?.isNotEmpty == true)
+                              Text('+ ${c.nomeEsposa}',
+                                  style: TextStyle(
+                                      fontSize: 12, color: cs.onSurfaceVariant)),
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              if (c.telefoneContato?.isNotEmpty == true) ...[
+                                Icon(Icons.phone_outlined,
+                                    size: 12, color: cs.onSurfaceVariant),
+                                const SizedBox(width: 3),
+                                Text(c.telefoneContato!,
                                     style: TextStyle(
-                                        fontSize: 11,
-                                        color: cs.onSurfaceVariant),
-                                  ),
+                                        fontSize: 12, color: cs.onSurfaceVariant)),
+                                const SizedBox(width: 10),
                               ],
-                            ),
+                              if (c.sala?.isNotEmpty == true) ...[
+                                Icon(Icons.meeting_room_outlined,
+                                    size: 12, color: cs.onSurfaceVariant),
+                                const SizedBox(width: 3),
+                                Text(c.sala!,
+                                    style: TextStyle(
+                                        fontSize: 12, color: cs.onSurfaceVariant)),
+                              ],
+                            ]),
                           ],
-                        ),
-                      ),
+                        )),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          if (c.numeroAtendimento != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '#${c.numeroAtendimento!.toString().padLeft(6, '0')}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onPrimaryContainer,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          const SizedBox(height: 4),
+                          if (c.dataEntradaSala != null)
+                            Text(_dataFmt.format(c.dataEntradaSala!),
+                                style: TextStyle(
+                                    fontSize: 11, color: cs.onSurfaceVariant)),
+                        ]),
+                      ]),
                     ),
-                  );
-                },
-              );
-            },
-          ),
+                  ),
+                );
+              },
+            );
+          },
         ),
-      ],
-    );
+      ),
+    ]);
   }
 }

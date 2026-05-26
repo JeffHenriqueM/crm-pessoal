@@ -34,6 +34,9 @@ class Cliente {
   final String? profissao;
   final String? idadeConjuge;
   final String? profissaoConjuge;
+  // Liner (apresenta) — quando há dois vendedores; vendedorId/Nome = closer (fecha)
+  final String? linerId;
+  final String? linerNome;
 
   Cliente({
     this.id,
@@ -66,6 +69,8 @@ class Cliente {
     this.profissao,
     this.idadeConjuge,
     this.profissaoConjuge,
+    this.linerId,
+    this.linerNome,
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -100,6 +105,8 @@ class Cliente {
       'profissao': profissao,
       'idadeConjuge': idadeConjuge,
       'profissaoConjuge': profissaoConjuge,
+      'linerId': linerId,
+      'linerNome': linerNome,
     };
   }
 
@@ -152,6 +159,8 @@ class Cliente {
       profissao: data['profissao'],
       idadeConjuge: data['idadeConjuge'],
       profissaoConjuge: data['profissaoConjuge'],
+      linerId: data['linerId'],
+      linerNome: data['linerNome'],
     );
   }
 }
