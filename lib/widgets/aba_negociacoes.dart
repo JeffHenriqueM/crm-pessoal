@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../models/cliente_model.dart';
+import '../models/fase_enum.dart';
 import '../models/negociacao_model.dart';
 import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
@@ -621,6 +623,10 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   bool _parcelaManual = false;
   bool _salvando = false;
 
+  // Vínculo com lead (só usado quando não há clienteId pré-definido)
+  String? _vinculoClienteId;
+  String? _vinculoClienteNome;
+
   // Embaixador
   List<Usuario> _usuarios = [];
   Usuario? _embaixador;
@@ -655,6 +661,10 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
         TextEditingController(text: parcelaInicial);
     _parcelaManual = e?.valorParcelaOverride != null;
     _obsCtrl = TextEditingController(text: e?.observacoes ?? '');
+
+    // Vínculo de lead (preserva o do editando, se houver)
+    _vinculoClienteId = e?.clienteId ?? widget.clienteId;
+    _vinculoClienteNome = e?.clienteNome ?? widget.clienteNome;
 
     // Listeners para recalcular
     for (final ctrl in [
@@ -765,14 +775,83 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     if (data != null && mounted) setState(() => _prazoResposta = data);
   }
 
+  // ── Lead picker ───────────────────────────────────────────────────────────
+  Widget _buildLeadPicker(ColorScheme cs) {
+    final temVinculo = _vinculoClienteNome != null && _vinculoClienteNome!.isNotEmpty;
+    return InkWell(
+      onTap: () => _abrirBuscaLead(),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: temVinculo
+                ? cs.primary.withValues(alpha: 0.5)
+                : cs.outline,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: temVinculo
+              ? cs.primaryContainer.withValues(alpha: 0.2)
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              temVinculo ? Icons.person_rounded : Icons.person_search_outlined,
+              size: 18,
+              color: temVinculo ? cs.primary : cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                temVinculo ? _vinculoClienteNome! : 'Buscar e vincular a um lead...',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: temVinculo ? cs.onSurface : cs.onSurfaceVariant,
+                  fontWeight:
+                      temVinculo ? FontWeight.w600 : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (temVinculo)
+              GestureDetector(
+                onTap: () => setState(() {
+                  _vinculoClienteId = null;
+                  _vinculoClienteNome = null;
+                }),
+                child: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
+              )
+            else
+              Icon(Icons.chevron_right, size: 16, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _abrirBuscaLead() async {
+    final service = widget.service ?? FirestoreService();
+    final result = await showDialog<Cliente>(
+      context: context,
+      builder: (ctx) => _BuscaLeadDialog(service: service),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _vinculoClienteId = result.id;
+        _vinculoClienteNome = result.nome;
+      });
+    }
+  }
+
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _salvando = true);
 
     final neg = Negociacao(
       id: widget.editando?.id,
-      clienteId: widget.editando?.clienteId ?? widget.clienteId,
-      clienteNome: widget.editando?.clienteNome ?? widget.clienteNome,
+      clienteId: _vinculoClienteId,
+      clienteNome: _vinculoClienteNome,
       tipo: _tipoNegociacao,
       condicaoEspecial: _tipoNegociacao == TipoNegociacao.especial &&
               _condicaoEspecialCtrl.text.trim().isNotEmpty
@@ -894,6 +973,14 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // ── Vínculo com lead (só quando não vem de uma ficha) ─────
+                if (widget.clienteId == null) ...[
+                  _sectionLabel(cs, 'Lead vinculado'),
+                  const SizedBox(height: 8),
+                  _buildLeadPicker(cs),
+                  const SizedBox(height: 16),
+                ],
 
                 // ── Título ────────────────────────────────────
                 TextFormField(
@@ -1293,6 +1380,171 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
         fontWeight: FontWeight.w600,
         color: cs.primary,
         letterSpacing: 0.3,
+      ),
+    );
+  }
+}
+
+// ── Diálogo de busca de lead ──────────────────────────────────────────────────
+class _BuscaLeadDialog extends StatefulWidget {
+  final FirestoreService service;
+  const _BuscaLeadDialog({required this.service});
+
+  @override
+  State<_BuscaLeadDialog> createState() => _BuscaLeadDialogState();
+}
+
+class _BuscaLeadDialogState extends State<_BuscaLeadDialog> {
+  final _buscaCtrl = TextEditingController();
+  List<Cliente> _todos = [];
+  List<Cliente> _filtrados = [];
+  bool _carregando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarClientes();
+    _buscaCtrl.addListener(_filtrar);
+  }
+
+  @override
+  void dispose() {
+    _buscaCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _carregarClientes() async {
+    // Faz uma leitura única (não stream) para simplificar o diálogo
+    final stream = widget.service.getTodosClientesStream();
+    final lista = await stream.first;
+    if (!mounted) return;
+    setState(() {
+      _todos = lista;
+      _filtrados = lista;
+      _carregando = false;
+    });
+  }
+
+  void _filtrar() {
+    final q = _buscaCtrl.text.trim().toLowerCase();
+    setState(() {
+      _filtrados = q.isEmpty
+          ? _todos
+          : _todos.where((c) {
+              return c.nome.toLowerCase().contains(q) ||
+                  (c.nomeEsposa?.toLowerCase().contains(q) ?? false) ||
+                  (c.telefoneContato?.contains(q) ?? false);
+            }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Dialog(
+      child: SizedBox(
+        width: 460,
+        height: 520,
+        child: Column(
+          children: [
+            // ── Cabeçalho ─────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
+              child: Row(
+                children: [
+                  Icon(Icons.person_search_outlined,
+                      color: cs.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Vincular a um lead',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+                    onPressed: () => Navigator.of(context).pop(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Busca ──────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _buscaCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Nome, cônjuge ou telefone...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _buscaCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () => _buscaCtrl.clear(),
+                        )
+                      : null,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Divider(height: 1, color: cs.outlineVariant),
+
+            // ── Lista ──────────────────────────────────────────────────
+            Expanded(
+              child: _carregando
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtrados.isEmpty
+                      ? Center(
+                          child: Text('Nenhum lead encontrado.',
+                              style: TextStyle(color: cs.onSurfaceVariant)),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: _filtrados.length,
+                          itemBuilder: (ctx, i) {
+                            final c = _filtrados[i];
+                            final nome = c.nomeEsposa?.isNotEmpty == true
+                                ? '${c.nome} e ${c.nomeEsposa}'
+                                : c.nome;
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor:
+                                    cs.primaryContainer.withValues(alpha: 0.5),
+                                child: Text(
+                                  c.nome[0].toUpperCase(),
+                                  style: TextStyle(
+                                      color: cs.onPrimaryContainer,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              title: Text(nome,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14)),
+                              subtitle: Text(
+                                c.fase.nomeDisplay +
+                                    (c.vendedorNome != null
+                                        ? ' · ${c.vendedorNome}'
+                                        : ''),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant),
+                              ),
+                              onTap: () => Navigator.of(ctx).pop(c),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }

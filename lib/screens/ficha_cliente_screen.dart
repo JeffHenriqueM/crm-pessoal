@@ -364,11 +364,13 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     final notaCtrl = TextEditingController(text: interacao?.nota);
     final proximoPassoCtrl =
         TextEditingController(text: interacao?.proximoPasso ?? '');
+    var tipoSelecionado = interacao?.tipo ?? TipoInteracao.ligacao;
     final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
         title: Text(isEditing ? 'Editar Interação' : 'Nova Interação'),
         content: SizedBox(
           width: 480,
@@ -377,7 +379,37 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Tipo ──────────────────────────────────────
+                  Text('Tipo',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(ctx).colorScheme.primary)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: TipoInteracao.values.map((t) {
+                      final selecionado = tipoSelecionado == t;
+                      return ChoiceChip(
+                        avatar: Icon(t.icone,
+                            size: 14,
+                            color: selecionado
+                                ? Theme.of(ctx).colorScheme.onPrimaryContainer
+                                : t.cor),
+                        label: Text(t.nome,
+                            style: const TextStyle(fontSize: 12)),
+                        selected: selecionado,
+                        onSelected: (_) =>
+                            setStateDialog(() => tipoSelecionado = t),
+                        selectedColor: t.cor.withValues(alpha: 0.18),
+                        visualDensity: VisualDensity.compact,
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     controller: tituloCtrl,
                     decoration: const InputDecoration(labelText: 'Título', prefixIcon: Icon(Icons.title)),
@@ -424,6 +456,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                 titulo: tituloCtrl.text.trim(),
                 nota: notaCtrl.text.trim(),
                 dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
+                tipo: tipoSelecionado,
                 proximoPasso: passotrimmed.isEmpty ? null : passotrimmed,
               );
               if (_isNovo) {
@@ -455,6 +488,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           ),
         ],
       ),
+      ),  // StatefulBuilder
     );
   }
 
@@ -905,9 +939,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
-                    backgroundColor: cs.primaryContainer,
-                    child: Icon(Icons.chat_bubble_outline,
-                        size: 18, color: cs.onPrimaryContainer),
+                    backgroundColor: i.tipo.cor.withValues(alpha: 0.13),
+                    child: Icon(i.tipo.icone,
+                        size: 17, color: i.tipo.cor),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
