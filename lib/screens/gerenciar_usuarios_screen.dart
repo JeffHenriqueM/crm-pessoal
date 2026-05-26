@@ -4,7 +4,13 @@ import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 
 class GerenciarUsuariosScreen extends StatefulWidget {
-  const GerenciarUsuariosScreen({super.key});
+  /// Perfil do usuário logado — determina o que pode ser alterado.
+  final String currentUserPerfil;
+
+  const GerenciarUsuariosScreen({
+    super.key,
+    required this.currentUserPerfil,
+  });
 
   @override
   State<GerenciarUsuariosScreen> createState() =>
@@ -15,13 +21,12 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
-  static const _perfisDisponiveis = [
-    'admin',
-    'captador',
-    'vendedor',
-    'pós-venda',
-    'financeiro',
-  ];
+  bool get _isSuperAdmin => widget.currentUserPerfil == 'super admin';
+
+  // Super admin pode atribuir qualquer perfil; admin vê todos exceto super admin
+  List<String> get _perfisDisponiveis => _isSuperAdmin
+      ? ['super admin', 'admin', 'captador', 'vendedor', 'pós-venda', 'financeiro']
+      : ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro'];
 
   // ── Build principal ───────────────────────────────────────────────────────
   @override
@@ -193,6 +198,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   }
 
   Widget _chipPerfil(String perfil, Color cor) {
+    final isSuperAdmin = perfil.toLowerCase() == 'super admin';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -200,13 +206,22 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         border: Border.all(color: cor.withValues(alpha: 0.35)),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        _capitalize(perfil),
-        style: TextStyle(
-          color: cor,
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isSuperAdmin) ...[
+            Icon(Icons.workspace_premium_rounded, size: 12, color: cor),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            _capitalize(perfil),
+            style: TextStyle(
+              color: cor,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -277,7 +292,13 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             // Opções
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('Editar nome e perfil'),
+              title: Text(_isSuperAdmin ? 'Editar nome e perfil' : 'Editar nome'),
+              subtitle: _isSuperAdmin
+                  ? null
+                  : Text(
+                      'Somente Super Admin pode alterar perfis',
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
               onTap: () {
                 Navigator.of(ctx).pop();
                 _mostrarDialogoEditarUsuario(context, u);
@@ -501,24 +522,45 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                     readOnly: true,
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: perfilSelecionado,
-                    decoration: const InputDecoration(
-                      labelText: 'Perfil',
-                      prefixIcon: Icon(Icons.badge_outlined),
+                  // Perfil — editável só para super admin
+                  if (_isSuperAdmin)
+                    DropdownButtonFormField<String>(
+                      value: perfilSelecionado,
+                      decoration: const InputDecoration(
+                        labelText: 'Perfil',
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                      items: _perfisDisponiveis
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(_capitalize(p)),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) {
+                          setDialogState(() => perfilSelecionado = v);
+                        }
+                      },
+                    )
+                  else
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Perfil',
+                        prefixIcon: const Icon(Icons.badge_outlined),
+                        suffixIcon: Tooltip(
+                          message: 'Somente Super Admin pode alterar perfis',
+                          child: Icon(Icons.lock_outline,
+                              size: 18,
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                      child: Text(
+                        _capitalize(perfilSelecionado),
+                        style: TextStyle(
+                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
-                    items: _perfisDisponiveis
-                        .map((p) => DropdownMenuItem(
-                              value: p,
-                              child: Text(_capitalize(p)),
-                            ))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        setDialogState(() => perfilSelecionado = v);
-                      }
-                    },
-                  ),
                 ],
               ),
             ),
@@ -686,6 +728,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   // ── Helpers ───────────────────────────────────────────────────────────────
   Color _corDePerfil(String perfil, ColorScheme cs) {
     switch (perfil.toLowerCase()) {
+      case 'super admin':
+        return const Color(0xFFB8860B); // dourado
       case 'admin':
         return Colors.deepOrange.shade700;
       case 'captador':

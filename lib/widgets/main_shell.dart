@@ -41,10 +41,11 @@ class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   bool _sidebarExpanded = true;
 
-  static const _listaProfiles = {'admin', 'pós-venda', 'financeiro'};
+  static const _listaProfiles = {'admin', 'super admin', 'pós-venda', 'financeiro'};
 
   bool get _isListaProfile => _listaProfiles.contains(widget.userProfile);
-  bool get _isAdmin => widget.userProfile == 'admin';
+  bool get _isAdmin =>
+      widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
@@ -401,7 +402,10 @@ class _MainShellState extends State<MainShell> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => const GerenciarUsuariosScreen()),
+                      builder: (_) => GerenciarUsuariosScreen(
+                        currentUserPerfil: widget.userProfile,
+                      ),
+                    ),
                   ),
                 ),
               )
@@ -416,7 +420,10 @@ class _MainShellState extends State<MainShell> {
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const GerenciarUsuariosScreen()),
+                        builder: (_) => GerenciarUsuariosScreen(
+                          currentUserPerfil: widget.userProfile,
+                        ),
+                      ),
                     ),
                     visualDensity: VisualDensity.compact,
                   ),
