@@ -1029,6 +1029,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
       return AbaNegociacoes(
         clienteId: _clienteId!,
         proximoNumero: _negociacoes.length + 1,
+        currentUserId: _authService.getCurrentUser()?.uid,
+        currentUserName: _authService.getCurrentUser()?.displayName,
+        userProfile: widget.userProfile,
       );
     }
     // Novo: lista local simplificada

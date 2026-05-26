@@ -36,11 +36,17 @@ const _produtos = [
 class AbaNegociacoes extends StatelessWidget {
   final String clienteId;
   final int proximoNumero;
+  final String? currentUserId;
+  final String? currentUserName;
+  final String userProfile;
 
   const AbaNegociacoes({
     super.key,
     required this.clienteId,
     required this.proximoNumero,
+    this.currentUserId,
+    this.currentUserName,
+    this.userProfile = 'vendedor',
   });
 
   @override
@@ -100,6 +106,9 @@ class AbaNegociacoes extends StatelessWidget {
                   service: service,
                   proximoNumero: proximo,
                   editando: neg,
+                  currentUserId: currentUserId,
+                  currentUserName: currentUserName,
+                  userProfile: userProfile,
                 ),
                 onDelete: () => _confirmarExclusao(context, service, neg),
                 onExportPdf: () => PropostaPdf.gerar(neg),
