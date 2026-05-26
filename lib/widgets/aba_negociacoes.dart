@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/negociacao_model.dart';
+import '../services/proposta_pdf.dart';
 import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
 
@@ -81,6 +82,7 @@ class AbaNegociacoes extends StatelessWidget {
                   editando: neg,
                 ),
                 onDelete: () => _confirmarExclusao(context, service, neg),
+                onExportPdf: () => PropostaPdf.gerar(neg),
                 onStatusChange: (s) => service.atualizarNegociacao(
                     neg.copyWith(status: s)),
               ),
@@ -155,12 +157,14 @@ class _NegociacaoCard extends StatelessWidget {
   final Negociacao negociacao;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onExportPdf;
   final Function(StatusNegociacao) onStatusChange;
 
   const _NegociacaoCard({
     required this.negociacao,
     required this.onEdit,
     required this.onDelete,
+    required this.onExportPdf,
     required this.onStatusChange,
   });
 
@@ -466,6 +470,13 @@ class _NegociacaoCard extends StatelessWidget {
                   ),
                   Row(
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf_outlined,
+                            size: 16, color: Color(0xFFC62828)),
+                        onPressed: onExportPdf,
+                        tooltip: 'Exportar PDF',
+                        visualDensity: VisualDensity.compact,
+                      ),
                       IconButton(
                         icon: Icon(Icons.edit_outlined,
                             size: 16, color: cs.primary),
