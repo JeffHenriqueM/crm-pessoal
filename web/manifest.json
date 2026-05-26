@@ -1,11 +1,11 @@
 {
-    "name": "crm_pessoal",
-    "short_name": "crm_pessoal",
-    "start_url": ".",
+    "name": "Villamor CRM",
+    "short_name": "Villamor CRM",
+    "start_url": "/",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#1E3A5F",
+    "description": "Villamor CRM - Sistema de gestão comercial",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
