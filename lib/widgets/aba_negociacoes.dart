@@ -649,6 +649,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   late final TextEditingController _valorParcelaCtrl;
   late final TextEditingController _obsCtrl;
   late final TextEditingController _condicaoEspecialCtrl;
+  late final TextEditingController _nomeClienteCtrl;
 
   TipoDesconto _tipoDesconto = TipoDesconto.fixo;
   TipoNegociacao _tipoNegociacao = TipoNegociacao.tabela;
@@ -656,7 +657,9 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   DateTime? _prazoResposta;
   bool _solicitarAprovacao = false;
   bool _parcelaManual = false;
+  bool _tituloManual = false;   // true quando usuário editou o título manualmente
   bool _salvando = false;
+  bool _autoEspecial = false;   // true quando o tipo foi forçado por valor abaixo do limite
 
   // Vínculo com lead (só usado quando não há clienteId pré-definido)
   String? _vinculoClienteId;
@@ -673,12 +676,32 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
+  // ── Limites de negociação especial por produto ────────────────────────────
+  static const _limitesEspecial = {
+    'Luxo Bronze':      37000.0,
+    'Luxo Prata':       61000.0,
+    'Luxo Ouro':       116000.0,
+    'Luxo Diamante':  1224000.0,
+    'Villamor Bronze':  51000.0,
+    'Villamor Prata':   88000.0,
+    'Villamor Ouro':   171000.0,
+    'Villamor Diamante': 2190000.0,
+  };
+
+  bool get _deveSerEspecial {
+    if (_produtoSelecionado == null) return false;
+    final limite = _limitesEspecial[_produtoSelecionado!.nome];
+    if (limite == null) return false;
+    return _valorFinal > 0 && _valorFinal < limite;
+  }
+
   @override
   void initState() {
     super.initState();
     final e = widget.editando;
-    _tituloCtrl =
-        TextEditingController(text: e?.titulo ?? widget.sugestaoTitulo);
+    // Título: para edição preserva o existente; para criação fica vazio (será gerado ao escolher produto)
+    _tituloCtrl = TextEditingController(text: e?.titulo ?? '');
+    _tituloManual = e != null; // edição: não sobrescreve o título salvo
     _valorOriginalCtrl = TextEditingController(
         text: e != null ? _fmt(e.valorOriginal) : '');
     _descontoCtrl = TextEditingController(
@@ -698,10 +721,13 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     final parcelaInicial = e?.valorParcelaOverride != null
         ? _fmt(e!.valorParcelaOverride!)
         : '';
-    _valorParcelaCtrl =
-        TextEditingController(text: parcelaInicial);
+    _valorParcelaCtrl = TextEditingController(text: parcelaInicial);
     _parcelaManual = e?.valorParcelaOverride != null;
     _obsCtrl = TextEditingController(text: e?.observacoes ?? '');
+
+    // Nome do cliente (campo livre antes de vincular lead)
+    _nomeClienteCtrl = TextEditingController(
+        text: (e?.clienteId == null && e?.clienteNome != null) ? e!.clienteNome! : '');
 
     // Vínculo de lead (preserva o do editando, se houver)
     _vinculoClienteId = e?.clienteId ?? widget.clienteId;
@@ -717,6 +743,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       ctrl.addListener(_recalcular);
     }
     _valorParcelaCtrl.addListener(_onParcelaEditada);
+    _tituloCtrl.addListener(_onTituloEditado);
 
     _carregarUsuarios();
   }
@@ -748,7 +775,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     for (final c in [
       _tituloCtrl, _valorOriginalCtrl, _descontoCtrl,
       _valorEntradaCtrl, _parcelasCtrl, _valorParcelaCtrl,
-      _obsCtrl, _condicaoEspecialCtrl,
+      _obsCtrl, _condicaoEspecialCtrl, _nomeClienteCtrl,
     ]) {
       c.dispose();
     }
@@ -781,6 +808,22 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   }
 
   bool _atualizandoParcela = false;
+  bool _atualizandoTitulo = false;
+
+  void _onTituloEditado() {
+    if (_atualizandoTitulo) return;
+    _tituloManual = true;
+  }
+
+  void _atualizarTitulo() {
+    if (_tituloManual || _produtoSelecionado == null) return;
+    final data = DateFormat('dd/MM/yyyy').format(DateTime.now());
+    final vf = _moeda.format(_valorFinal);
+    _atualizandoTitulo = true;
+    _tituloCtrl.text = '${_produtoSelecionado!.nome} - $data - $vf';
+    _atualizandoTitulo = false;
+  }
+
   void _recalcular() {
     if (!_parcelaManual) {
       final calc = _parcelaCalculada;
@@ -788,6 +831,22 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       _valorParcelaCtrl.text = calc != null ? _fmt(calc) : '';
       _atualizandoParcela = false;
     }
+    // Auto-detectar negociação especial por limite de valor
+    if (_produtoSelecionado != null) {
+      final deveEspecial = _deveSerEspecial;
+      if (deveEspecial && _tipoNegociacao == TipoNegociacao.tabela) {
+        _tipoNegociacao = TipoNegociacao.especial;
+        _autoEspecial = true;
+      } else if (!deveEspecial && _autoEspecial &&
+          _tipoNegociacao == TipoNegociacao.especial) {
+        // Reverte automaticamente só se foi o sistema que forçou
+        _tipoNegociacao = TipoNegociacao.tabela;
+        _autoEspecial = false;
+        _solicitarAprovacao = false;
+      }
+    }
+    // Atualizar título gerado (só se não editado manualmente)
+    _atualizarTitulo();
     if (mounted) setState(() {});
   }
 
@@ -879,13 +938,14 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     if (resultado != null && mounted) {
       setState(() {
         _produtoSelecionado = resultado;
-        _tituloCtrl.text = resultado.nome;
+        _tituloManual = false; // título será regenerado
+        _autoEspecial = false;
         _valorOriginalCtrl.text = _fmt(resultado.valor);
         // Pré-preenche entrada com 10%
         final entrada = resultado.valor * 0.10;
         _valorEntradaCtrl.text = _fmt(entrada);
         _parcelaManual = false;
-        _recalcular();
+        _recalcular(); // gera título + detecta especial
       });
     }
   }
@@ -926,61 +986,6 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     );
   }
 
-  // ── Lead picker ───────────────────────────────────────────────────────────
-  Widget _buildLeadPicker(ColorScheme cs) {
-    final temVinculo = _vinculoClienteNome != null && _vinculoClienteNome!.isNotEmpty;
-    return InkWell(
-      onTap: () => _abrirBuscaLead(),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: temVinculo
-                ? cs.primary.withValues(alpha: 0.5)
-                : cs.outline,
-          ),
-          borderRadius: BorderRadius.circular(8),
-          color: temVinculo
-              ? cs.primaryContainer.withValues(alpha: 0.2)
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              temVinculo ? Icons.person_rounded : Icons.person_search_outlined,
-              size: 18,
-              color: temVinculo ? cs.primary : cs.onSurfaceVariant,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                temVinculo ? _vinculoClienteNome! : 'Buscar e vincular a um lead...',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: temVinculo ? cs.onSurface : cs.onSurfaceVariant,
-                  fontWeight:
-                      temVinculo ? FontWeight.w600 : FontWeight.normal,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (temVinculo)
-              GestureDetector(
-                onTap: () => setState(() {
-                  _vinculoClienteId = null;
-                  _vinculoClienteNome = null;
-                }),
-                child: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
-              )
-            else
-              Icon(Icons.chevron_right, size: 16, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _abrirBuscaLead() async {
     final service = widget.service ?? FirestoreService();
     final result = await showDialog<Cliente>(
@@ -999,10 +1004,16 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _salvando = true);
 
+    // clienteNome: lead vinculado tem prioridade; caso contrário usa o campo livre
+    final nomeCliente = _vinculoClienteNome ??
+        (_nomeClienteCtrl.text.trim().isNotEmpty
+            ? _nomeClienteCtrl.text.trim()
+            : null);
+
     final neg = Negociacao(
       id: widget.editando?.id,
       clienteId: _vinculoClienteId,
-      clienteNome: _vinculoClienteNome,
+      clienteNome: nomeCliente,
       tipo: _tipoNegociacao,
       condicaoEspecial: _tipoNegociacao == TipoNegociacao.especial &&
               _condicaoEspecialCtrl.text.trim().isNotEmpty
@@ -1138,6 +1149,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                         selected: {_tipoNegociacao},
                         onSelectionChanged: (s) => setState(() {
                           _tipoNegociacao = s.first;
+                          _autoEspecial = false; // usuário escolheu manualmente
                           if (_tipoNegociacao == TipoNegociacao.tabela) {
                             _solicitarAprovacao = false;
                           }
@@ -1148,6 +1160,35 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                               const TextStyle(fontSize: 12)),
                         ),
                       ),
+                      // Banner informativo quando tipo foi forçado automaticamente
+                      if (_autoEspecial) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade700.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: Colors.amber.shade700.withValues(alpha: 0.35)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  size: 15, color: Colors.amber.shade800),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Valor abaixo do mínimo de tabela — classificado como Negociação Especial.',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.amber.shade900),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // ── Escolher Produto ────────────────────
@@ -1164,20 +1205,6 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                           minimumSize: const Size(double.infinity, 44),
                           textStyle: const TextStyle(fontSize: 13),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // ── Título ──────────────────────────────
-                      TextFormField(
-                        controller: _tituloCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Título da proposta',
-                          prefixIcon: Icon(Icons.label_outline),
-                        ),
-                        textCapitalization: TextCapitalization.sentences,
-                        validator: (v) => v?.trim().isEmpty == true
-                            ? 'Informe um título'
-                            : null,
                       ),
                       const SizedBox(height: 14),
 
@@ -1548,15 +1575,107 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                         ),
                       ],
 
-                      // ── Lead vinculado (ao final) ───────────
+                      // ── Seção final: Cliente + Lead + Título ─
+                      const SizedBox(height: 20),
+                      Divider(color: cs.outlineVariant.withValues(alpha: 0.4)),
+                      const SizedBox(height: 12),
+
+                      // Nome do cliente (campo livre, só quando sem clienteId fixo)
                       if (widget.clienteId == null) ...[
-                        const SizedBox(height: 20),
-                        Divider(color: cs.outlineVariant.withValues(alpha: 0.4)),
-                        const SizedBox(height: 12),
-                        _sectionLabel(cs, 'Lead vinculado (opcional)'),
+                        _sectionLabel(cs, 'Identificação do cliente'),
                         const SizedBox(height: 8),
-                        _buildLeadPicker(cs),
+                        // Se não há lead vinculado: mostra campo de texto + botão
+                        if (_vinculoClienteId == null) ...[
+                          TextFormField(
+                            controller: _nomeClienteCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Nome do cliente (opcional)',
+                              prefixIcon: Icon(Icons.person_outline),
+                              hintText: 'Digite ou vincule um lead abaixo',
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _abrirBuscaLead,
+                            icon: const Icon(Icons.person_search_outlined, size: 18),
+                            label: const Text('Vincular a um lead existente'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 40),
+                              textStyle: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ] else ...[
+                          // Lead vinculado: mostra chip com nome e botão de desvincular
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: cs.primary.withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.person_rounded,
+                                    size: 18, color: cs.primary),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _vinculoClienteNome ?? '',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () => setState(() {
+                                    _vinculoClienteId = null;
+                                    _vinculoClienteNome = null;
+                                  }),
+                                  icon: const Icon(Icons.link_off, size: 14),
+                                  label: const Text('Desvincular',
+                                      style: TextStyle(fontSize: 12)),
+                                  style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
                       ],
+
+                      // ── Título (gerado automaticamente, editável) ─
+                      _sectionLabel(cs, 'Título da proposta'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _tituloCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Título',
+                          prefixIcon: const Icon(Icons.label_outline),
+                          hintText: 'Gerado ao escolher o produto',
+                          suffixIcon: _tituloManual && _produtoSelecionado != null
+                              ? Tooltip(
+                                  message: 'Restaurar título automático',
+                                  child: IconButton(
+                                    icon: const Icon(Icons.refresh, size: 18),
+                                    onPressed: () => setState(() {
+                                      _tituloManual = false;
+                                      _atualizarTitulo();
+                                    }),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        textCapitalization: TextCapitalization.sentences,
+                        validator: (v) => v?.trim().isEmpty == true
+                            ? 'Informe um título'
+                            : null,
+                      ),
 
                       const SizedBox(height: 16),
                     ],
