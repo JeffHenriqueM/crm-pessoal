@@ -38,7 +38,11 @@ class FirestoreService {
             }
             query = query.orderBy(ordenarPor, descending: descendente);
             return query.snapshots().map(
-                (s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+                (s) => s.docs
+                    .map((d) => Cliente.fromFirestore(d))
+                    // Atendimentos ficam apenas na tela de recepção
+                    .where((c) => c.fase != FaseCliente.atendimento)
+                    .toList());
           }
 
           // Vendedor/captador: vê leads onde é vendedor (closer/FTB) OU liner
@@ -63,6 +67,8 @@ class FirestoreService {
               for (final c in [...vendedores, ...liners]) {
                 if (c.id != null && vistos.add(c.id!)) result.add(c);
               }
+              // Atendimentos ainda não promovidos ficam apenas na tela de recepção
+              result.removeWhere((c) => c.fase == FaseCliente.atendimento);
               result.sort((a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
               return result;
             },
@@ -71,35 +77,50 @@ class FirestoreService {
         .switchMap((stream) => stream);
   }
 
-  /// Stream de leads para o perfil recepção:
-  /// leads que o usuário criou OU onde ele é o captador (OR via dois streams).
+  /// Stream de atendimentos para a tela de recepção:
+  /// registros com fase=atendimento onde o usuário criou, é captador ou liner.
   Stream<List<Cliente>> getClientesRecepcaoStream() {
     final uid = _currentUserId;
+
+    List<Cliente> _fromSnap(s) =>
+        s.docs.map<Cliente>((d) => Cliente.fromFirestore(d)).toList();
 
     final streamCriados = _db
         .collection(_colClientes)
         .where('criadoPorId', isEqualTo: uid)
         .snapshots()
-        .map((s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+        .map(_fromSnap);
 
     final streamCaptador = _db
         .collection(_colClientes)
         .where('captadorId', isEqualTo: uid)
         .snapshots()
-        .map((s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+        .map(_fromSnap);
 
-    // Merge dos dois streams, deduplicando por id
-    return Rx.combineLatest2<List<Cliente>, List<Cliente>, List<Cliente>>(
+    final streamLiner = _db
+        .collection(_colClientes)
+        .where('linerId', isEqualTo: uid)
+        .snapshots()
+        .map(_fromSnap);
+
+    return Rx.combineLatest3<List<Cliente>, List<Cliente>, List<Cliente>,
+        List<Cliente>>(
       streamCriados,
       streamCaptador,
-      (criados, captador) {
+      streamLiner,
+      (criados, captados, liners) {
         final vistos = <String>{};
         final result = <Cliente>[];
-        for (final c in [...criados, ...captador]) {
+        for (final c in [...criados, ...captados, ...liners]) {
           if (c.id != null && vistos.add(c.id!)) result.add(c);
         }
-        result.sort(
-            (a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
+        // Só mostra atendimentos (fase pré-lead)
+        result.retainWhere((c) => c.fase == FaseCliente.atendimento);
+        result.sort((a, b) {
+          final da = a.dataEntradaSala ?? a.dataCadastro;
+          final db = b.dataEntradaSala ?? b.dataCadastro;
+          return db.compareTo(da);
+        });
         return result;
       },
     );

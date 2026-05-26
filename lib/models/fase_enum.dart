@@ -1,17 +1,19 @@
 // lib/models/fase_enum.dart
 enum FaseCliente {
-  prospeccao, // Cliente foi adicionado, mas ainda não houve contato efetivo.
-  contato,    // Primeiro contato realizado.
-  negociacao, // Proposta enviada ou em discussão.
+  atendimento, // Cadastrado pela recepção — aguarda vendedor completar para virar lead
+  prospeccao,  // Lead adicionado, ainda sem contato efetivo
+  contato,     // Primeiro contato realizado
+  negociacao,  // Proposta enviada ou em discussão
   visita,
-  fechado,    // Venda concluída (ou objetivo pessoal atingido).
-  perdido,    // Cliente não avançou.
+  fechado,     // Venda concluída
+  perdido,     // Cliente não avançou
 }
 
 extension FaseClienteExtension on FaseCliente {
-  // Converte a enum para uma string legível na UI
   String get nomeDisplay {
     switch (this) {
+      case FaseCliente.atendimento:
+        return 'Atendimento';
       case FaseCliente.prospeccao:
         return 'Prospecção';
       case FaseCliente.contato:

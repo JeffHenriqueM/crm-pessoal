@@ -22,6 +22,8 @@ class KanbanView extends StatelessWidget {
 
   static Color corDaFase(FaseCliente fase) {
     switch (fase) {
+      case FaseCliente.atendimento:
+        return const Color(0xFF546E7A); // cinza-azulado
       case FaseCliente.prospeccao:
         return const Color(0xFF1565C0);
       case FaseCliente.contato:
@@ -49,7 +51,9 @@ class KanbanView extends StatelessWidget {
             height: constraints.maxHeight - 24,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: FaseCliente.values.map((fase) {
+              children: FaseCliente.values
+                  .where((f) => f != FaseCliente.atendimento)
+                  .map((fase) {
                 final clientesDaFase =
                     clientes.where((c) => c.fase == fase).toList();
                 return Padding(

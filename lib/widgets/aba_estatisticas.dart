@@ -55,10 +55,12 @@ class AbaEstatisticas extends StatelessWidget {
           const SizedBox(height: 28),
           _sectionTitle(context, 'Funil de Vendas'),
           const SizedBox(height: 12),
-          ...FaseCliente.values.map(
-            (fase) => _itemFunil(context, fase,
-                clientes.where((c) => c.fase == fase).length, cs),
-          ),
+          ...FaseCliente.values
+              .where((f) => f != FaseCliente.atendimento)
+              .map(
+                (fase) => _itemFunil(context, fase,
+                    clientes.where((c) => c.fase == fase).length, cs),
+              ),
           const SizedBox(height: 16),
         ],
       ),
@@ -169,6 +171,8 @@ class AbaEstatisticas extends StatelessWidget {
 
   Color _corDeFase(FaseCliente fase, ColorScheme cs) {
     switch (fase) {
+      case FaseCliente.atendimento:
+        return Colors.blueGrey.shade400;
       case FaseCliente.prospeccao:
         return Colors.blueGrey;
       case FaseCliente.contato:
