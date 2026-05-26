@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Utilitário ──────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // ── Clientes / Leads ────────────────────────────────────────────────────
+    match /clientes/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Negociações ─────────────────────────────────────────────────────────
+    match /negociacoes/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Interações (subcoleção de clientes) ─────────────────────────────────
+    match /clientes/{clienteId}/interacoes/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Campanhas ───────────────────────────────────────────────────────────
+    match /campanhas/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Usuários ────────────────────────────────────────────────────────────
+    match /usuarios/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Config (contadores, configurações do sistema) ────────────────────────
+    // Qualquer usuário autenticado pode ler e escrever — necessário para
+    // gerar o número sequencial de atendimento da recepção.
+    match /config/{docId} {
+      allow read, write: if isAuth();
+    }
+  }
+}
