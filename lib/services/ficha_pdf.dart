@@ -12,10 +12,16 @@ import 'package:printing/printing.dart';
 // ── Dados necessários para gerar a ficha ────────────────────────────────────
 class FichaAtendimentoData {
   final String nome;
-  final String? conjuge;
+  final String? idade;
+  final String? profissao;
   final String? telefone;
+  final String? conjuge;
+  final String? idadeConjuge;
+  final String? profissaoConjuge;
+  final String? telefoneConjuge;
   final String? brinde;
   final String? captadorNome;
+  final String? vendedorNome;
   final String sala;
   final String? pontoCapatcao;
   final int? numeroAtendimento;
@@ -23,10 +29,16 @@ class FichaAtendimentoData {
 
   const FichaAtendimentoData({
     required this.nome,
-    this.conjuge,
+    this.idade,
+    this.profissao,
     this.telefone,
+    this.conjuge,
+    this.idadeConjuge,
+    this.profissaoConjuge,
+    this.telefoneConjuge,
     this.brinde,
     this.captadorNome,
+    this.vendedorNome,
     required this.sala,
     this.pontoCapatcao,
     this.numeroAtendimento,
@@ -168,10 +180,9 @@ class FichaAtendimentoPdf {
         _rodapeItem('Data:', _dataFmt.format(d.dataEntrada)),
         _rodapeItem('Gerente:', null),
         _rodapeItem('Supervisor de MKT:', null),
-        _rodapeItem('Promotor de MKT:',
-            d.pontoCapatcao), // Ponto captação como promotor
+        _rodapeItem('Promotor de MKT:', null),
         _rodapeItem('Liner:', null),
-        _rodapeItem('Closer:', null),
+        _rodapeItem('Closer:', d.vendedorNome),
         _rodapeItem('Pep:', d.captadorNome),
         _rodapeItem('MNV:', null),
         _rodapeItem('Brinde:', d.brinde),
@@ -304,11 +315,32 @@ class FichaAtendimentoPdf {
 
         _linhaGrade(pw.Row(
           children: [
-            pw.Expanded(child: _labelComLinha('Idade:')),
+            pw.Expanded(child: _labelComValorOuLinha('Idade:', d.idade)),
             pw.SizedBox(width: 12),
-            pw.Expanded(child: _labelComLinha('Profissão:')),
+            pw.Expanded(child: _labelComValorOuLinha('Profissão:', d.profissao)),
           ],
         )),
+        pw.SizedBox(height: 3),
+
+        // Telefone titular com destaque laranja
+        _linhaGrade(
+          pw.Row(
+            children: [
+              pw.Text('Telefone: ',
+                  style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: _laranja)),
+              pw.Text(
+                d.telefone ?? '_________________________________',
+                style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: d.telefone != null ? _laranja : _cinzaClaro),
+              ),
+            ],
+          ),
+        ),
         pw.SizedBox(height: 3),
 
         _linhaGrade(_labelComValorOuLinha('Cônjuge:', d.conjuge)),
@@ -316,11 +348,32 @@ class FichaAtendimentoPdf {
 
         _linhaGrade(pw.Row(
           children: [
-            pw.Expanded(child: _labelComLinha('Idade Cônjuge:')),
+            pw.Expanded(child: _labelComValorOuLinha('Idade Cônjuge:', d.idadeConjuge)),
             pw.SizedBox(width: 12),
-            pw.Expanded(child: _labelComLinha('Profissão:')),
+            pw.Expanded(child: _labelComValorOuLinha('Profissão:', d.profissaoConjuge)),
           ],
         )),
+        pw.SizedBox(height: 3),
+
+        // Telefone cônjuge com destaque laranja
+        _linhaGrade(
+          pw.Row(
+            children: [
+              pw.Text('Telefone Cônjuge: ',
+                  style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: _laranja)),
+              pw.Text(
+                d.telefoneConjuge ?? '_________________________',
+                style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: d.telefoneConjuge != null ? _laranja : _cinzaClaro),
+              ),
+            ],
+          ),
+        ),
         pw.SizedBox(height: 3),
 
         _linhaGrade(pw.Row(
@@ -334,30 +387,6 @@ class FichaAtendimentoPdf {
 
         _linhaGrade(_labelComLinha('Estado:')),
         pw.SizedBox(height: 3),
-
-        // Telefone com destaque laranja
-        _linhaGrade(
-          pw.Row(
-            children: [
-              pw.Text(
-                'Telefone: ',
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: _laranja,
-                ),
-              ),
-              pw.Text(
-                d.telefone ?? '_________________________________',
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: d.telefone != null ? _laranja : _cinzaClaro,
-                ),
-              ),
-            ],
-          ),
-        ),
         pw.SizedBox(height: 6),
 
         // Valor de diária + linhas em branco para notas

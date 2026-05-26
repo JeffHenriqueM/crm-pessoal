@@ -30,6 +30,10 @@ class Cliente {
   final String? brinde;
   final String? sala;
   final int? numeroAtendimento;
+  final String? idade;
+  final String? profissao;
+  final String? idadeConjuge;
+  final String? profissaoConjuge;
 
   Cliente({
     this.id,
@@ -58,6 +62,10 @@ class Cliente {
     this.brinde,
     this.sala,
     this.numeroAtendimento,
+    this.idade,
+    this.profissao,
+    this.idadeConjuge,
+    this.profissaoConjuge,
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -88,6 +96,10 @@ class Cliente {
       'brinde': brinde,
       'sala': sala,
       'numeroAtendimento': numeroAtendimento,
+      'idade': idade,
+      'profissao': profissao,
+      'idadeConjuge': idadeConjuge,
+      'profissaoConjuge': profissaoConjuge,
     };
   }
 
@@ -136,6 +148,10 @@ class Cliente {
       brinde: data['brinde'],
       sala: data['sala'],
       numeroAtendimento: data['numeroAtendimento'] as int?,
+      idade: data['idade'],
+      profissao: data['profissao'],
+      idadeConjuge: data['idadeConjuge'],
+      profissaoConjuge: data['profissaoConjuge'],
     );
   }
 }
