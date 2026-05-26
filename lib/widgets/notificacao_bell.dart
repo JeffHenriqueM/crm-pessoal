@@ -92,7 +92,7 @@ class NotificacaoBell extends StatelessWidget {
                     total > 0
                         ? Icons.notifications_rounded
                         : Icons.notifications_outlined,
-                    color: total > 0 ? cs.primary : cs.onSurfaceVariant,
+                    color: cs.onSurfaceVariant,
                     size: 20,
                   ),
                   title: Text(

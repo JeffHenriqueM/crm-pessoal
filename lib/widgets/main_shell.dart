@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/campanhas_screen.dart';
+import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
 import '../screens/negociacoes_screen.dart';
 import '../screens/vendedor_home_screen.dart';
 import '../services/auth_service.dart';
-import '../theme/theme_controller.dart';
 import 'notificacao_bell.dart';
 
 // ── Modelo interno de item de nav ─────────────────────────────────────────────
@@ -119,201 +119,9 @@ class _MainShellState extends State<MainShell> {
 
   // ── Configurações ─────────────────────────────────────────────────────────
   void _abrirConfiguracoes(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return AnimatedBuilder(
-          animation: ThemeController.instance,
-          builder: (_, __) {
-            final isDark = ThemeController.instance.isDark;
-            final cs = Theme.of(ctx).colorScheme;
-
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle bar
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: cs.outlineVariant,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Configurações',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Aparência',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: cs.outline,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        // Card Light Mode
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: isDark
-                                ? ThemeController.instance.toggle
-                                : null,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 20, horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: !isDark
-                                    ? cs.primaryContainer
-                                    : cs.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: !isDark
-                                      ? cs.primary
-                                      : cs.outlineVariant,
-                                  width: !isDark ? 2 : 1,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.light_mode_rounded,
-                                    size: 32,
-                                    color: !isDark
-                                        ? cs.primary
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Light Mode',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: !isDark
-                                          ? cs.primary
-                                          : cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  if (!isDark) ...[
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: cs.primary,
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        'Ativo',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: cs.onPrimary,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Card Dark Mode
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: !isDark
-                                ? ThemeController.instance.toggle
-                                : null,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 20, horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? cs.primaryContainer
-                                    : cs.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isDark
-                                      ? cs.primary
-                                      : cs.outlineVariant,
-                                  width: isDark ? 2 : 1,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.dark_mode_rounded,
-                                    size: 32,
-                                    color: isDark
-                                        ? cs.primary
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Dark Mode',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark
-                                          ? cs.primary
-                                          : cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  if (isDark) ...[
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: cs.primary,
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        'Ativo',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: cs.onPrimary,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ConfiguracoesScreen()),
     );
   }
 
