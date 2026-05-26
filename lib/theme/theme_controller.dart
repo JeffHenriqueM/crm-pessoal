@@ -7,16 +7,18 @@ class ThemeController extends ChangeNotifier {
 
   static const _key = 'theme_mode';
 
-  ThemeMode _mode = ThemeMode.light;
+  ThemeMode _mode = ThemeMode.dark; // padrão inicial antes do initialize()
 
   ThemeMode get mode => _mode;
   bool get isDark => _mode == ThemeMode.dark;
 
   /// Deve ser chamado em main() antes de runApp().
+  /// Padrão para novos usuários (sem preferência salva): dark mode.
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_key);
-    _mode = saved == 'dark' ? ThemeMode.dark : ThemeMode.light;
+    // null = primeiro acesso → dark mode por padrão
+    _mode = saved == 'light' ? ThemeMode.light : ThemeMode.dark;
   }
 
   Future<void> toggle() async {

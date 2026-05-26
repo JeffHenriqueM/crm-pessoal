@@ -562,20 +562,9 @@ class _MainShellState extends State<MainShell> {
 
           // ── Notificações ───────────────────────────────────────────────
           if (_sidebarExpanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 12, 0),
-              child: Row(
-                children: [
-                  NotificacaoBell(
-                    vendedorId: _isAdmin ? null : widget.currentUserId,
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    'Notificações',
-                    style: TextStyle(fontSize: 14, color: cs.onSurface),
-                  ),
-                ],
-              ),
+            NotificacaoBell(
+              vendedorId: _isAdmin ? null : widget.currentUserId,
+              showAsListTile: true,
             )
           else
             Center(

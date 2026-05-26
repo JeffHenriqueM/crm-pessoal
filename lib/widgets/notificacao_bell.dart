@@ -37,7 +37,17 @@ class _CampanhaNotifItem {
 // ── Widget: sino com badge ────────────────────────────────────────────────────
 class NotificacaoBell extends StatelessWidget {
   final String? vendedorId;
-  const NotificacaoBell({super.key, required this.vendedorId});
+
+  /// Quando true, renderiza como ListTile completo (ícone + texto "Notificações")
+  /// com o badge como trailing. Toda a linha é clicável.
+  /// Quando false (padrão), renderiza apenas o IconButton com badge sobreposto.
+  final bool showAsListTile;
+
+  const NotificacaoBell({
+    super.key,
+    required this.vendedorId,
+    this.showAsListTile = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +79,56 @@ class NotificacaoBell extends StatelessWidget {
                 categorias.fold<int>(0, (s, c) => s + c.itens.length);
             final total = totalClientes + campNotifs.length;
 
+            void abrirPainel() =>
+                _mostrarPainel(context, categorias, campNotifs, total);
+
+            // ── Modo ListTile (sidebar expandida) ─────────────────────────
+            if (showAsListTile) {
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: ListTile(
+                  leading: Icon(
+                    total > 0
+                        ? Icons.notifications_rounded
+                        : Icons.notifications_outlined,
+                    color: total > 0 ? cs.primary : cs.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  title: Text(
+                    'Notificações',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  ),
+                  trailing: total > 0
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade600,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            total > 99 ? '99+' : '$total',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      : null,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  horizontalTitleGap: 8,
+                  dense: true,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onTap: abrirPainel,
+                ),
+              );
+            }
+
+            // ── Modo ícone (sidebar compacta ou mobile) ───────────────────
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -82,8 +142,7 @@ class NotificacaoBell extends StatelessWidget {
                   tooltip: total > 0
                       ? '$total notificaç${total == 1 ? 'ão' : 'ões'} pendente${total != 1 ? 's' : ''}'
                       : 'Sem notificações',
-                  onPressed: () =>
-                      _mostrarPainel(context, categorias, campNotifs, total),
+                  onPressed: abrirPainel,
                 ),
                 if (total > 0)
                   Positioned(

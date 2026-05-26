@@ -148,14 +148,6 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Tema toggle no topo direito
-            Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: _ThemeToggleButton(light: true),
-              ),
-            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -318,29 +310,23 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Cabeçalho + toggle de tema
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Cabeçalho
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Bem-vindo(a)',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Faça login para continuar',
-                    style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
-                  ),
-                ],
+              Text(
+                'Bem-vindo(a)',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
               ),
-              const _ThemeToggleButton(light: false),
+              const SizedBox(height: 4),
+              Text(
+                'Faça login para continuar',
+                style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
+              ),
             ],
           ),
           const SizedBox(height: 36),
@@ -431,29 +417,3 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
   }
 }
 
-// ── Widget de toggle de tema ───────────────────────────────────────────────
-class _ThemeToggleButton extends StatelessWidget {
-  /// [light] = true → ícones brancos (sobre fundo colorido).
-  /// [light] = false → ícones com cor do tema.
-  final bool light;
-
-  const _ThemeToggleButton({required this.light});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: ThemeController.instance,
-      builder: (_, __) {
-        final isDark = ThemeController.instance.isDark;
-        return IconButton(
-          icon: Icon(
-            isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-            color: light ? Colors.white : null,
-          ),
-          tooltip: isDark ? 'Modo claro' : 'Modo escuro',
-          onPressed: ThemeController.instance.toggle,
-        );
-      },
-    );
-  }
-}
