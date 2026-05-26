@@ -88,6 +88,7 @@ class _NegociacoesScreenState extends State<NegociacoesScreen>
                   currentUserId: widget.currentUserId,
                   currentUserName: widget.currentUserName,
                   onAprovar: _abrirPainelAprovacao,
+                  userProfile: widget.userProfile,
                 ),
                 _ListaPendentes(
                   service: _service,
@@ -102,6 +103,7 @@ class _NegociacoesScreenState extends State<NegociacoesScreen>
               currentUserId: widget.currentUserId,
               currentUserName: widget.currentUserName,
               onAprovar: null,
+              userProfile: widget.userProfile,
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _novaNegociacao,
@@ -119,6 +121,7 @@ class _NegociacoesScreenState extends State<NegociacoesScreen>
       proximoNumero: 1,
       currentUserId: user?.uid ?? widget.currentUserId,
       currentUserName: user?.displayName ?? widget.currentUserName,
+      userProfile: widget.userProfile,
     );
   }
 
@@ -170,6 +173,7 @@ class _ListaNegociacoes extends StatefulWidget {
   final String? currentUserId;
   final String? currentUserName;
   final void Function(Negociacao)? onAprovar;
+  final String userProfile;
 
   const _ListaNegociacoes({
     required this.service,
@@ -178,6 +182,7 @@ class _ListaNegociacoes extends StatefulWidget {
     this.currentUserId,
     this.currentUserName,
     this.onAprovar,
+    this.userProfile = 'vendedor',
   });
 
   @override
@@ -276,6 +281,7 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
                               editando: neg,
                               currentUserId: widget.currentUserId,
                               currentUserName: widget.currentUserName,
+                              userProfile: widget.userProfile,
                             ),
                             onDelete: () =>
                                 _confirmarExclusao(context, neg),
@@ -316,7 +322,7 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
 
     return FilterChip(
       label: Text(label,
-          style: TextStyle(fontSize: 12, color: selected ? cs.onPrimary : null)),
+          style: TextStyle(fontSize: 12, color: selected ? cs.onPrimary : cs.onSurface)),
       selected: selected,
       selectedColor: cs.primary,
       checkmarkColor: cs.onPrimary,

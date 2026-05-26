@@ -12,6 +12,26 @@ final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 final _moedaCompacta = NumberFormat.currency(
     locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
 
+// ── Catálogo de produtos Villamor ─────────────────────────────────────────────
+class _Produto {
+  final String nome;
+  final double valor;
+  const _Produto(this.nome, this.valor);
+}
+
+const _produtos = [
+  // Categoria Luxo (Cota)
+  _Produto('Luxo Bronze',     45000),
+  _Produto('Luxo Prata',      77000),
+  _Produto('Luxo Ouro',      145000),
+  _Produto('Luxo Diamante', 1750000),
+  // Categoria Villamor
+  _Produto('Villamor Bronze',    61000),
+  _Produto('Villamor Prata',     98000),
+  _Produto('Villamor Ouro',     192000),
+  _Produto('Villamor Diamante', 2465000),
+];
+
 // ── Aba principal (usada dentro da FichaClienteScreen) ────────────────────────
 class AbaNegociacoes extends StatelessWidget {
   final String clienteId;
@@ -135,6 +155,7 @@ void abrirFormularioNegociacao(
   void Function(Negociacao)? onSaveLocal,
   String? currentUserId,
   String? currentUserName,
+  String userProfile = 'vendedor',
 }) {
   showDialog(
     context: context,
@@ -148,6 +169,7 @@ void abrirFormularioNegociacao(
       onSaveLocal: onSaveLocal,
       currentUserId: currentUserId,
       currentUserName: currentUserName,
+      userProfile: userProfile,
     ),
   );
 }
@@ -598,6 +620,7 @@ class _FormularioNegociacao extends StatefulWidget {
   final void Function(Negociacao)? onSaveLocal;
   final String? currentUserId;
   final String? currentUserName;
+  final String userProfile;
 
   const _FormularioNegociacao({
     this.clienteId,
@@ -608,6 +631,7 @@ class _FormularioNegociacao extends StatefulWidget {
     this.onSaveLocal,
     this.currentUserId,
     this.currentUserName,
+    this.userProfile = 'vendedor',
   });
 
   @override
@@ -638,10 +662,16 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   String? _vinculoClienteId;
   String? _vinculoClienteNome;
 
+  // Produto selecionado
+  _Produto? _produtoSelecionado;
+
   // Embaixador
   List<Usuario> _usuarios = [];
   Usuario? _embaixador;
   bool _carregandoUsuarios = true;
+
+  bool get _isAdmin =>
+      widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
   @override
   void initState() {
@@ -784,6 +814,116 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       helpText: 'Prazo máximo: 7 dias',
     );
     if (data != null && mounted) setState(() => _prazoResposta = data);
+  }
+
+  // ── Escolha de produto ────────────────────────────────────────────────────
+  Future<void> _abrirEscolhaProduto() async {
+    final cs = Theme.of(context).colorScheme;
+    final resultado = await showModalBottomSheet<_Produto>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.villa_outlined, color: cs.primary, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Escolher Produto',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Categoria Luxo
+                Text('Categoria Luxo — Cota',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                        letterSpacing: 0.4)),
+                const SizedBox(height: 8),
+                ..._produtos.where((p) => p.nome.startsWith('Luxo')).map((p) =>
+                    _produtoTile(ctx, p, cs)),
+                const SizedBox(height: 14),
+                // Categoria Villamor
+                Text('Categoria Villamor',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                        letterSpacing: 0.4)),
+                const SizedBox(height: 8),
+                ..._produtos.where((p) => p.nome.startsWith('Villamor')).map((p) =>
+                    _produtoTile(ctx, p, cs)),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (resultado != null && mounted) {
+      setState(() {
+        _produtoSelecionado = resultado;
+        _tituloCtrl.text = resultado.nome;
+        _valorOriginalCtrl.text = _fmt(resultado.valor);
+        // Pré-preenche entrada com 10%
+        final entrada = resultado.valor * 0.10;
+        _valorEntradaCtrl.text = _fmt(entrada);
+        _parcelaManual = false;
+        _recalcular();
+      });
+    }
+  }
+
+  Widget _produtoTile(BuildContext ctx, _Produto p, ColorScheme cs) {
+    final selecionado = _produtoSelecionado?.nome == p.nome;
+    return InkWell(
+      onTap: () => Navigator.of(ctx).pop(p),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selecionado
+              ? cs.primaryContainer.withValues(alpha: 0.4)
+              : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selecionado ? cs.primary.withValues(alpha: 0.5) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(p.nome,
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: cs.onSurface)),
+            Text(_moeda.format(p.valor),
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: cs.primary)),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Lead picker ───────────────────────────────────────────────────────────
@@ -936,450 +1076,526 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     final isEditing = widget.editando != null;
     final isEspecial = _tipoNegociacao == TipoNegociacao.especial;
 
-    return AlertDialog(
-      title: Row(
-        children: [
-          Icon(Icons.handshake_outlined, color: cs.primary),
-          const SizedBox(width: 10),
-          Text(isEditing ? 'Editar Proposta' : 'Nova Proposta'),
-        ],
-      ),
-      contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      content: SizedBox(
-        width: 520,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Tipo da negociação ────────────────────────
-                _sectionLabel(cs, 'Tipo de Negociação'),
-                const SizedBox(height: 8),
-                SegmentedButton<TipoNegociacao>(
-                  segments: const [
-                    ButtonSegment(
-                      value: TipoNegociacao.tabela,
-                      icon: Icon(Icons.table_chart_outlined, size: 16),
-                      label: Text('Valor de Tabela'),
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 800),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Título ───────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.handshake_outlined, color: cs.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isEditing ? 'Editar Proposta' : 'Nova Proposta',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    ButtonSegment(
-                      value: TipoNegociacao.especial,
-                      icon: Icon(Icons.star_outlined, size: 16),
-                      label: Text('Negociação Especial'),
-                    ),
-                  ],
-                  selected: {_tipoNegociacao},
-                  onSelectionChanged: (s) => setState(() {
-                    _tipoNegociacao = s.first;
-                    if (_tipoNegociacao == TipoNegociacao.tabela) {
-                      _solicitarAprovacao = false;
-                    }
-                  }),
-                  style: ButtonStyle(
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+                    onPressed: _salvando ? null : () => Navigator.of(context).pop(),
                     visualDensity: VisualDensity.compact,
-                    textStyle: WidgetStatePropertyAll(
-                        const TextStyle(fontSize: 12)),
                   ),
-                ),
-                const SizedBox(height: 16),
-
-                // ── Vínculo com lead (só quando não vem de uma ficha) ─────
-                if (widget.clienteId == null) ...[
-                  _sectionLabel(cs, 'Lead vinculado'),
-                  const SizedBox(height: 8),
-                  _buildLeadPicker(cs),
-                  const SizedBox(height: 16),
                 ],
+              ),
+            ),
+            Divider(height: 1, color: cs.outlineVariant),
 
-                // ── Título ────────────────────────────────────
-                TextFormField(
-                  controller: _tituloCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Título da proposta',
-                    prefixIcon: Icon(Icons.label_outline),
-                  ),
-                  textCapitalization: TextCapitalization.sentences,
-                  validator: (v) => v?.trim().isEmpty == true
-                      ? 'Informe um título'
-                      : null,
-                ),
-                const SizedBox(height: 14),
-
-                // ── Embaixador ────────────────────────────────
-                _carregandoUsuarios
-                    ? const LinearProgressIndicator()
-                    : DropdownButtonFormField<Usuario>(
-                        value: _embaixador,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Embaixador',
-                          prefixIcon: Icon(Icons.person_outlined),
-                        ),
-                        hint: const Text('Selecione o embaixador'),
-                        items: _usuarios
-                            .map((u) => DropdownMenuItem(
-                                value: u, child: Text(u.nome)))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _embaixador = v),
-                      ),
-                const SizedBox(height: 14),
-
-                // ── Valor original ────────────────────────────
-                TextFormField(
-                  controller: _valorOriginalCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Valor original (R\$)',
-                    prefixIcon: Icon(Icons.attach_money),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                        RegExp(r'[\d.,]')),
-                  ],
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Informe o valor';
-                    }
-                    if (_parse(v) <= 0) return 'Valor inválido';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // ── Desconto ──────────────────────────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _descontoCtrl,
-                        decoration: InputDecoration(
-                          labelText: 'Desconto '
-                              '(${_tipoDesconto == TipoDesconto.percentual ? '%' : 'R\$'})',
-                          prefixIcon:
-                              const Icon(Icons.discount_outlined),
-                        ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                              RegExp(r'[\d.,]')),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: SegmentedButton<TipoDesconto>(
+            // ── Conteúdo ─────────────────────────────────────────────────
+            Flexible(
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Tipo da negociação ──────────────────
+                      _sectionLabel(cs, 'Tipo de Negociação'),
+                      const SizedBox(height: 8),
+                      SegmentedButton<TipoNegociacao>(
                         segments: const [
                           ButtonSegment(
-                              value: TipoDesconto.fixo,
-                              label: Text('R\$')),
+                            value: TipoNegociacao.tabela,
+                            icon: Icon(Icons.table_chart_outlined, size: 16),
+                            label: Text('Valor de Tabela'),
+                          ),
                           ButtonSegment(
-                              value: TipoDesconto.percentual,
-                              label: Text('%')),
+                            value: TipoNegociacao.especial,
+                            icon: Icon(Icons.star_outlined, size: 16),
+                            label: Text('Negociação Especial'),
+                          ),
                         ],
-                        selected: {_tipoDesconto},
+                        selected: {_tipoNegociacao},
                         onSelectionChanged: (s) => setState(() {
-                          _tipoDesconto = s.first;
-                          _recalcular();
+                          _tipoNegociacao = s.first;
+                          if (_tipoNegociacao == TipoNegociacao.tabela) {
+                            _solicitarAprovacao = false;
+                          }
                         }),
-                        style: const ButtonStyle(
+                        style: ButtonStyle(
                           visualDensity: VisualDensity.compact,
+                          textStyle: WidgetStatePropertyAll(
+                              const TextStyle(fontSize: 12)),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 16),
 
-                // ── Valor final calculado ─────────────────────
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Valor final',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurface)),
-                      Text(
-                        _moeda.format(_valorFinal),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: cs.primary,
+                      // ── Escolher Produto ────────────────────
+                      OutlinedButton.icon(
+                        onPressed: _abrirEscolhaProduto,
+                        icon: const Icon(Icons.villa_outlined, size: 18),
+                        label: Text(
+                          _produtoSelecionado != null
+                              ? 'Produto: ${_produtoSelecionado!.nome} — ${_moeda.format(_produtoSelecionado!.valor)}'
+                              : 'Escolher produto',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          minimumSize: const Size(double.infinity, 44),
+                          textStyle: const TextStyle(fontSize: 13),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
+                      const SizedBox(height: 14),
 
-                // ── Entrada e Parcelas ────────────────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _valorEntradaCtrl,
+                      // ── Título ──────────────────────────────
+                      TextFormField(
+                        controller: _tituloCtrl,
                         decoration: const InputDecoration(
-                          labelText: 'Valor de entrada',
-                          prefixIcon: Icon(Icons.payments_outlined),
+                          labelText: 'Título da proposta',
+                          prefixIcon: Icon(Icons.label_outline),
                         ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
+                        textCapitalization: TextCapitalization.sentences,
+                        validator: (v) => v?.trim().isEmpty == true
+                            ? 'Informe um título'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── Embaixador ──────────────────────────
+                      if (_carregandoUsuarios)
+                        const LinearProgressIndicator()
+                      else if (_isAdmin)
+                        DropdownButtonFormField<Usuario>(
+                          value: _embaixador,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Embaixador',
+                            prefixIcon: Icon(Icons.person_outlined),
+                          ),
+                          hint: const Text('Selecione o embaixador'),
+                          items: _usuarios
+                              .map((u) => DropdownMenuItem(
+                                  value: u, child: Text(u.nome)))
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _embaixador = v),
+                        )
+                      else
+                        InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Embaixador',
+                            prefixIcon: const Icon(Icons.person_outlined),
+                            suffixIcon: Tooltip(
+                              message: 'Somente Admin pode alterar o embaixador',
+                              child: Icon(Icons.lock_outline,
+                                  size: 18, color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                          child: Text(
+                            _embaixador?.nome ?? '—',
+                            style: TextStyle(fontSize: 14, color: cs.onSurface),
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+
+                      // ── Valor original ──────────────────────
+                      TextFormField(
+                        controller: _valorOriginalCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Valor original',
+                          prefixIcon: Icon(Icons.attach_money),
+                          prefixText: 'R\$ ',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
                         inputFormatters: [
                           FilteringTextInputFormatter.allow(
                               RegExp(r'[\d.,]')),
                         ],
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Informe o valor';
+                          }
+                          if (_parse(v) <= 0) return 'Valor inválido';
+                          return null;
+                        },
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _parcelasCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Qtd. parcelas',
-                          prefixIcon:
-                              Icon(Icons.calendar_month_outlined),
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
+                      const SizedBox(height: 14),
+
+                      // ── Desconto ────────────────────────────
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _descontoCtrl,
+                              decoration: InputDecoration(
+                                labelText: 'Desconto '
+                                    '(${_tipoDesconto == TipoDesconto.percentual ? '%' : 'R\$'})',
+                                prefixIcon:
+                                    const Icon(Icons.discount_outlined),
+                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                    RegExp(r'[\d.,]')),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: SegmentedButton<TipoDesconto>(
+                              segments: const [
+                                ButtonSegment(
+                                    value: TipoDesconto.fixo,
+                                    label: Text('R\$')),
+                                ButtonSegment(
+                                    value: TipoDesconto.percentual,
+                                    label: Text('%')),
+                              ],
+                              selected: {_tipoDesconto},
+                              onSelectionChanged: (s) => setState(() {
+                                _tipoDesconto = s.first;
+                                _recalcular();
+                              }),
+                              style: const ButtonStyle(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
 
-                // ── Valor da parcela ──────────────────────────
-                TextFormField(
-                  controller: _valorParcelaCtrl,
-                  decoration: InputDecoration(
-                    labelText: _parcelaManual
-                        ? 'Valor da parcela (manual)'
-                        : 'Valor da parcela (calculado)',
-                    prefixIcon:
-                        const Icon(Icons.receipt_long_outlined),
-                    suffixIcon: _parcelaManual
-                        ? IconButton(
-                            icon: const Icon(Icons.refresh),
-                            tooltip: 'Usar valor calculado',
-                            onPressed: _resetarParcela,
-                          )
-                        : Icon(Icons.calculate_outlined,
-                            color: cs.onSurfaceVariant),
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                        RegExp(r'[\d.,]')),
-                  ],
-                ),
-                // Aviso de divergência
-                if (_parcelaManual && _parcelaCalculada != null)
-                  Builder(builder: (context) {
-                    final cs = Theme.of(context).colorScheme;
-                    final manual = _parse(_valorParcelaCtrl.text);
-                    if ((manual - _parcelaCalculada!).abs() > 0.01) {
-                      return Container(
-                        margin: const EdgeInsets.only(top: 6),
+                      // ── Valor final calculado ───────────────
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 7),
+                            horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(
-                          color: cs.errorContainer
-                              .withValues(alpha: 0.5),
+                          color: cs.primaryContainer.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(Icons.warning_amber_rounded,
-                                size: 16, color: cs.error),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Negociação divergente do valor calculado '
-                                '(${_moeda.format(_parcelaCalculada!)})',
+                            Text('Valor final',
                                 style: TextStyle(
-                                    fontSize: 12, color: cs.error),
+                                    fontSize: 13, color: cs.onSurface)),
+                            Text(
+                              _moeda.format(_valorFinal),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: cs.primary,
                               ),
                             ),
                           ],
                         ),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  }),
-                const SizedBox(height: 14),
-
-                // ── Status ────────────────────────────────────
-                DropdownButtonFormField<StatusNegociacao>(
-                  value: _status,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    prefixIcon: Icon(Icons.flag_outlined),
-                  ),
-                  items: StatusNegociacao.values
-                      .map((s) => DropdownMenuItem(
-                            value: s,
-                            child: Text(s.nomeDisplay),
-                          ))
-                      .toList(),
-                  onChanged: (s) =>
-                      s != null ? setState(() => _status = s) : null,
-                ),
-                const SizedBox(height: 14),
-
-                // ── Observações ───────────────────────────────
-                TextFormField(
-                  controller: _obsCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Observações (opcional)',
-                    prefixIcon: Icon(Icons.notes_outlined),
-                    alignLabelWithHint: true,
-                  ),
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-
-                // ── Seção Especial ────────────────────────────
-                if (isEspecial) ...[
-                  const SizedBox(height: 20),
-                  Divider(color: Colors.amber.shade700.withValues(alpha: 0.4)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(Icons.star_rounded,
-                          size: 16, color: Colors.amber.shade700),
-                      const SizedBox(width: 6),
-                      _sectionLabel(cs, 'Condições Especiais'),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: _condicaoEspecialCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Condição especial de fechamento',
-                      prefixIcon:
-                          Icon(Icons.star_outlined,
-                              color: Colors.amber.shade700),
-                      alignLabelWithHint: true,
-                    ),
-                    maxLines: 3,
-                    textCapitalization: TextCapitalization.sentences,
-                    validator: isEspecial
-                        ? (v) => v?.trim().isEmpty == true
-                            ? 'Descreva a condição especial'
-                            : null
-                        : null,
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Prazo de resposta
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: _selecionarPrazo,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: cs.outline),
-                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
+                      const SizedBox(height: 14),
+
+                      // ── Entrada e Parcelas ──────────────────
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.timer_outlined,
-                              color: _prazoResposta != null
-                                  ? cs.primary
-                                  : cs.onSurfaceVariant,
-                              size: 20),
-                          const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              _prazoResposta != null
-                                  ? 'Prazo: ${DateFormat('dd/MM/yyyy').format(_prazoResposta!)}'
-                                  : 'Prazo de resposta (máx. 7 dias)',
-                              style: TextStyle(
-                                color: _prazoResposta != null
-                                    ? cs.onSurface
-                                    : cs.onSurfaceVariant,
+                            child: TextFormField(
+                              controller: _valorEntradaCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Valor de entrada',
+                                prefixIcon: Icon(Icons.payments_outlined),
+                                prefixText: 'R\$ ',
                               ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                    RegExp(r'[\d.,]')),
+                              ],
                             ),
                           ),
-                          if (_prazoResposta != null)
-                            IconButton(
-                              icon: Icon(Icons.clear,
-                                  size: 18, color: cs.outline),
-                              onPressed: () =>
-                                  setState(() => _prazoResposta = null),
-                              visualDensity: VisualDensity.compact,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _parcelasCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Qtd. parcelas',
+                                prefixIcon:
+                                    Icon(Icons.calendar_month_outlined),
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
                             ),
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
+                      const SizedBox(height: 14),
 
-                  // Solicitar aprovação
-                  CheckboxListTile(
-                    value: _solicitarAprovacao,
-                    onChanged: (v) =>
-                        setState(() => _solicitarAprovacao = v ?? false),
-                    title: const Text(
-                      'Solicitar aprovação da Gerência',
-                      style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                    subtitle: const Text(
-                      'O gerente será notificado para aprovar esta condição',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    secondary: const Icon(Icons.admin_panel_settings_outlined),
-                    contentPadding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+                      // ── Valor da parcela ────────────────────
+                      TextFormField(
+                        controller: _valorParcelaCtrl,
+                        decoration: InputDecoration(
+                          labelText: _parcelaManual
+                              ? 'Valor da parcela (manual)'
+                              : 'Valor da parcela (calculado)',
+                          prefixIcon:
+                              const Icon(Icons.receipt_long_outlined),
+                          prefixText: 'R\$ ',
+                          suffixIcon: _parcelaManual
+                              ? IconButton(
+                                  icon: const Icon(Icons.refresh),
+                                  tooltip: 'Usar valor calculado',
+                                  onPressed: _resetarParcela,
+                                )
+                              : Icon(Icons.calculate_outlined,
+                                  color: cs.onSurfaceVariant),
+                        ),
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                              RegExp(r'[\d.,]')),
+                        ],
+                      ),
+                      // Aviso de divergência
+                      if (_parcelaManual && _parcelaCalculada != null)
+                        Builder(builder: (context) {
+                          final cs = Theme.of(context).colorScheme;
+                          final manual = _parse(_valorParcelaCtrl.text);
+                          if ((manual - _parcelaCalculada!).abs() > 0.01) {
+                            return Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: cs.errorContainer
+                                    .withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded,
+                                      size: 16, color: cs.error),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Negociação divergente do valor calculado '
+                                      '(${_moeda.format(_parcelaCalculada!)})',
+                                      style: TextStyle(
+                                          fontSize: 12, color: cs.error),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }),
+                      const SizedBox(height: 14),
+
+                      // ── Status ──────────────────────────────
+                      DropdownButtonFormField<StatusNegociacao>(
+                        value: _status,
+                        decoration: const InputDecoration(
+                          labelText: 'Status',
+                          prefixIcon: Icon(Icons.flag_outlined),
+                        ),
+                        items: StatusNegociacao.values
+                            .map((s) => DropdownMenuItem(
+                                  value: s,
+                                  child: Text(s.nomeDisplay),
+                                ))
+                            .toList(),
+                        onChanged: (s) =>
+                            s != null ? setState(() => _status = s) : null,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── Observações ─────────────────────────
+                      TextFormField(
+                        controller: _obsCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Observações (opcional)',
+                          prefixIcon: Icon(Icons.notes_outlined),
+                          alignLabelWithHint: true,
+                        ),
+                        maxLines: 3,
+                        textCapitalization: TextCapitalization.sentences,
+                      ),
+
+                      // ── Seção Especial ──────────────────────
+                      if (isEspecial) ...[
+                        const SizedBox(height: 20),
+                        Divider(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.star_rounded,
+                                size: 16, color: Colors.amber.shade700),
+                            const SizedBox(width: 6),
+                            _sectionLabel(cs, 'Condições Especiais'),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _condicaoEspecialCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Condição especial de fechamento',
+                            prefixIcon: Icon(Icons.star_outlined,
+                                color: Colors.amber.shade700),
+                            alignLabelWithHint: true,
+                          ),
+                          maxLines: 3,
+                          textCapitalization: TextCapitalization.sentences,
+                          validator: isEspecial
+                              ? (v) => v?.trim().isEmpty == true
+                                  ? 'Descreva a condição especial'
+                                  : null
+                              : null,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Prazo de resposta
+                        InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _selecionarPrazo,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: cs.outline),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.timer_outlined,
+                                    color: _prazoResposta != null
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
+                                    size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _prazoResposta != null
+                                        ? 'Prazo: ${DateFormat('dd/MM/yyyy').format(_prazoResposta!)}'
+                                        : 'Prazo de resposta (máx. 7 dias)',
+                                    style: TextStyle(
+                                      color: _prazoResposta != null
+                                          ? cs.onSurface
+                                          : cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                if (_prazoResposta != null)
+                                  IconButton(
+                                    icon: Icon(Icons.clear,
+                                        size: 18, color: cs.outline),
+                                    onPressed: () =>
+                                        setState(() => _prazoResposta = null),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Solicitar aprovação
+                        CheckboxListTile(
+                          value: _solicitarAprovacao,
+                          onChanged: (v) =>
+                              setState(() => _solicitarAprovacao = v ?? false),
+                          title: const Text(
+                            'Solicitar aprovação da Gerência',
+                            style: TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                          subtitle: const Text(
+                            'O gerente será notificado para aprovar esta condição',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          secondary: const Icon(Icons.admin_panel_settings_outlined),
+                          contentPadding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ],
+
+                      // ── Lead vinculado (ao final) ───────────
+                      if (widget.clienteId == null) ...[
+                        const SizedBox(height: 20),
+                        Divider(color: cs.outlineVariant.withValues(alpha: 0.4)),
+                        const SizedBox(height: 12),
+                        _sectionLabel(cs, 'Lead vinculado (opcional)'),
+                        const SizedBox(height: 8),
+                        _buildLeadPicker(cs),
+                      ],
+
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Ações ────────────────────────────────────────────────────
+            Divider(height: 1, color: cs.outlineVariant),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed:
+                        _salvando ? null : () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    icon: _salvando
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(isEditing
+                            ? Icons.save_outlined
+                            : Icons.add_circle_outline),
+                    label: Text(isEditing ? 'Salvar' : 'Adicionar'),
+                    onPressed: _salvando ? null : _salvar,
                   ),
                 ],
-
-                const SizedBox(height: 16),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed:
-              _salvando ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton.icon(
-          icon: _salvando
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : Icon(isEditing
-                  ? Icons.save_outlined
-                  : Icons.add_circle_outline),
-          label: Text(isEditing ? 'Salvar' : 'Adicionar'),
-          onPressed: _salvando ? null : _salvar,
-        ),
-      ],
     );
   }
 

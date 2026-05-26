@@ -20,7 +20,8 @@ final _moedaCompacta =
 /// Tela unificada: criação + edição + interações + negociações
 class FichaClienteScreen extends StatefulWidget {
   final Cliente? cliente;
-  const FichaClienteScreen({super.key, this.cliente});
+  final String userProfile;
+  const FichaClienteScreen({super.key, this.cliente, this.userProfile = 'vendedor'});
 
   @override
   State<FichaClienteScreen> createState() => _FichaClienteScreenState();
@@ -572,6 +573,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         onSaveLocal: _isNovo
             ? (neg) => setState(() => _negociacoes.add(neg))
             : null,
+        currentUserId: _authService.getCurrentUser()?.uid,
+        currentUserName: _authService.getCurrentUser()?.displayName,
+        userProfile: widget.userProfile,
       ),
       icon: const Icon(Icons.add),
       label: const Text('Nova Proposta'),
@@ -1107,6 +1111,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                 proximoNumero: _negociacoes.length + 1,
                 editando: neg,
                 onSaveLocal: (updated) => setState(() => _negociacoes[idx] = updated),
+                currentUserId: _authService.getCurrentUser()?.uid,
+                currentUserName: _authService.getCurrentUser()?.displayName,
+                userProfile: widget.userProfile,
               ),
               visualDensity: VisualDensity.compact,
               tooltip: 'Editar',

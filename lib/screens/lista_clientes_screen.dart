@@ -149,7 +149,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
   void _abrirFicha(Cliente? cliente) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FichaClienteScreen(cliente: cliente),
+        builder: (_) => FichaClienteScreen(cliente: cliente, userProfile: _userProfile),
       ),
     );
   }
