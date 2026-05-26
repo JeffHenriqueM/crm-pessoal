@@ -21,6 +21,62 @@ Color _corPorVendedor(String? vendedorId) {
   return _paleta[hash % _paleta.length];
 }
 
+// ── Datas de evento do Villamor Tambaba Resort ─────────────────────────────
+final Set<DateTime> _eventosResort = _gerarEventosResort();
+
+Set<DateTime> _gerarEventosResort() {
+  final eventos = <DateTime>{};
+
+  void addRange(DateTime start, DateTime end) {
+    var dt = start;
+    while (!dt.isAfter(end)) {
+      eventos.add(dt);
+      dt = dt.add(const Duration(days: 1));
+    }
+  }
+
+  // ── 2026 ──────────────────────────────────────────────────────────────
+  addRange(DateTime.utc(2026, 5, 29),  DateTime.utc(2026, 5, 31));  // 29–31/05
+  addRange(DateTime.utc(2026, 6, 4),   DateTime.utc(2026, 6, 7));   // 04–07/06
+  addRange(DateTime.utc(2026, 6, 12),  DateTime.utc(2026, 6, 14));  // 12–14/06
+  addRange(DateTime.utc(2026, 6, 19),  DateTime.utc(2026, 6, 21));  // 19–21/06
+  addRange(DateTime.utc(2026, 6, 26),  DateTime.utc(2026, 6, 28));  // 26–28/06
+  addRange(DateTime.utc(2026, 7, 3),   DateTime.utc(2026, 7, 5));   // 03–05/07
+  addRange(DateTime.utc(2026, 7, 10),  DateTime.utc(2026, 7, 12));  // 10–12/07
+  addRange(DateTime.utc(2026, 7, 17),  DateTime.utc(2026, 7, 23));  // 17–23/07 (17–19 + 19–23 fundidos)
+  addRange(DateTime.utc(2026, 7, 24),  DateTime.utc(2026, 7, 26));  // 24–26/07
+  addRange(DateTime.utc(2026, 7, 31),  DateTime.utc(2026, 8, 2));   // 31/07–02/08
+  addRange(DateTime.utc(2026, 8, 7),   DateTime.utc(2026, 8, 9));   // 07–09/08
+  addRange(DateTime.utc(2026, 8, 13),  DateTime.utc(2026, 8, 16));  // 13–16/08
+  addRange(DateTime.utc(2026, 8, 21),  DateTime.utc(2026, 8, 23));  // 21–23/08
+  addRange(DateTime.utc(2026, 8, 28),  DateTime.utc(2026, 8, 30));  // 28–30/08
+  addRange(DateTime.utc(2026, 9, 5),   DateTime.utc(2026, 9, 8));   // 05–08/09
+  addRange(DateTime.utc(2026, 9, 11),  DateTime.utc(2026, 9, 13));  // 11–13/09
+  addRange(DateTime.utc(2026, 9, 18),  DateTime.utc(2026, 9, 20));  // 18–20/09
+  addRange(DateTime.utc(2026, 9, 25),  DateTime.utc(2026, 9, 27));  // 25–27/09
+  addRange(DateTime.utc(2026, 10, 2),  DateTime.utc(2026, 10, 4));  // 02–04/10
+  addRange(DateTime.utc(2026, 10, 8),  DateTime.utc(2026, 10, 11)); // 08–11/10
+  addRange(DateTime.utc(2026, 10, 15), DateTime.utc(2026, 10, 18)); // 15–18/10
+  addRange(DateTime.utc(2026, 10, 23), DateTime.utc(2026, 10, 25)); // 23–25/10
+  addRange(DateTime.utc(2026, 10, 30), DateTime.utc(2026, 11, 1));  // 30/10–01/11
+  addRange(DateTime.utc(2026, 11, 6),  DateTime.utc(2026, 11, 8));  // 06–08/11
+  addRange(DateTime.utc(2026, 11, 13), DateTime.utc(2026, 11, 15)); // 13–15/11
+  addRange(DateTime.utc(2026, 11, 19), DateTime.utc(2026, 11, 22)); // 19–22/11
+  addRange(DateTime.utc(2026, 11, 27), DateTime.utc(2026, 11, 29)); // 27–29/11
+  addRange(DateTime.utc(2026, 12, 4),  DateTime.utc(2026, 12, 6));  // 04–06/12
+  addRange(DateTime.utc(2026, 12, 11), DateTime.utc(2026, 12, 13)); // 11–13/12
+  addRange(DateTime.utc(2026, 12, 18), DateTime.utc(2026, 12, 20)); // 18–20/12
+  addRange(DateTime.utc(2026, 12, 31), DateTime.utc(2027, 1, 3));   // 31/12–03/01
+
+  return eventos;
+}
+
+bool _isEventoResort(DateTime day) {
+  final d = DateTime.utc(day.year, day.month, day.day);
+  return _eventosResort.contains(d);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 class AbaAgenda extends StatefulWidget {
   final Map<DateTime, List<Cliente>> events;
 
@@ -54,7 +110,6 @@ class _AbaAgendaState extends State<AbaAgenda> {
   @override
   void didUpdateWidget(AbaAgenda oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Atualiza eventos quando o mapa de eventos muda
     if (widget.events != oldWidget.events) {
       _selectedEvents.value = _getEventsForDay(_selectedDay ?? _focusedDay);
     }
@@ -83,6 +138,7 @@ class _AbaAgendaState extends State<AbaAgenda> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final eventoColor = Colors.orange.shade700;
 
     return Column(
       children: [
@@ -95,11 +151,44 @@ class _AbaAgendaState extends State<AbaAgenda> {
           onDaySelected: _onDaySelected,
           eventLoader: _getEventsForDay,
           calendarBuilders: CalendarBuilders(
-            // Marcadores coloridos por embaixador quando em modo admin
+            // ── Destaque especial: fins de semana + eventos do resort ──────
+            defaultBuilder: (context, day, focusedDay) {
+              final isWeekend = day.weekday == DateTime.saturday ||
+                  day.weekday == DateTime.sunday;
+              final isEvento = _isEventoResort(day);
+
+              // Dia comum sem nada especial → renderização padrão
+              if (!isWeekend && !isEvento) return null;
+
+              return Container(
+                margin: const EdgeInsets.all(4),
+                decoration: isEvento
+                    ? BoxDecoration(
+                        color: eventoColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: eventoColor.withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
+                      )
+                    : null,
+                child: Center(
+                  child: Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      color: isWeekend ? cs.primary : cs.onSurface,
+                      fontWeight:
+                          isWeekend ? FontWeight.w700 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            },
+
+            // ── Marcadores coloridos por embaixador (modo admin) ────────────
             markerBuilder: widget.showVendedorInfo
                 ? (context, day, events) {
                     if (events.isEmpty) return null;
-                    // Mostra até 3 bolinhas coloridas por embaixador único
                     final vendedoresUnicos = events
                         .map((c) => c.vendedorId)
                         .toSet()
@@ -124,6 +213,11 @@ class _AbaAgendaState extends State<AbaAgenda> {
                 : null,
           ),
           calendarStyle: CalendarStyle(
+            // Fins de semana — cor primary, em negrito
+            weekendTextStyle: TextStyle(
+              color: cs.primary,
+              fontWeight: FontWeight.w700,
+            ),
             markerDecoration: BoxDecoration(
               color: cs.primary,
               shape: BoxShape.circle,
@@ -153,7 +247,57 @@ class _AbaAgendaState extends State<AbaAgenda> {
             rightChevronIcon: Icon(Icons.chevron_right, color: cs.primary),
           ),
         ),
+
+        // ── Legenda ──────────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+          child: Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: eventoColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border.all(
+                      color: eventoColor.withValues(alpha: 0.4), width: 0.8),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Período de evento no resort',
+                style: TextStyle(fontSize: 11, color: cs.outline),
+              ),
+              const SizedBox(width: 16),
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Center(
+                  child: Text(
+                    'S',
+                    style: TextStyle(
+                        fontSize: 8,
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Fim de semana',
+                style: TextStyle(fontSize: 11, color: cs.outline),
+              ),
+            ],
+          ),
+        ),
+
         const Divider(height: 1),
+
+        // ── Lista de eventos do dia ─────────────────────────────────────────
         Expanded(
           child: ValueListenableBuilder<List<Cliente>>(
             valueListenable: _selectedEvents,
@@ -185,7 +329,6 @@ class _AbaAgendaState extends State<AbaAgenda> {
                   final isVisita = cliente.dataVisita != null &&
                       isSameDay(cliente.dataVisita!, _selectedDay!);
 
-                  // Cor base: se modo admin usa cor do vendedor, senão usa a cor padrão
                   final corEvento = widget.showVendedorInfo
                       ? _corPorVendedor(cliente.vendedorId)
                       : (isVisita ? Colors.orange.shade700 : cs.primary);
@@ -212,7 +355,6 @@ class _AbaAgendaState extends State<AbaAgenda> {
                         isVisita ? 'Visita agendada' : 'Próximo contato',
                         style: TextStyle(color: corEvento, fontSize: 12),
                       ),
-                      // Nome do embaixador à direita (só no modo admin)
                       trailing: widget.showVendedorInfo &&
                               cliente.vendedorNome != null
                           ? _buildVendedorChip(
@@ -230,7 +372,6 @@ class _AbaAgendaState extends State<AbaAgenda> {
   }
 
   Widget _buildVendedorChip(String nome, Color cor) {
-    // Exibe apenas o primeiro nome para economizar espaço
     final primeiroNome = nome.split(' ').first;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
