@@ -5,14 +5,16 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/ficha_pdf.dart';
 import '../services/firestore_service.dart';
+import 'ficha_cliente_screen.dart';
 
-// ── Shell da recepção (app bar simples + logout) ─────────────────────────────
+// ── Shell da recepção (app bar + 2 abas) ────────────────────────────────────
 class RecepcaoShell extends StatelessWidget {
   final String? currentUserId;
   const RecepcaoShell({super.key, this.currentUserId});
@@ -20,32 +22,50 @@ class RecepcaoShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            Image.asset(
-              'assets/images/logo.png',
-              height: 28,
-              filterQuality: FilterQuality.medium,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Row(
+            children: [
+              Image.asset(
+                'assets/images/logo.png',
+                height: 28,
+                filterQuality: FilterQuality.medium,
+              ),
+              const SizedBox(width: 10),
+              const Text('Recepção — Villamor'),
+            ],
+          ),
+          actions: [
+            TextButton.icon(
+              icon: Icon(Icons.logout_outlined,
+                  size: 18, color: cs.onSurfaceVariant),
+              label: Text('Sair',
+                  style:
+                      TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+              onPressed: () => AuthService().signOut(),
             ),
-            const SizedBox(width: 10),
-            const Text('Recepção — Villamor'),
+            const SizedBox(width: 8),
+          ],
+          bottom: TabBar(
+            tabs: const [
+              Tab(icon: Icon(Icons.add_circle_outline), text: 'Registrar'),
+              Tab(icon: Icon(Icons.people_outline), text: 'Meus Leads'),
+            ],
+            indicatorColor: cs.primary,
+            labelColor: cs.primary,
+            unselectedLabelColor: cs.onSurfaceVariant,
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            RecepcaoScreen(),
+            _RecepcaoLeadsTab(),
           ],
         ),
-        actions: [
-          TextButton.icon(
-            icon: Icon(Icons.logout_outlined,
-                size: 18, color: cs.onSurfaceVariant),
-            label: Text('Sair',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-            onPressed: () => AuthService().signOut(),
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
-      body: const RecepcaoScreen(),
     );
   }
 }
@@ -579,6 +599,247 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Aba "Meus Leads" (perfil recepção) ───────────────────────────────────────
+class _RecepcaoLeadsTab extends StatefulWidget {
+  const _RecepcaoLeadsTab();
+
+  @override
+  State<_RecepcaoLeadsTab> createState() => _RecepcaoLeadsTabState();
+}
+
+class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
+  final _service = FirestoreService();
+  final _searchCtrl = TextEditingController();
+  String _busca = '';
+
+  static final _dataFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() => setState(() => _busca = _searchCtrl.text));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        // Barra de busca
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: 'Buscar por nome...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _busca.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => _searchCtrl.clear(),
+                    )
+                  : null,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+          ),
+        ),
+
+        // Lista de leads
+        Expanded(
+          child: StreamBuilder<List<Cliente>>(
+            stream: _service.getClientesRecepcaoStream(),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                return Center(child: Text('Erro: ${snap.error}'));
+              }
+
+              var leads = snap.data ?? [];
+
+              // Filtro de busca local
+              if (_busca.isNotEmpty) {
+                final q = _busca.toLowerCase();
+                leads = leads
+                    .where((c) =>
+                        c.nome.toLowerCase().contains(q) ||
+                        (c.nomeEsposa?.toLowerCase().contains(q) ?? false) ||
+                        (c.telefoneContato?.contains(q) ?? false))
+                    .toList();
+              }
+
+              if (leads.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.people_outline,
+                          size: 52,
+                          color:
+                              cs.outline.withValues(alpha: 0.4)),
+                      const SizedBox(height: 14),
+                      Text(
+                        _busca.isNotEmpty
+                            ? 'Nenhum resultado para "$_busca"'
+                            : 'Nenhum lead registrado ainda.',
+                        style: TextStyle(color: cs.outline, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                itemCount: leads.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (context, i) {
+                  final c = leads[i];
+                  return Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: cs.outlineVariant),
+                    ),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FichaClienteScreen(
+                            cliente: c,
+                            userProfile: 'recepcao',
+                          ),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        child: Row(
+                          children: [
+                            // Avatar
+                            CircleAvatar(
+                              radius: 22,
+                              backgroundColor:
+                                  cs.primaryContainer,
+                              child: Text(
+                                c.nome.isNotEmpty
+                                    ? c.nome[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                    color: cs.onPrimaryContainer,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Dados
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    c.nome,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14),
+                                  ),
+                                  if (c.nomeEsposa?.isNotEmpty == true)
+                                    Text(
+                                      '+ ${c.nomeEsposa}',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: cs.onSurfaceVariant),
+                                    ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      if (c.telefoneContato?.isNotEmpty ==
+                                          true) ...[
+                                        Icon(Icons.phone_outlined,
+                                            size: 12,
+                                            color: cs.onSurfaceVariant),
+                                        const SizedBox(width: 3),
+                                        Text(c.telefoneContato!,
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color:
+                                                    cs.onSurfaceVariant)),
+                                        const SizedBox(width: 10),
+                                      ],
+                                      if (c.sala?.isNotEmpty == true) ...[
+                                        Icon(Icons.meeting_room_outlined,
+                                            size: 12,
+                                            color: cs.onSurfaceVariant),
+                                        const SizedBox(width: 3),
+                                        Text(c.sala!,
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color:
+                                                    cs.onSurfaceVariant)),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Data + atendimento nº
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (c.numeroAtendimento != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: cs.primaryContainer,
+                                      borderRadius:
+                                          BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '#${c.numeroAtendimento!.toString().padLeft(6, '0')}',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: cs.onPrimaryContainer,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                const SizedBox(height: 4),
+                                if (c.dataEntradaSala != null)
+                                  Text(
+                                    _dataFmt.format(c.dataEntradaSala!),
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: cs.onSurfaceVariant),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

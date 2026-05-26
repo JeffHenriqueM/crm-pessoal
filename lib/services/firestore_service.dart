@@ -46,6 +46,40 @@ class FirestoreService {
         .switchMap((stream) => stream);
   }
 
+  /// Stream de leads para o perfil recepção:
+  /// leads que o usuário criou OU onde ele é o captador (OR via dois streams).
+  Stream<List<Cliente>> getClientesRecepcaoStream() {
+    final uid = _currentUserId;
+
+    final streamCriados = _db
+        .collection(_colClientes)
+        .where('criadoPorId', isEqualTo: uid)
+        .snapshots()
+        .map((s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+
+    final streamCaptador = _db
+        .collection(_colClientes)
+        .where('captadorId', isEqualTo: uid)
+        .snapshots()
+        .map((s) => s.docs.map((d) => Cliente.fromFirestore(d)).toList());
+
+    // Merge dos dois streams, deduplicando por id
+    return Rx.combineLatest2<List<Cliente>, List<Cliente>, List<Cliente>>(
+      streamCriados,
+      streamCaptador,
+      (criados, captador) {
+        final vistos = <String>{};
+        final result = <Cliente>[];
+        for (final c in [...criados, ...captador]) {
+          if (c.id != null && vistos.add(c.id!)) result.add(c);
+        }
+        result.sort(
+            (a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
+        return result;
+      },
+    );
+  }
+
   Future<String> adicionarCliente(Cliente cliente) async {
     final dados = cliente.toFirestore();
     dados['criadoPorId'] = _currentUserId;
