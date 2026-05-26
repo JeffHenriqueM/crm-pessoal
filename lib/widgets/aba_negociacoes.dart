@@ -1208,43 +1208,6 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ── Embaixador ──────────────────────────
-                      if (_carregandoUsuarios)
-                        const LinearProgressIndicator()
-                      else if (_isAdmin)
-                        DropdownButtonFormField<Usuario>(
-                          value: _embaixador,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Embaixador',
-                            prefixIcon: Icon(Icons.person_outlined),
-                          ),
-                          hint: const Text('Selecione o embaixador'),
-                          items: _usuarios
-                              .map((u) => DropdownMenuItem(
-                                  value: u, child: Text(u.nome)))
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => _embaixador = v),
-                        )
-                      else
-                        InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Embaixador',
-                            prefixIcon: const Icon(Icons.person_outlined),
-                            suffixIcon: Tooltip(
-                              message: 'Somente Admin pode alterar o embaixador',
-                              child: Icon(Icons.lock_outline,
-                                  size: 18, color: cs.onSurfaceVariant),
-                            ),
-                          ),
-                          child: Text(
-                            _embaixador?.nome ?? '—',
-                            style: TextStyle(fontSize: 14, color: cs.onSurface),
-                          ),
-                        ),
-                      const SizedBox(height: 14),
-
                       // ── Valor original ──────────────────────
                       TextFormField(
                         controller: _valorOriginalCtrl,
@@ -1648,6 +1611,42 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                         ],
                         const SizedBox(height: 16),
                       ],
+
+                      // ── Embaixador ──────────────────────────
+                      if (_carregandoUsuarios)
+                        const LinearProgressIndicator()
+                      else if (_isAdmin)
+                        DropdownButtonFormField<Usuario>(
+                          value: _embaixador,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Embaixador',
+                            prefixIcon: Icon(Icons.person_outlined),
+                          ),
+                          hint: const Text('Selecione o embaixador'),
+                          items: _usuarios
+                              .map((u) => DropdownMenuItem(
+                                  value: u, child: Text(u.nome)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _embaixador = v),
+                        )
+                      else
+                        InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Embaixador',
+                            prefixIcon: const Icon(Icons.person_outlined),
+                            suffixIcon: Tooltip(
+                              message: 'Somente Admin pode alterar o embaixador',
+                              child: Icon(Icons.lock_outline,
+                                  size: 18, color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                          child: Text(
+                            _embaixador?.nome ?? '—',
+                            style: TextStyle(fontSize: 14, color: cs.onSurface),
+                          ),
+                        ),
+                      const SizedBox(height: 14),
 
                       // ── Título (gerado automaticamente, editável) ─
                       _sectionLabel(cs, 'Título da proposta'),
