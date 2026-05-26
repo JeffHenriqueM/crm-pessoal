@@ -69,7 +69,7 @@ class PushNotificationService {
       final token = await _messaging.getToken(
         // VAPID key gerado no console Firebase > Project Settings > Cloud Messaging > Web Push certificates
         // Após obter a chave, substitua a string abaixo.
-        vapidKey: 'SUBSTITUA_PELA_SUA_VAPID_KEY',
+        vapidKey: 'BMHLwgGf8THTUpXA6U5_MaN-jNI9SyT5_ue-FfoBDt8L2ZgcgGNBtUuoOHLYFeiwwv7fxwUXK7yIs8wF8pVvVLE',
       );
       if (token != null) await _salvarTokenString(token);
     } catch (e) {
