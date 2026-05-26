@@ -177,7 +177,7 @@ class FichaAtendimentoPdf {
         pw.SizedBox(height: 4),
 
         // Rodapé esquerdo — papéis da equipe
-        _rodapeItem('Gerente:', 'Marcio'),
+        _rodapeItem('Gerente:', 'Marcio Henrique Pimenta'),
         _rodapeItem('Promotor de MKT:', d.captadorNome),
         _rodapeItem('Liner:', d.linerNome),
         _rodapeItem('Closer:', d.vendedorNome),
