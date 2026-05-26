@@ -4,7 +4,6 @@ import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/aba_admin_overview.dart';
-import '../widgets/aba_agenda.dart';
 import '../widgets/aba_estatisticas.dart';
 import '../widgets/aba_motivos_perda.dart';
 
@@ -38,7 +37,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (perfil != 'admin') {
           _vendedorIdFiltro = currentUser?.uid;
         }
-        // Admin começa sem filtro (vê todos)
       });
       if (perfil == 'admin') {
         _firestoreService.getTodosUsuarios().then((vendedores) {
@@ -49,116 +47,143 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  Map<DateTime, List<Cliente>> _processarEventos(List<Cliente> clientes) {
-    final events = <DateTime, List<Cliente>>{};
-    for (final c in clientes) {
-      if (c.proximoContato != null) {
-        final d = DateTime.utc(
-            c.proximoContato!.year,
-            c.proximoContato!.month,
-            c.proximoContato!.day);
-        events.putIfAbsent(d, () => []).add(c);
-      }
-      if (c.dataVisita != null) {
-        final d = DateTime.utc(
-            c.dataVisita!.year, c.dataVisita!.month, c.dataVisita!.day);
-        events.putIfAbsent(d, () => []).add(c);
-      }
-    }
-    return events;
-  }
-
   @override
   Widget build(BuildContext context) {
     final isAdmin = _userProfile == 'admin';
 
     return DefaultTabController(
-      length: isAdmin ? 4 : 2,
+      length: isAdmin ? 3 : 1,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
+    );
+  }
+
+  // ── Chip de filtro de vendedor ────────────────────────────────────────────
+  Widget _buildFiltroVendedor() {
+    final cs = Theme.of(context).colorScheme;
+    final vendedorSelecionado = _vendedorIdFiltro != null
+        ? _todosVendedores.where((v) => v.id == _vendedorIdFiltro).firstOrNull
+        : null;
+    final label = vendedorSelecionado != null
+        ? vendedorSelecionado.nome.split(' ').first // primeiro nome
+        : 'Todos';
+
+    return PopupMenuButton<String?>(
+      tooltip: 'Filtrar por vendedor',
+      offset: const Offset(0, 40),
+      onSelected: (v) => setState(() => _vendedorIdFiltro = v),
+      itemBuilder: (_) => [
+        PopupMenuItem<String?>(
+          value: null,
+          child: Row(
+            children: [
+              Icon(Icons.people_outlined, size: 18, color: cs.onSurfaceVariant),
+              const SizedBox(width: 10),
+              const Text('Todos'),
+              if (_vendedorIdFiltro == null) ...[
+                const Spacer(),
+                Icon(Icons.check, size: 16, color: cs.primary),
+              ],
+            ],
+          ),
+        ),
+        if (_todosVendedores.isNotEmpty)
+          const PopupMenuDivider(),
+        ..._todosVendedores.map((v) => PopupMenuItem<String?>(
+              value: v.id,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 10,
+                    backgroundColor: cs.primaryContainer,
+                    child: Text(
+                      v.nome.isNotEmpty ? v.nome[0].toUpperCase() : '?',
+                      style: TextStyle(fontSize: 10, color: cs.onPrimaryContainer),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(v.nome, overflow: TextOverflow.ellipsis)),
+                  if (_vendedorIdFiltro == v.id) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.check, size: 16, color: cs.primary),
+                  ],
+                ],
+              ),
+            )),
+      ],
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: _vendedorIdFiltro != null
+              ? cs.primaryContainer
+              : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outlined,
+              size: 15,
+              color: _vendedorIdFiltro != null
+                  ? cs.onPrimaryContainer
+                  : cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _vendedorIdFiltro != null
+                    ? cs.onPrimaryContainer
+                    : cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 18,
+              color: _vendedorIdFiltro != null
+                  ? cs.onPrimaryContainer
+                  : cs.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   // ── Dashboard para admin (3 abas) ─────────────────────────────────────────
   Widget _buildAdminDashboard() {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
-          // Filtro de vendedor (usado nas abas Estatísticas e Agenda)
-          if (_todosVendedores.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Center(
-                child: DropdownButton<String?>(
-                  value: _vendedorIdFiltro,
-                  hint: Text(
-                    'Vendedor',
-                    style:
-                        TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
-                  ),
-                  onChanged: (v) => setState(() => _vendedorIdFiltro = v),
-                  underline: const SizedBox.shrink(),
-                  icon: Icon(Icons.people_outlined,
-                      color: cs.onSurfaceVariant, size: 20),
-                  items: [
-                    DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Todos',
-                          style:
-                              TextStyle(color: cs.onSurface, fontSize: 14)),
-                    ),
-                    ..._todosVendedores.map((v) => DropdownMenuItem<String?>(
-                          value: v.id,
-                          child: Text(v.nome,
-                              style: TextStyle(
-                                  color: cs.onSurface, fontSize: 14)),
-                        )),
-                  ],
-                ),
-              ),
-            ),
+          if (_todosVendedores.isNotEmpty) _buildFiltroVendedor(),
+          const SizedBox(width: 8),
         ],
         bottom: const TabBar(
           indicatorWeight: 3,
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: [
-            Tab(
-              text: 'Equipe',
-              icon: Icon(Icons.groups_outlined),
-            ),
-            Tab(
-              text: 'Estatísticas',
-              icon: Icon(Icons.bar_chart_rounded),
-            ),
-            Tab(
-              text: 'Agenda',
-              icon: Icon(Icons.calendar_month_outlined),
-            ),
-            Tab(
-              text: 'Perdas',
-              icon: Icon(Icons.person_off_outlined),
-            ),
+            Tab(text: 'Equipe',      icon: Icon(Icons.groups_outlined)),
+            Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
+            Tab(text: 'Perdas',      icon: Icon(Icons.person_off_outlined)),
           ],
         ),
       ),
       body: StreamBuilder<List<Cliente>>(
-        // Para admin: busca TODOS os clientes (sem filtro de vendedor)
-        // A visão de equipe sempre precisa de todos os clientes
         stream: _firestoreService.getTodosClientesStream(vendedorId: null),
         builder: (context, snapshotTodos) {
           final todosClientes = snapshotTodos.data ?? [];
 
-          // Clientes filtrados pelo dropdown (para Estatísticas e Agenda)
           final clientesFiltrados = _vendedorIdFiltro != null
               ? todosClientes
                   .where((c) => c.vendedorId == _vendedorIdFiltro)
                   .toList()
               : todosClientes;
-
-          final eventos = _processarEventos(clientesFiltrados);
 
           if (snapshotTodos.connectionState == ConnectionState.waiting &&
               todosClientes.isEmpty) {
@@ -167,16 +192,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           return TabBarView(
             children: [
-              // Aba 0: Visão da equipe (sempre todos)
               AbaAdminOverview(
                 todosClientes: todosClientes,
                 todosVendedores: _todosVendedores,
               ),
-              // Aba 1: Estatísticas (responde ao filtro de vendedor)
               AbaEstatisticas(clientes: clientesFiltrados),
-              // Aba 2: Agenda (responde ao filtro de vendedor)
-              AbaAgenda(events: eventos),
-              // Aba 3: Motivos de perda (sempre todos os clientes)
               AbaMotivosPerda(clientes: todosClientes),
             ],
           );
@@ -185,7 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ── Dashboard para vendedor (2 abas) ──────────────────────────────────────
+  // ── Dashboard para vendedor (1 aba) ───────────────────────────────────────
   Widget _buildVendedorDashboard() {
     return Scaffold(
       appBar: AppBar(
@@ -193,12 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         bottom: const TabBar(
           indicatorWeight: 3,
           tabs: [
-            Tab(
-                text: 'Estatísticas',
-                icon: Icon(Icons.bar_chart_rounded)),
-            Tab(
-                text: 'Agenda',
-                icon: Icon(Icons.calendar_month_outlined)),
+            Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
           ],
         ),
       ),
@@ -210,17 +225,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-                child: Text('Nenhum dado encontrado.'));
+            return const Center(child: Text('Nenhum dado encontrado.'));
           }
-
-          final clientes = snapshot.data!;
-          final eventos = _processarEventos(clientes);
-
           return TabBarView(
             children: [
-              AbaEstatisticas(clientes: clientes),
-              AbaAgenda(events: eventos),
+              AbaEstatisticas(clientes: snapshot.data!),
             ],
           );
         },
