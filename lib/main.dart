@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
+import 'services/push_notification_service.dart';
 import 'screens/tela_login_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
@@ -89,6 +90,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
           }
           return const _LoadingScreen();
         }
+
+        // Inicializa Web Push após login confirmado
+        PushNotificationService().initialize();
 
         // Todos os perfis entram pelo MainShell
         return MainShell(

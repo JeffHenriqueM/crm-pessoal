@@ -38,6 +38,10 @@
       }
     }
   },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
   "hosting": {
     "public": "build/web",
     "ignore": [
