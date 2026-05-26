@@ -362,35 +362,55 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     final isEditing = interacao != null;
     final tituloCtrl = TextEditingController(text: interacao?.titulo);
     final notaCtrl = TextEditingController(text: interacao?.nota);
+    final proximoPassoCtrl =
+        TextEditingController(text: interacao?.proximoPasso ?? '');
     final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(isEditing ? 'Editar Interação' : 'Nova Interação'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: tituloCtrl,
-                decoration: const InputDecoration(labelText: 'Título', prefixIcon: Icon(Icons.title)),
-                textCapitalization: TextCapitalization.sentences,
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Insira um título.' : null,
+        content: SizedBox(
+          width: 480,
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: tituloCtrl,
+                    decoration: const InputDecoration(labelText: 'Título', prefixIcon: Icon(Icons.title)),
+                    textCapitalization: TextCapitalization.sentences,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Insira um título.' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: notaCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nota', prefixIcon: Icon(Icons.notes), alignLabelWithHint: true,
+                    ),
+                    keyboardType: TextInputType.multiline,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 4,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Insira uma nota.' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: proximoPassoCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'O que combinamos? (opcional)',
+                      prefixIcon: Icon(Icons.check_circle_outline),
+                      alignLabelWithHint: true,
+                      hintText: 'Ex: Ligar na sexta às 14h...',
+                    ),
+                    keyboardType: TextInputType.multiline,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 2,
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: notaCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nota', prefixIcon: Icon(Icons.notes), alignLabelWithHint: true,
-                ),
-                keyboardType: TextInputType.multiline,
-                textCapitalization: TextCapitalization.sentences,
-                maxLines: 4,
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Insira uma nota.' : null,
-              ),
-            ],
+            ),
           ),
         ),
         actions: [
@@ -398,11 +418,13 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           FilledButton(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
+              final passotrimmed = proximoPassoCtrl.text.trim();
               final nova = Interacao(
                 id: interacao?.id ?? 'local_${DateTime.now().millisecondsSinceEpoch}',
                 titulo: tituloCtrl.text.trim(),
                 nota: notaCtrl.text.trim(),
                 dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
+                proximoPasso: passotrimmed.isEmpty ? null : passotrimmed,
               );
               if (_isNovo) {
                 setState(() {
@@ -871,19 +893,83 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
       itemCount: _interacoes.length,
       itemBuilder: (context, index) {
         final i = _interacoes[index];
+        final temProximoPasso =
+            i.proximoPasso != null && i.proximoPasso!.isNotEmpty;
         return Card(
-          child: ListTile(
+          child: InkWell(
             onTap: () => _mostrarOpcoesInteracao(i),
-            leading: CircleAvatar(
-              backgroundColor: cs.primaryContainer,
-              child: Icon(Icons.chat_bubble_outline, size: 18, color: cs.onPrimaryContainer),
-            ),
-            title: Text(i.titulo, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(i.nota, maxLines: 2, overflow: TextOverflow.ellipsis),
-            trailing: Text(
-              DateFormat('dd/MM\nHH:mm').format(i.dataInteracao),
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: cs.outline),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    backgroundColor: cs.primaryContainer,
+                    child: Icon(Icons.chat_bubble_outline,
+                        size: 18, color: cs.onPrimaryContainer),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(i.titulo,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 3),
+                        Text(i.nota,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13, color: cs.onSurfaceVariant)),
+                        if (temProximoPasso) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade700
+                                  .withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: Colors.green.shade700
+                                      .withValues(alpha: 0.25)),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.check_circle_outline,
+                                    size: 14,
+                                    color: Colors.green.shade700),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    i.proximoPasso!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green.shade800,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    DateFormat('dd/MM\nHH:mm').format(i.dataInteracao),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: cs.outline),
+                  ),
+                ],
+              ),
             ),
           ),
         );

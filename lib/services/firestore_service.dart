@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
+import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
@@ -347,5 +348,56 @@ class FirestoreService {
       debugPrint('[Firestore] Erro ao buscar perfil: $e');
       return 'vendedor';
     }
+  }
+
+  // --- CAMPANHAS ---
+
+  static const _colCampanhas = 'campanhas';
+
+  /// Stream de todas as campanhas (admin).
+  Stream<List<Campanha>> getCampanhasStream() {
+    return _db
+        .collection(_colCampanhas)
+        .orderBy('dataInicio', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) => Campanha.fromFirestore(d)).toList());
+  }
+
+  /// Stream de campanhas vigentes para o sino de notificações.
+  Stream<List<Campanha>> getCampanhasVigentesStream() {
+    return _db
+        .collection(_colCampanhas)
+        .where('ativa', isEqualTo: true)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => Campanha.fromFirestore(d))
+            .where((c) => c.vigente)
+            .toList());
+  }
+
+  Future<void> criarCampanha(Campanha campanha) async {
+    final dados = campanha.toFirestore();
+    dados['criadoPorId'] = _currentUserId;
+    dados['criadoPorNome'] = _currentUserName;
+    dados['criadoEm'] = FieldValue.serverTimestamp();
+    await _db.collection(_colCampanhas).add(dados);
+  }
+
+  Future<void> atualizarCampanha(Campanha campanha) async {
+    await _db
+        .collection(_colCampanhas)
+        .doc(campanha.id!)
+        .update(campanha.toFirestore());
+  }
+
+  Future<void> publicarCampanha(String campanhaId, bool ativa) async {
+    await _db
+        .collection(_colCampanhas)
+        .doc(campanhaId)
+        .update({'ativa': ativa});
+  }
+
+  Future<void> deletarCampanha(String campanhaId) async {
+    await _db.collection(_colCampanhas).doc(campanhaId).delete();
   }
 }

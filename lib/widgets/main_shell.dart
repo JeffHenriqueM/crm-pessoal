@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../screens/campanhas_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
@@ -20,7 +22,7 @@ class _NavItem {
   });
 }
 
-// ── Shell principal com barra lateral ────────────────────────────────────────
+// ── Shell principal ───────────────────────────────────────────────────────────
 class MainShell extends StatefulWidget {
   final String userProfile;
   final String? currentUserId;
@@ -37,7 +39,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _sidebarExpanded = true;
 
   static const _listaProfiles = {'admin', 'pós-venda', 'financeiro'};
 
@@ -67,12 +69,23 @@ class _MainShellState extends State<MainShell> {
           activeIcon: Icons.bar_chart_rounded,
           label: 'Dashboard',
         ),
-        if (_isAdmin)
+        if (_isAdmin) ...[
+          const _NavItem(
+            icon: Icons.calendar_month_outlined,
+            activeIcon: Icons.calendar_month,
+            label: 'Agenda',
+          ),
           const _NavItem(
             icon: Icons.manage_accounts_outlined,
             activeIcon: Icons.manage_accounts,
             label: 'Usuários',
           ),
+          const _NavItem(
+            icon: Icons.campaign_outlined,
+            activeIcon: Icons.campaign,
+            label: 'Campanhas',
+          ),
+        ],
       ];
 
   // ── Páginas (IndexedStack preserva o estado) ──────────────────────────────
@@ -85,52 +98,86 @@ class _MainShellState extends State<MainShell> {
       currentUserId: widget.currentUserId,
     ),
     const DashboardScreen(),
-    if (_isAdmin) const GerenciarUsuariosScreen(),
+    if (_isAdmin) ...[
+      VendedorHomeScreen(
+        currentUserId: widget.currentUserId,
+        showAllVendedores: true,
+      ),
+      const GerenciarUsuariosScreen(),
+      const CampanhasScreen(),
+    ],
   ];
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  @override
+  void initState() {
+    super.initState();
+    _carregarPreferenciaSidebar();
+  }
+
+  Future<void> _carregarPreferenciaSidebar() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(
+          () => _sidebarExpanded = prefs.getBool('sidebar_expanded') ?? true);
+    }
+  }
+
+  Future<void> _toggleSidebar() async {
+    final novoEstado = !_sidebarExpanded;
+    setState(() => _sidebarExpanded = novoEstado);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sidebar_expanded', novoEstado);
+  }
 
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 900;
+    final isMobile = MediaQuery.of(context).size.width < 600;
 
-    if (isWide) {
+    // ── Mobile: bottom navigation bar ─────────────────────────────────────
+    if (isMobile) {
       return Scaffold(
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildSidebarPanel(context),
-            Expanded(
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: _pages,
-              ),
-            ),
-          ],
+        appBar: _buildMobileAppBar(context),
+        body: IndexedStack(
+          index: _selectedIndex,
+          children: _pages,
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+          destinations: _navItems
+              .map((item) => NavigationDestination(
+                    icon: Icon(item.icon),
+                    selectedIcon: Icon(item.activeIcon),
+                    label: item.label,
+                  ))
+              .toList(),
         ),
       );
     }
 
+    // ── Desktop: collapsible sidebar ───────────────────────────────────────
     return Scaffold(
-      key: _scaffoldKey,
-      appBar: _buildNarrowAppBar(context),
-      drawer: Drawer(
-        child: _buildSidebarContent(context, inDrawer: true),
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildSidebarPanel(context),
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _pages,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // ── AppBar minimalista para telas estreitas ───────────────────────────────
-  PreferredSizeWidget _buildNarrowAppBar(BuildContext context) {
+  // ── AppBar para mobile ─────────────────────────────────────────────────────
+  PreferredSizeWidget _buildMobileAppBar(BuildContext context) {
     return AppBar(
-      leading: IconButton(
-        icon: const Icon(Icons.menu_rounded),
-        tooltip: 'Menu',
-        onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-      ),
+      automaticallyImplyLeading: false,
       title: Row(
         children: [
           Image.asset(
@@ -150,47 +197,70 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  // ── Painel lateral (telas largas) ─────────────────────────────────────────
+  // ── Painel lateral colapsável ──────────────────────────────────────────────
   Widget _buildSidebarPanel(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      width: 220,
+    final sidebarWidth = _sidebarExpanded ? 220.0 : 64.0;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeInOut,
+      width: sidebarWidth,
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
           right: BorderSide(color: cs.outlineVariant, width: 1),
         ),
       ),
-      child: _buildSidebarContent(context, inDrawer: false),
+      child: _buildSidebarContent(context),
     );
   }
 
-  // ── Conteúdo da barra lateral (usado em painel e drawer) ─────────────────
-  Widget _buildSidebarContent(BuildContext context, {required bool inDrawer}) {
+  // ── Conteúdo da barra lateral ──────────────────────────────────────────────
+  Widget _buildSidebarContent(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Logo + nome ────────────────────────────────────────────
+          // ── Logo + botão de toggle ─────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+            padding: EdgeInsets.fromLTRB(
+                _sidebarExpanded ? 14 : 6, 14, 6, 12),
             child: Row(
               children: [
                 Image.asset(
                   'assets/images/logo.png',
-                  height: 30,
+                  height: 28,
                   filterQuality: FilterQuality.medium,
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  'Villamor CRM',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
+                if (_sidebarExpanded) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Villamor CRM',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                ],
+                IconButton(
+                  icon: Icon(
+                    _sidebarExpanded
+                        ? Icons.menu_open_rounded
+                        : Icons.menu_rounded,
+                    size: 20,
+                    color: cs.onSurfaceVariant,
+                  ),
+                  onPressed: _toggleSidebar,
+                  tooltip: _sidebarExpanded ? 'Recolher menu' : 'Expandir menu',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
                 ),
               ],
             ),
@@ -199,10 +269,43 @@ class _MainShellState extends State<MainShell> {
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 8),
 
-          // ── Itens de navegação ────────────────────────────────────
+          // ── Itens de navegação ─────────────────────────────────────────
           ...List.generate(_navItems.length, (i) {
             final item = _navItems[i];
             final selected = _selectedIndex == i;
+
+            if (!_sidebarExpanded) {
+              // Modo compacto: apenas ícone centralizado com tooltip
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                child: Tooltip(
+                  message: item.label,
+                  preferBelow: false,
+                  child: InkWell(
+                    onTap: () => setState(() => _selectedIndex = i),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? cs.primaryContainer.withValues(alpha: 0.5)
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          selected ? item.activeIcon : item.icon,
+                          color: selected ? cs.primary : cs.onSurfaceVariant,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            // Modo expandido: ícone + label
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
               child: ListTile(
@@ -229,10 +332,7 @@ class _MainShellState extends State<MainShell> {
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                 dense: true,
-                onTap: () {
-                  setState(() => _selectedIndex = i);
-                  if (inDrawer) Navigator.of(context).pop();
-                },
+                onTap: () => setState(() => _selectedIndex = i),
               ),
             );
           }),
@@ -242,28 +342,56 @@ class _MainShellState extends State<MainShell> {
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 4),
 
-          // ── Notificações ──────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 12, 0),
-            child: Row(
-              children: [
-                NotificacaoBell(
-                  vendedorId: _isAdmin ? null : widget.currentUserId,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  'Notificações',
-                  style: TextStyle(fontSize: 14, color: cs.onSurface),
-                ),
-              ],
+          // ── Notificações ───────────────────────────────────────────────
+          if (_sidebarExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 12, 0),
+              child: Row(
+                children: [
+                  NotificacaoBell(
+                    vendedorId: _isAdmin ? null : widget.currentUserId,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    'Notificações',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  ),
+                ],
+              ),
+            )
+          else
+            Center(
+              child: NotificacaoBell(
+                vendedorId: _isAdmin ? null : widget.currentUserId,
+              ),
             ),
-          ),
 
-          // ── Tema ──────────────────────────────────────────────────
+          // ── Tema ──────────────────────────────────────────────────────
           AnimatedBuilder(
             animation: ThemeController.instance,
             builder: (_, __) {
               final isDark = ThemeController.instance.isDark;
+
+              if (!_sidebarExpanded) {
+                return Center(
+                  child: Tooltip(
+                    message: isDark ? 'Modo claro' : 'Modo escuro',
+                    preferBelow: false,
+                    child: IconButton(
+                      icon: Icon(
+                        isDark
+                            ? Icons.light_mode_outlined
+                            : Icons.dark_mode_outlined,
+                        color: cs.onSurfaceVariant,
+                        size: 20,
+                      ),
+                      onPressed: ThemeController.instance.toggle,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                );
+              }
+
               return Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
@@ -291,24 +419,38 @@ class _MainShellState extends State<MainShell> {
             },
           ),
 
-          // ── Sair ──────────────────────────────────────────────────
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-            child: ListTile(
-              leading: Icon(Icons.logout_outlined,
-                  color: cs.onSurfaceVariant, size: 20),
-              title: Text('Sair',
-                  style: TextStyle(fontSize: 14, color: cs.onSurface)),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12),
-              horizontalTitleGap: 8,
-              dense: true,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              onTap: () => AuthService().signOut(),
+          // ── Sair ──────────────────────────────────────────────────────
+          if (_sidebarExpanded)
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+              child: ListTile(
+                leading: Icon(Icons.logout_outlined,
+                    color: cs.onSurfaceVariant, size: 20),
+                title: Text('Sair',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12),
+                horizontalTitleGap: 8,
+                dense: true,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onTap: () => AuthService().signOut(),
+              ),
+            )
+          else
+            Center(
+              child: Tooltip(
+                message: 'Sair',
+                preferBelow: false,
+                child: IconButton(
+                  icon: Icon(Icons.logout_outlined,
+                      color: cs.onSurfaceVariant, size: 20),
+                  onPressed: () => AuthService().signOut(),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ),
-          ),
 
           const SizedBox(height: 12),
         ],

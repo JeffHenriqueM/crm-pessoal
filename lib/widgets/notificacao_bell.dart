@@ -1,12 +1,13 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../screens/ficha_cliente_screen.dart';
 import '../services/firestore_service.dart';
 
-// ── Modelo interno ────────────────────────────────────────────────────────────
+// ── Modelos internos ──────────────────────────────────────────────────────────
 class _NotifCategoria {
   final String titulo;
   final IconData icone;
@@ -25,6 +26,14 @@ class _NotifItem {
   const _NotifItem({required this.cliente, required this.subtitulo});
 }
 
+class _CampanhaNotifItem {
+  final String nome;
+  final String resumo;
+  final String periodo;
+  const _CampanhaNotifItem(
+      {required this.nome, required this.resumo, required this.periodo});
+}
+
 // ── Widget: sino com badge ────────────────────────────────────────────────────
 class NotificacaoBell extends StatelessWidget {
   final String? vendedorId;
@@ -33,67 +42,85 @@ class NotificacaoBell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final fmtPeriodo = DateFormat('dd/MM');
 
-    return StreamBuilder<List<Cliente>>(
-      stream:
-          FirestoreService().getTodosClientesStream(vendedorId: vendedorId),
-      builder: (context, snapshot) {
-        final clientes = snapshot.data ?? [];
-        final categorias = _calcularCategorias(clientes);
-        final total =
-            categorias.fold<int>(0, (s, c) => s + c.itens.length);
+    // Stream externo: campanhas vigentes (todas, sem filtro de vendedor)
+    return StreamBuilder<List<Campanha>>(
+      stream: FirestoreService().getCampanhasVigentesStream(),
+      builder: (context, campanhasSnap) {
+        final campanhas = campanhasSnap.data ?? [];
+        final campNotifs = campanhas
+            .map((c) => _CampanhaNotifItem(
+                  nome: c.nome,
+                  resumo: c.resumo,
+                  periodo:
+                      '${fmtPeriodo.format(c.dataInicio)} → ${fmtPeriodo.format(c.dataFim)}',
+                ))
+            .toList();
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              icon: Icon(
-                total > 0
-                    ? Icons.notifications_rounded
-                    : Icons.notifications_outlined,
-                color: cs.onSurface,
-              ),
-              tooltip: total > 0
-                  ? '$total notificaç${total == 1 ? 'ão' : 'ões'} pendente${total != 1 ? 's' : ''}'
-                  : 'Sem notificações',
-              onPressed: () =>
-                  _mostrarPainel(context, categorias, total),
-            ),
-            // Badge manual — mais visível e preciso que o widget Badge
-            if (total > 0)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade600,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: cs.surface, width: 1.5),
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16),
-                    child: Text(
-                      total > 99 ? '99+' : '$total',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
+        // Stream interno: clientes (filtrado por vendedor, se aplicável)
+        return StreamBuilder<List<Cliente>>(
+          stream: FirestoreService()
+              .getTodosClientesStream(vendedorId: vendedorId),
+          builder: (context, snapshot) {
+            final clientes = snapshot.data ?? [];
+            final categorias = _calcularCategorias(clientes);
+            final totalClientes =
+                categorias.fold<int>(0, (s, c) => s + c.itens.length);
+            final total = totalClientes + campNotifs.length;
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    total > 0
+                        ? Icons.notifications_rounded
+                        : Icons.notifications_outlined,
+                    color: cs.onSurface,
+                  ),
+                  tooltip: total > 0
+                      ? '$total notificaç${total == 1 ? 'ão' : 'ões'} pendente${total != 1 ? 's' : ''}'
+                      : 'Sem notificações',
+                  onPressed: () =>
+                      _mostrarPainel(context, categorias, campNotifs, total),
+                ),
+                if (total > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade600,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: cs.surface, width: 1.5),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16),
+                        child: Text(
+                          total > 99 ? '99+' : '$total',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            );
+          },
         );
       },
     );
   }
 
-  // ── Cálculo das categorias ─────────────────────────────────────────────────
+  // ── Cálculo das categorias de clientes ─────────────────────────────────────
   List<_NotifCategoria> _calcularCategorias(List<Cliente> todos) {
     final hoje = DateTime.now();
     final inicioDoDia = DateTime(hoje.year, hoje.month, hoje.day);
@@ -199,8 +226,12 @@ class NotificacaoBell extends StatelessWidget {
   }
 
   // ── Painel lateral deslizante ─────────────────────────────────────────────
-  void _mostrarPainel(BuildContext context,
-      List<_NotifCategoria> categorias, int total) {
+  void _mostrarPainel(
+    BuildContext context,
+    List<_NotifCategoria> categorias,
+    List<_CampanhaNotifItem> campanhas,
+    int total,
+  ) {
     final larguraTela = MediaQuery.of(context).size.width;
     final larguraPainel = min(380.0, larguraTela * 0.88);
 
@@ -215,6 +246,7 @@ class NotificacaoBell extends StatelessWidget {
         child: _PainelLateral(
           largura: larguraPainel,
           categorias: categorias,
+          campanhas: campanhas,
           total: total,
         ),
       ),
@@ -233,11 +265,13 @@ class NotificacaoBell extends StatelessWidget {
 class _PainelLateral extends StatelessWidget {
   final double largura;
   final List<_NotifCategoria> categorias;
+  final List<_CampanhaNotifItem> campanhas;
   final int total;
 
   const _PainelLateral({
     required this.largura,
     required this.categorias,
+    required this.campanhas,
     required this.total,
   });
 
@@ -313,10 +347,13 @@ class _PainelLateral extends StatelessWidget {
                     ? _buildVazia(cs)
                     : ListView(
                         padding: const EdgeInsets.only(bottom: 24),
-                        children: categorias
-                            .map((cat) =>
-                                _buildCategoria(context, cat, cs))
-                            .toList(),
+                        children: [
+                          if (campanhas.isNotEmpty)
+                            _buildCategoriaCampanha(context, cs),
+                          ...categorias
+                              .map((cat) =>
+                                  _buildCategoria(context, cat, cs)),
+                        ],
                       ),
               ),
             ],
@@ -348,12 +385,121 @@ class _PainelLateral extends StatelessWidget {
     );
   }
 
+  // ── Categoria de campanhas vigentes ────────────────────────────────────────
+  Widget _buildCategoriaCampanha(BuildContext context, ColorScheme cs) {
+    final cor = Colors.green.shade700;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(Icons.campaign_outlined, color: cor, size: 14),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Condições Vigentes',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cor,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${campanhas.length}',
+                  style: TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.bold, color: cor),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...campanhas
+            .map((c) => _buildItemCampanha(c, cor, cs)),
+        Divider(
+            height: 1,
+            indent: 20,
+            endIndent: 20,
+            color: cs.outlineVariant),
+      ],
+    );
+  }
+
+  Widget _buildItemCampanha(
+      _CampanhaNotifItem item, Color cor, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: cor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.local_offer_outlined, size: 16, color: cor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.nome,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  item.resumo,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: cor,
+                      fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  item.periodo,
+                  style:
+                      TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Categoria de clientes ──────────────────────────────────────────────────
   Widget _buildCategoria(
       BuildContext context, _NotifCategoria cat, ColorScheme cs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header da categoria
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
           child: Row(
@@ -396,10 +542,7 @@ class _PainelLateral extends StatelessWidget {
             ],
           ),
         ),
-
-        // Itens
         ...cat.itens.map((item) => _buildItem(context, item, cat.cor, cs)),
-
         Divider(
             height: 1,
             indent: 20,
@@ -420,7 +563,7 @@ class _PainelLateral extends StatelessWidget {
 
     return InkWell(
       onTap: () {
-        Navigator.of(context).pop(); // fecha painel
+        Navigator.of(context).pop();
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => FichaClienteScreen(cliente: item.cliente),
         ));

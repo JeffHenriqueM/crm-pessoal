@@ -8,7 +8,16 @@ import '../widgets/aba_agenda.dart';
 
 class VendedorHomeScreen extends StatefulWidget {
   final String? currentUserId;
-  const VendedorHomeScreen({super.key, this.currentUserId});
+
+  /// Se true, busca todos os clientes (visão admin) e exibe nome do vendedor
+  /// em cada evento da agenda com sua cor determinística.
+  final bool showAllVendedores;
+
+  const VendedorHomeScreen({
+    super.key,
+    this.currentUserId,
+    this.showAllVendedores = false,
+  });
 
   @override
   State<VendedorHomeScreen> createState() => _VendedorHomeScreenState();
@@ -38,9 +47,13 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    // Se showAllVendedores, não filtra por vendedorId (admin vê todos)
+    final vendedorIdFiltro =
+        widget.showAllVendedores ? null : widget.currentUserId;
+
     return StreamBuilder<List<Cliente>>(
       stream: _firestoreService.getTodosClientesStream(
-          vendedorId: widget.currentUserId),
+          vendedorId: vendedorIdFiltro),
       builder: (context, snapshot) {
         final clientes = snapshot.data ?? [];
 
@@ -81,7 +94,12 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
         return Column(
           children: [
             _buildHojeStrip(context, cs, contatosHoje, visitasHoje, atrasados),
-            Expanded(child: AbaAgenda(events: eventos)),
+            Expanded(
+              child: AbaAgenda(
+                events: eventos,
+                showVendedorInfo: widget.showAllVendedores,
+              ),
+            ),
           ],
         );
       },
@@ -117,13 +135,35 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            dataDisplay,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant,
-            ),
+          Row(
+            children: [
+              Text(
+                dataDisplay,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              if (widget.showAllVendedores) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Todos os embaixadores',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onPrimaryContainer,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ],
           ),
           if (temEventos) ...[
             const SizedBox(height: 8),
@@ -137,7 +177,9 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
                           cs,
                           Icons.phone_outlined,
                           Colors.blue.shade700,
-                          c.nome.split(' ').first,
+                          widget.showAllVendedores
+                              ? '${c.nome.split(' ').first} · ${c.vendedorNome?.split(' ').first ?? '?'}'
+                              : c.nome.split(' ').first,
                           () => _abrirCliente(context, c),
                         )),
                   if (visitasHoje.isNotEmpty)
@@ -146,7 +188,9 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
                           cs,
                           Icons.location_on_outlined,
                           Colors.teal.shade700,
-                          c.nome.split(' ').first,
+                          widget.showAllVendedores
+                              ? '${c.nome.split(' ').first} · ${c.vendedorNome?.split(' ').first ?? '?'}'
+                              : c.nome.split(' ').first,
                           () => _abrirCliente(context, c),
                         )),
                   if (atrasados > 0)
