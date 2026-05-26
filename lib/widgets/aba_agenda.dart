@@ -135,10 +135,12 @@ class _AbaAgendaState extends State<AbaAgenda> {
     }
   }
 
+  // Cor do label "Evento" — teal suave, lê bem no dark e no light
+  static const _eventoLabelColor = Color(0xFF4DB6AC);
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final eventoColor = Colors.orange.shade700;
 
     return Column(
       children: [
@@ -150,38 +152,40 @@ class _AbaAgendaState extends State<AbaAgenda> {
           selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
           onDaySelected: _onDaySelected,
           eventLoader: _getEventsForDay,
+          rowHeight: 54, // espaço extra para o label "Evento"
           calendarBuilders: CalendarBuilders(
-            // ── Destaque especial: fins de semana + eventos do resort ──────
+            // ── Destaque: fins de semana (primary) + eventos (label teal) ──
             defaultBuilder: (context, day, focusedDay) {
               final isWeekend = day.weekday == DateTime.saturday ||
                   day.weekday == DateTime.sunday;
               final isEvento = _isEventoResort(day);
 
-              // Dia comum sem nada especial → renderização padrão
               if (!isWeekend && !isEvento) return null;
 
-              return Container(
-                margin: const EdgeInsets.all(4),
-                decoration: isEvento
-                    ? BoxDecoration(
-                        color: eventoColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: eventoColor.withValues(alpha: 0.3),
-                          width: 0.8,
-                        ),
-                      )
-                    : null,
-                child: Center(
-                  child: Text(
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
                     '${day.day}',
                     style: TextStyle(
                       color: isWeekend ? cs.primary : cs.onSurface,
                       fontWeight:
                           isWeekend ? FontWeight.w700 : FontWeight.normal,
+                      fontSize: 14,
                     ),
                   ),
-                ),
+                  if (isEvento)
+                    Text(
+                      'Evento',
+                      style: const TextStyle(
+                        fontSize: 7,
+                        color: _eventoLabelColor,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                ],
               );
             },
 
@@ -253,38 +257,32 @@ class _AbaAgendaState extends State<AbaAgenda> {
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
           child: Row(
             children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: eventoColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(3),
-                  border: Border.all(
-                      color: eventoColor.withValues(alpha: 0.4), width: 0.8),
-                ),
+              // Amostra: número + "Evento" como aparece no calendário
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('8',
+                      style: TextStyle(fontSize: 11, color: cs.onSurface)),
+                  const Text('Evento',
+                      style: TextStyle(
+                          fontSize: 7,
+                          color: _eventoLabelColor,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2)),
+                ],
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               Text(
-                'Período de evento no resort',
+                'Evento na Villamor',
                 style: TextStyle(fontSize: 11, color: cs.outline),
               ),
               const SizedBox(width: 16),
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: Center(
-                  child: Text(
-                    'S',
-                    style: TextStyle(
-                        fontSize: 8,
-                        color: cs.primary,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ),
+              Text(
+                'S',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700),
               ),
               const SizedBox(width: 4),
               Text(
