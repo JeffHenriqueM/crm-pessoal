@@ -47,64 +47,53 @@ class _MainShellState extends State<MainShell> {
   bool get _isAdmin => widget.userProfile == 'admin';
 
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
-  List<_NavItem> get _navItems => [
-        if (!_isListaProfile)
-          const _NavItem(
-            icon: Icons.calendar_month_outlined,
-            activeIcon: Icons.calendar_month,
-            label: 'Agenda',
-          ),
-        const _NavItem(
-          icon: Icons.view_kanban_outlined,
-          activeIcon: Icons.view_kanban,
-          label: 'Leads',
-        ),
-        const _NavItem(
-          icon: Icons.handshake_outlined,
-          activeIcon: Icons.handshake_rounded,
-          label: 'Negociações',
-        ),
-        const _NavItem(
-          icon: Icons.bar_chart_outlined,
-          activeIcon: Icons.bar_chart_rounded,
-          label: 'Dashboard',
-        ),
-        if (_isAdmin) ...[
-          const _NavItem(
-            icon: Icons.calendar_month_outlined,
-            activeIcon: Icons.calendar_month,
-            label: 'Agenda',
-          ),
-          const _NavItem(
-            icon: Icons.manage_accounts_outlined,
-            activeIcon: Icons.manage_accounts,
-            label: 'Usuários',
-          ),
-          const _NavItem(
-            icon: Icons.campaign_outlined,
-            activeIcon: Icons.campaign,
-            label: 'Campanhas',
-          ),
-        ],
+  List<_NavItem> get _navItems {
+    // ── Admin: Dashboard primeiro ─────────────────────────────────
+    if (_isAdmin) {
+      return const [
+        _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,    label: 'Dashboard'),
+        _NavItem(icon: Icons.view_kanban_outlined,     activeIcon: Icons.view_kanban,          label: 'Leads'),
+        _NavItem(icon: Icons.handshake_outlined,       activeIcon: Icons.handshake_rounded,    label: 'Negociações'),
+        _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
+        _NavItem(icon: Icons.manage_accounts_outlined, activeIcon: Icons.manage_accounts,      label: 'Usuários'),
+        _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
       ];
+    }
+    // ── Vendedor/captador: Agenda primeiro ────────────────────────
+    if (!_isListaProfile) {
+      return const [
+        _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,    label: 'Agenda'),
+        _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Leads'),
+        _NavItem(icon: Icons.handshake_outlined,      activeIcon: Icons.handshake_rounded,  label: 'Negociações'),
+        _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
+      ];
+    }
+    // ── pós-venda / financeiro ────────────────────────────────────
+    return const [
+      _NavItem(icon: Icons.view_kanban_outlined, activeIcon: Icons.view_kanban,       label: 'Leads'),
+      _NavItem(icon: Icons.handshake_outlined,   activeIcon: Icons.handshake_rounded, label: 'Negociações'),
+      _NavItem(icon: Icons.bar_chart_outlined,   activeIcon: Icons.bar_chart_rounded, label: 'Dashboard'),
+    ];
+  }
 
   // ── Páginas (IndexedStack preserva o estado) ──────────────────────────────
   late final List<Widget> _pages = [
-    if (!_isListaProfile)
-      VendedorHomeScreen(currentUserId: widget.currentUserId),
-    const ListaClientesScreen(),
-    NegociacoesScreen(
-      userProfile: widget.userProfile,
-      currentUserId: widget.currentUserId,
-    ),
-    const DashboardScreen(),
     if (_isAdmin) ...[
-      VendedorHomeScreen(
-        currentUserId: widget.currentUserId,
-        showAllVendedores: true,
-      ),
+      const DashboardScreen(),
+      const ListaClientesScreen(),
+      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId),
+      VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
       const GerenciarUsuariosScreen(),
       const CampanhasScreen(),
+    ] else if (!_isListaProfile) ...[
+      VendedorHomeScreen(currentUserId: widget.currentUserId),
+      const ListaClientesScreen(),
+      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId),
+      const DashboardScreen(),
+    ] else ...[
+      const ListaClientesScreen(),
+      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId),
+      const DashboardScreen(),
     ],
   ];
 
