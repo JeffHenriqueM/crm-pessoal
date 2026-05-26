@@ -667,7 +667,10 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   bool _solicitarAprovacao = false;
   bool _parcelaManual = false;
   bool _salvando = false;
-  bool _autoEspecial = false;   // true quando o tipo foi forçado por valor abaixo do limite
+  bool _autoEspecial = false;         // forçado por valor abaixo do limite do produto
+  bool _autoEspecialParcelas = false; // forçado por parcelas > 80
+  double _entradaPercMemoria = 10.0;  // % de entrada — preservada ao recalcular valorFinal
+  bool _atualizandoEntrada = false;   // evita loop ao atualizar entrada programaticamente
 
   // Vínculo com lead (só usado quando não há clienteId pré-definido)
   String? _vinculoClienteId;
@@ -740,15 +743,21 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     _vinculoClienteId = e?.clienteId ?? widget.clienteId;
     _vinculoClienteNome = e?.clienteNome ?? widget.clienteNome;
 
+    // Inicializa % de entrada para cálculo bidirecional
+    final vfInit = _valorFinal;
+    if (e?.valorEntrada != null && vfInit > 0) {
+      _entradaPercMemoria = (e!.valorEntrada! / vfInit * 100).clamp(0, 100);
+    }
+
     // Listeners para recalcular
     for (final ctrl in [
       _valorOriginalCtrl,
       _descontoCtrl,
-      _valorEntradaCtrl,
       _parcelasCtrl,
     ]) {
       ctrl.addListener(_recalcular);
     }
+    _valorEntradaCtrl.addListener(_onEntradaEditada); // listener separado para manter %
     _valorParcelaCtrl.addListener(_onParcelaEditada);
     _nomeClienteCtrl.addListener(_recalcular); // atualiza título ao digitar nome
 
@@ -829,27 +838,68 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   }
 
   void _recalcular() {
+    // ① Recalcula entrada mantendo a % memorizada (quando valorOriginal ou desconto muda)
+    final vf = _valorFinal;
+    if (vf > 0) {
+      _atualizandoEntrada = true;
+      _valorEntradaCtrl.text = _fmt(vf * _entradaPercMemoria / 100);
+      _atualizandoEntrada = false;
+    }
+
+    // ② Recalcula valor da parcela
     if (!_parcelaManual) {
       final calc = _parcelaCalculada;
       _atualizandoParcela = true;
       _valorParcelaCtrl.text = calc != null ? _fmt(calc) : '';
       _atualizandoParcela = false;
     }
-    // Auto-detectar negociação especial por limite de valor
+
+    // ③ Auto-especial por valor abaixo do limite do produto
     if (_produtoSelecionado != null) {
       final deveEspecial = _deveSerEspecial;
       if (deveEspecial && _tipoNegociacao == TipoNegociacao.tabela) {
         _tipoNegociacao = TipoNegociacao.especial;
         _autoEspecial = true;
-      } else if (!deveEspecial && _autoEspecial &&
-          _tipoNegociacao == TipoNegociacao.especial) {
-        // Reverte automaticamente só se foi o sistema que forçou
-        _tipoNegociacao = TipoNegociacao.tabela;
+      } else if (!deveEspecial && _autoEspecial) {
         _autoEspecial = false;
-        _solicitarAprovacao = false;
+        if (!_autoEspecialParcelas && _tipoNegociacao == TipoNegociacao.especial) {
+          _tipoNegociacao = TipoNegociacao.tabela;
+          _solicitarAprovacao = false;
+        }
       }
     }
-    // Atualizar título gerado (só se não editado manualmente)
+
+    // ④ Auto-especial por parcelas > 80
+    final nParcelas = int.tryParse(_parcelasCtrl.text) ?? 0;
+    if (nParcelas > 80 && _tipoNegociacao == TipoNegociacao.tabela) {
+      _tipoNegociacao = TipoNegociacao.especial;
+      _autoEspecialParcelas = true;
+    } else if (nParcelas <= 80 && _autoEspecialParcelas) {
+      _autoEspecialParcelas = false;
+      if (!_autoEspecial && _tipoNegociacao == TipoNegociacao.especial) {
+        _tipoNegociacao = TipoNegociacao.tabela;
+      }
+    }
+
+    _atualizarTitulo();
+    if (mounted) setState(() {});
+  }
+
+  /// Chamado quando o USUÁRIO edita o valor de entrada manualmente.
+  /// Atualiza a % memorizada e recalcula só a parcela.
+  void _onEntradaEditada() {
+    if (_atualizandoEntrada) return;
+    final vf = _valorFinal;
+    final entrada = _parse(_valorEntradaCtrl.text);
+    if (vf > 0) {
+      _entradaPercMemoria = (entrada / vf * 100).clamp(0, 100);
+    }
+    if (!_parcelaManual) {
+      final calc = _parcelaCalculada;
+      _atualizandoParcela = true;
+      _valorParcelaCtrl.text = calc != null ? _fmt(calc) : '';
+      _atualizandoParcela = false;
+    }
     _atualizarTitulo();
     if (mounted) setState(() {});
   }
@@ -943,10 +993,13 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       setState(() {
         _produtoSelecionado = resultado;
         _autoEspecial = false;
+        _autoEspecialParcelas = false;
+        _entradaPercMemoria = 10.0; // reset: entrada volta a 10% do novo produto
         _valorOriginalCtrl.text = _fmt(resultado.valor);
-        // Pré-preenche entrada com 10%
-        final entrada = resultado.valor * 0.10;
-        _valorEntradaCtrl.text = _fmt(entrada);
+        // Pré-preenche entrada com 10% (sem acionar _onEntradaEditada)
+        _atualizandoEntrada = true;
+        _valorEntradaCtrl.text = _fmt(resultado.valor * 0.10);
+        _atualizandoEntrada = false;
         _parcelaManual = false;
         _recalcular(); // gera título + detecta especial
       });
@@ -1332,6 +1385,29 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                     ),
                                   ],
                                 ),
+
+                                // Banner: parcelas > 80 → obrigatório especial
+                                if ((int.tryParse(_parcelasCtrl.text) ?? 0) > 80)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: cs.tertiaryContainer.withValues(alpha: 0.7),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.info_outline, size: 15, color: cs.onTertiaryContainer),
+                                        const SizedBox(width: 7),
+                                        Expanded(
+                                          child: Text(
+                                            'Acima de 80x → Negociação Especial obrigatória',
+                                            style: TextStyle(fontSize: 12, color: cs.onTertiaryContainer),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 const SizedBox(height: 12),
 
                                 // Valor da parcela
