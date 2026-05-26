@@ -1410,24 +1410,6 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                         }),
                       const SizedBox(height: 14),
 
-                      // ── Status ──────────────────────────────
-                      DropdownButtonFormField<StatusNegociacao>(
-                        value: _status,
-                        decoration: const InputDecoration(
-                          labelText: 'Status',
-                          prefixIcon: Icon(Icons.flag_outlined),
-                        ),
-                        items: StatusNegociacao.values
-                            .map((s) => DropdownMenuItem(
-                                  value: s,
-                                  child: Text(s.nomeDisplay),
-                                ))
-                            .toList(),
-                        onChanged: (s) =>
-                            s != null ? setState(() => _status = s) : null,
-                      ),
-                      const SizedBox(height: 14),
-
                       // ── Observações ─────────────────────────
                       TextFormField(
                         controller: _obsCtrl,
