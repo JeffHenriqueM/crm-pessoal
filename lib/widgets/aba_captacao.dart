@@ -2,12 +2,20 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/usuario_model.dart';
 
 enum _PeriodoCaptacao { semana, mes, tudo }
 
 class AbaCaptacao extends StatefulWidget {
   final List<Cliente> clientes;
-  const AbaCaptacao({super.key, required this.clientes});
+  /// Lista de todos os usuários para habilitar filtro por captador.
+  final List<Usuario> todosUsuarios;
+
+  const AbaCaptacao({
+    super.key,
+    required this.clientes,
+    this.todosUsuarios = const [],
+  });
 
   @override
   State<AbaCaptacao> createState() => _AbaCaptacaoState();
@@ -15,6 +23,7 @@ class AbaCaptacao extends StatefulWidget {
 
 class _AbaCaptacaoState extends State<AbaCaptacao> {
   _PeriodoCaptacao _periodo = _PeriodoCaptacao.mes;
+  String? _filtroCaptadorId;
 
   static const _diasSemana = [
     'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'
@@ -26,16 +35,24 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
   List<Cliente> get _filtrados {
     final agora = DateTime.now();
     final inicioDia = DateTime(agora.year, agora.month, agora.day);
+    List<Cliente> base;
     switch (_periodo) {
       case _PeriodoCaptacao.semana:
         final ini = inicioDia.subtract(Duration(days: agora.weekday - 1));
-        return _base.where((c) => !c.dataCadastro.isBefore(ini)).toList();
+        base = _base.where((c) => !c.dataCadastro.isBefore(ini)).toList();
+        break;
       case _PeriodoCaptacao.mes:
         final ini = DateTime(agora.year, agora.month, 1);
-        return _base.where((c) => !c.dataCadastro.isBefore(ini)).toList();
+        base = _base.where((c) => !c.dataCadastro.isBefore(ini)).toList();
+        break;
       case _PeriodoCaptacao.tudo:
-        return _base;
+        base = _base;
     }
+    // Filtro por captador
+    if (_filtroCaptadorId != null) {
+      base = base.where((c) => c.captadorId == _filtroCaptadorId).toList();
+    }
+    return base;
   }
 
   @override
@@ -67,18 +84,33 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Filtro de período ────────────────────────────────────────
-          SegmentedButton<_PeriodoCaptacao>(
-            segments: const [
-              ButtonSegment(
-                  value: _PeriodoCaptacao.semana, label: Text('Semana')),
-              ButtonSegment(
-                  value: _PeriodoCaptacao.mes, label: Text('Mês')),
-              ButtonSegment(
-                  value: _PeriodoCaptacao.tudo, label: Text('Tudo')),
+          // ── Filtros ─────────────────────────────────────────────────
+          Row(
+            children: [
+              // Filtro de período
+              Expanded(
+                child: SegmentedButton<_PeriodoCaptacao>(
+                  segments: const [
+                    ButtonSegment(
+                        value: _PeriodoCaptacao.semana, label: Text('Semana')),
+                    ButtonSegment(
+                        value: _PeriodoCaptacao.mes, label: Text('Mês')),
+                    ButtonSegment(
+                        value: _PeriodoCaptacao.tudo, label: Text('Tudo')),
+                  ],
+                  selected: {_periodo},
+                  onSelectionChanged: (s) =>
+                      setState(() => _periodo = s.first),
+                  style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact),
+                ),
+              ),
+              // Filtro por captador (opcional)
+              if (widget.todosUsuarios.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                _buildFiltroCaptador(cs),
+              ],
             ],
-            selected: {_periodo},
-            onSelectionChanged: (s) => setState(() => _periodo = s.first),
           ),
           const SizedBox(height: 24),
 
@@ -87,7 +119,7 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
             _kpiCard('Leads Captados', clientes.length,
                 Icons.people_outline, cs.primary, cs),
             _kpiCard('Captadores', ranking.length,
-                Icons.record_voice_over_outlined,
+                Icons.mic_outlined,
                 Colors.teal.shade600, cs),
           ]),
           const SizedBox(height: 28),
@@ -295,6 +327,84 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ── Filtro por captador ───────────────────────────────────────────────────
+  Widget _buildFiltroCaptador(ColorScheme cs) {
+    final ativo = _filtroCaptadorId != null;
+    final selecionado = ativo
+        ? widget.todosUsuarios
+            .where((u) => u.id == _filtroCaptadorId)
+            .firstOrNull
+        : null;
+
+    return PopupMenuButton<String?>(
+      tooltip: 'Filtrar por captador',
+      offset: const Offset(0, 36),
+      onSelected: (v) => setState(() => _filtroCaptadorId = v),
+      itemBuilder: (_) => [
+        PopupMenuItem<String?>(
+          value: null,
+          child: Row(children: [
+            Icon(Icons.people_outlined, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Todos')),
+            if (!ativo) Icon(Icons.check, size: 16, color: cs.primary),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        ...widget.todosUsuarios.map((u) => PopupMenuItem<String?>(
+              value: u.id,
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 10,
+                  backgroundColor: cs.primaryContainer,
+                  child: Text(
+                    u.nome.isNotEmpty ? u.nome[0].toUpperCase() : '?',
+                    style: TextStyle(fontSize: 10, color: cs.onPrimaryContainer),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(u.nome, overflow: TextOverflow.ellipsis)),
+                if (_filtroCaptadorId == u.id) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.check, size: 16, color: cs.primary),
+                ],
+              ]),
+            )),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: ativo ? cs.primaryContainer : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.mic_outlined,
+                size: 15,
+                color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant),
+            const SizedBox(width: 5),
+            Text(
+              selecionado != null
+                  ? selecionado.nome.split(' ').first
+                  : 'Captador',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(Icons.arrow_drop_down_rounded,
+                size: 16,
+                color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant),
+          ],
         ),
       ),
     );

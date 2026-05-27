@@ -71,7 +71,7 @@ class _VendedorStats {
 }
 
 // ── Widget principal ─────────────────────────────────────────────────────────
-class AbaAdminOverview extends StatelessWidget {
+class AbaAdminOverview extends StatefulWidget {
   final List<Cliente> todosClientes;
   final List<Usuario> todosVendedores;
 
@@ -81,17 +81,24 @@ class AbaAdminOverview extends StatelessWidget {
     required this.todosVendedores,
   });
 
+  @override
+  State<AbaAdminOverview> createState() => _AbaAdminOverviewState();
+}
+
+class _AbaAdminOverviewState extends State<AbaAdminOverview> {
+  String? _filtroVendedorId;
+
   List<_VendedorStats> _calcularStats() {
     final map = <String, List<Cliente>>{};
 
-    for (final c in todosClientes) {
+    for (final c in widget.todosClientes) {
       final vid = c.vendedorId ?? '__sem_vendedor__';
       map.putIfAbsent(vid, () => []).add(c);
     }
 
     final stats = <_VendedorStats>[];
 
-    for (final v in todosVendedores) {
+    for (final v in widget.todosVendedores) {
       final clientes = map[v.id] ?? [];
       stats.add(_VendedorStats(
         vendedorId: v.id,
@@ -118,9 +125,14 @@ class AbaAdminOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final stats = _calcularStats();
+    final todoStats = _calcularStats();
 
-    final totalLeads = todosClientes.length;
+    // Aplica filtro de vendedor
+    final stats = _filtroVendedorId == null
+        ? todoStats
+        : todoStats.where((s) => s.vendedorId == _filtroVendedorId).toList();
+
+    final totalLeads = widget.todosClientes.length;
     final totalAtrasados = stats.fold<int>(0, (s, v) => s + v.atrasados);
     final totalNegociacao = stats.fold<int>(0, (s, v) => s + v.emNegociacao);
     final totalFechados = stats.fold<int>(0, (s, v) => s + v.fechados);
@@ -138,6 +150,10 @@ class AbaAdminOverview extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Filtro de vendedor ─────────────────────────────────────────
+          if (widget.todosVendedores.isNotEmpty)
+            _buildFiltroVendedor(cs),
+
           // ── KPIs Gerais ────────────────────────────────────────────────
           _sectionTitle(context, 'Resumo da Equipe'),
           const SizedBox(height: 12),
@@ -757,6 +773,103 @@ class AbaAdminOverview extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  // ── Filtro de vendedor (inline na aba) ───────────────────────────────────
+  Widget _buildFiltroVendedor(ColorScheme cs) {
+    final selecionado = _filtroVendedorId == null
+        ? null
+        : widget.todosVendedores
+            .where((v) => v.id == _filtroVendedorId)
+            .firstOrNull;
+    final ativo = _filtroVendedorId != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Text(
+            'Filtrar:',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(width: 8),
+          PopupMenuButton<String?>(
+            tooltip: 'Filtrar por vendedor',
+            offset: const Offset(0, 36),
+            onSelected: (v) => setState(() => _filtroVendedorId = v),
+            itemBuilder: (_) => [
+              PopupMenuItem<String?>(
+                value: null,
+                child: Row(children: [
+                  Icon(Icons.people_outlined, size: 18, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('Todos')),
+                  if (!ativo) Icon(Icons.check, size: 16, color: cs.primary),
+                ]),
+              ),
+              const PopupMenuDivider(),
+              ...widget.todosVendedores.map((v) => PopupMenuItem<String?>(
+                    value: v.id,
+                    child: Row(children: [
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundColor: cs.primaryContainer,
+                        child: Text(
+                          v.nome.isNotEmpty ? v.nome[0].toUpperCase() : '?',
+                          style: TextStyle(fontSize: 10, color: cs.onPrimaryContainer),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text(v.nome, overflow: TextOverflow.ellipsis)),
+                      if (_filtroVendedorId == v.id) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.check, size: 16, color: cs.primary),
+                      ],
+                    ]),
+                  )),
+            ],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: ativo ? cs.primaryContainer : cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.person_outlined,
+                      size: 15,
+                      color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant),
+                  const SizedBox(width: 5),
+                  Text(
+                    selecionado != null
+                        ? selecionado.nome.split(' ').first
+                        : 'Todos',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Icon(Icons.arrow_drop_down_rounded,
+                      size: 18,
+                      color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+          if (ativo) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => setState(() => _filtroVendedorId = null),
+              child: Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

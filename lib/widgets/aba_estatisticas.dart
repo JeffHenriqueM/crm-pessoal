@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../screens/lista_clientes_screen.dart';
+import '../widgets/meta_mensal_card.dart';
 
 class AbaEstatisticas extends StatelessWidget {
   final List<Cliente> clientes;
-  const AbaEstatisticas({super.key, required this.clientes});
+  /// Quando fornecido, exibe o MetaMensalCard no topo da aba (rola junto).
+  final String? userId;
+
+  const AbaEstatisticas({super.key, required this.clientes, this.userId});
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +25,11 @@ class AbaEstatisticas extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Meta mensal do vendedor (só quando userId é fornecido)
+          if (userId != null) ...[
+            MetaMensalCard(userId: userId!, clientes: clientes),
+            const SizedBox(height: 20),
+          ],
           _sectionTitle(context, 'Resumo Geral'),
           const SizedBox(height: 12),
           Row(children: [
