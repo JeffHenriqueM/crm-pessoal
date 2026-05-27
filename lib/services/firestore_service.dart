@@ -42,6 +42,8 @@ class FirestoreService {
                     .map((d) => Cliente.fromFirestore(d))
                     // Atendimentos ficam apenas na tela de recepção
                     .where((c) => c.fase != FaseCliente.atendimento)
+                    // Exclui registros soft-deleted
+                    .where((c) => !c.deletado)
                     .toList());
           }
 
@@ -69,6 +71,8 @@ class FirestoreService {
               }
               // Atendimentos ainda não promovidos ficam apenas na tela de recepção
               result.removeWhere((c) => c.fase == FaseCliente.atendimento);
+              // Exclui registros soft-deleted
+              result.removeWhere((c) => c.deletado);
               result.sort((a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
               return result;
             },
@@ -116,6 +120,8 @@ class FirestoreService {
         }
         // Só mostra atendimentos (fase pré-lead)
         result.retainWhere((c) => c.fase == FaseCliente.atendimento);
+        // Exclui soft-deleted
+        result.removeWhere((c) => c.deletado);
         result.sort((a, b) {
           final da = a.dataEntradaSala ?? a.dataCadastro;
           final db = b.dataEntradaSala ?? b.dataCadastro;
@@ -152,15 +158,18 @@ class FirestoreService {
 
   Future<void> atualizarFaseCliente(String id, FaseCliente novaFase,
       {String? motivo}) async {
-    await _db.collection(_colClientes).doc(id).update({
+    final dados = {
       'fase': novaFase.toString().split('.').last,
       'motivoNaoVenda': motivo,
       'dataAtualizacao': FieldValue.serverTimestamp(),
       'atualizadoPorId': _currentUserId,
       'atualizadoPorNome': _currentUserName,
-    });
+    };
+    await _db.collection(_colClientes).doc(id).update(dados);
     await _adicionarInteracaoAutomatica(
         id, 'Fase alterada para: ${novaFase.nomeDisplay}');
+    // Snapshot de histórico (#19)
+    await _salvarSnapshotCliente(id, dados, tipo: 'mudanca_fase');
   }
 
   Future<void> atualizarClienteDetalhes(
@@ -169,10 +178,37 @@ class FirestoreService {
     dados['atualizadoPorId'] = _currentUserId;
     dados['atualizadoPorNome'] = _currentUserName;
     await _db.collection(_colClientes).doc(id).update(dados);
+    // Salva snapshot do estado atual para histórico (#19)
+    await _salvarSnapshotCliente(id, dados, tipo: 'edicao');
   }
 
+  /// Soft-delete: marca como deletado em vez de apagar permanentemente (#19).
+  /// Registra na coleção audit_log para rastreamento crítico.
   Future<void> deletarCliente(String id) async {
-    await _db.collection(_colClientes).doc(id).delete();
+    final nomeCliente = await _db
+        .collection(_colClientes)
+        .doc(id)
+        .get()
+        .then((d) => d.data()?['nome'] as String? ?? 'Cliente');
+
+    // Soft-delete no documento
+    await _db.collection(_colClientes).doc(id).update({
+      'deletado': true,
+      'excluidoPorId': _currentUserId,
+      'excluidoPorNome': _currentUserName,
+      'dataExclusao': FieldValue.serverTimestamp(),
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+    });
+
+    // Registro de auditoria em coleção dedicada
+    await _db.collection('audit_log').add({
+      'tipo': 'exclusao_cliente',
+      'clienteId': id,
+      'clienteNome': nomeCliente,
+      'autorId': _currentUserId,
+      'autorNome': _currentUserName,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
   }
 
   // --- INTERAÇÕES ---
@@ -233,6 +269,30 @@ class FirestoreService {
       'dataInteracao': FieldValue.serverTimestamp(),
       'tipo': tipo,
       'autorNome': 'Sistema',
+    });
+  }
+
+  /// Salva snapshot parcial dos dados alterados na subcoleção historico/ (#19).
+  /// Não faz leitura prévia do documento — armazena apenas os campos modificados
+  /// junto com metadados de autoria e timestamp.
+  Future<void> _salvarSnapshotCliente(
+    String clienteId,
+    Map<String, dynamic> dados, {
+    String tipo = 'edicao',
+  }) async {
+    // Remove valores de FieldValue (serverTimestamp) para serialização correta
+    final snapshot = Map<String, dynamic>.from(dados)
+      ..removeWhere((_, v) => v is FieldValue);
+    await _db
+        .collection(_colClientes)
+        .doc(clienteId)
+        .collection('historico')
+        .add({
+      'tipo': tipo,
+      'autorId': _currentUserId,
+      'autorNome': _currentUserName,
+      'timestamp': FieldValue.serverTimestamp(),
+      'dados': snapshot,
     });
   }
 

@@ -42,6 +42,12 @@ class Cliente {
   // Valores: null | 'nao_enviada' | 'enviada_sem_resposta' | 'enviada_com_resposta'
   final String? statusMensagem;
 
+  // ── Soft-delete (#19) ─────────────────────────────────────────────────────
+  final bool deletado;
+  final String? excluidoPorId;
+  final String? excluidoPorNome;
+  final DateTime? dataExclusao;
+
   Cliente({
     this.id,
     required this.nome,
@@ -76,6 +82,10 @@ class Cliente {
     this.linerId,
     this.linerNome,
     this.statusMensagem,
+    this.deletado = false,
+    this.excluidoPorId,
+    this.excluidoPorNome,
+    this.dataExclusao,
   });
 
   // Converte o objeto Cliente para um Mapa para o Firestore
@@ -113,6 +123,12 @@ class Cliente {
       'linerId': linerId,
       'linerNome': linerNome,
       'statusMensagem': statusMensagem,
+      // soft-delete: só serializa se true para não poluir docs normais
+      if (deletado) 'deletado': true,
+      if (excluidoPorId != null) 'excluidoPorId': excluidoPorId,
+      if (excluidoPorNome != null) 'excluidoPorNome': excluidoPorNome,
+      if (dataExclusao != null)
+        'dataExclusao': Timestamp.fromDate(dataExclusao!),
     };
   }
 
@@ -168,6 +184,10 @@ class Cliente {
       linerId: data['linerId'],
       linerNome: data['linerNome'],
       statusMensagem: data['statusMensagem'] as String?,
+      deletado: data['deletado'] == true,
+      excluidoPorId: data['excluidoPorId'] as String?,
+      excluidoPorNome: data['excluidoPorNome'] as String?,
+      dataExclusao: (data['dataExclusao'] as Timestamp?)?.toDate(),
     );
   }
 }
