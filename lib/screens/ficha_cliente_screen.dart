@@ -13,15 +13,23 @@ import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/url_launcher_service.dart';
 import '../widgets/aba_negociacoes.dart';
+import '../widgets/ficha/ficha_dados_tab.dart';
+import '../widgets/ficha/ficha_timeline_tab.dart';
 
 final _moedaCompacta =
     NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
 
-/// Tela unificada: criação + edição + interações + negociações
+/// Tela unificada: criação + edição + interações + negociações.
+/// Estado, lógica e dialogs ficam aqui; UI das abas em widgets separados.
 class FichaClienteScreen extends StatefulWidget {
   final Cliente? cliente;
   final String userProfile;
-  const FichaClienteScreen({super.key, this.cliente, this.userProfile = 'vendedor'});
+
+  const FichaClienteScreen({
+    super.key,
+    this.cliente,
+    this.userProfile = 'vendedor',
+  });
 
   @override
   State<FichaClienteScreen> createState() => _FichaClienteScreenState();
@@ -29,22 +37,22 @@ class FichaClienteScreen extends StatefulWidget {
 
 class _FichaClienteScreenState extends State<FichaClienteScreen>
     with TickerProviderStateMixin {
-  // ── Controllers ─────────────────────────────────────────────────────────────
+  // ── Controllers ───────────────────────────────────────────────────────────────
   late final TabController _tabController;
   final _service = FirestoreService();
   final _authService = AuthService();
 
-  // ── Estado do cliente ────────────────────────────────────────────────────────
+  // ── Identidade do cliente ─────────────────────────────────────────────────────
   String? _clienteId;
   bool get _isNovo => _clienteId == null;
 
-  // ── Dados em cache (stream p/ existentes, local p/ novos) ────────────────────
+  // ── Streams de dados (só para clientes existentes) ────────────────────────────
   List<Interacao> _interacoes = [];
   List<Negociacao> _negociacoes = [];
   StreamSubscription<List<Interacao>>? _intSub;
   StreamSubscription<List<Negociacao>>? _negSub;
 
-  // ── Form ─────────────────────────────────────────────────────────────────────
+  // ── Form ──────────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nomeCtrl;
   late final TextEditingController _nomeParceiroCtrl;
@@ -59,7 +67,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   DateTime? _dataCaptacao;
   DateTime? _proximoContato;
   DateTime? _dataVisita;
-  bool _tentouSalvar = false; // para validação visual da data obrigatória
+  bool _tentouSalvar = false;
 
   List<Usuario> _usuarios = [];
   Usuario? _captador;
@@ -67,26 +75,15 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   bool _carregandoUsuarios = true;
   bool _salvandoDados = false;
 
-  static const _origens = ['Presencial', 'WhatsApp', 'Instagram'];
-  static const _motivos = [
-    'Sem interesse',
-    'Sem retorno',
-    'Financeiro',
-    'Vieram pelo brinde/voucher',
-    'Não conhecem a Villamor',
-    'Perfil Inadequado',
-    'Quer decidir depois',
-    'Proposta não aprovada',
-    'Outro',
-  ];
-
-  // ── Init / Dispose ───────────────────────────────────────────────────────────
+  // ── Init / Dispose ────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
     _clienteId = widget.cliente?.id;
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() { if (mounted) setState(() {}); });
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
 
     final c = widget.cliente;
     _nomeCtrl = TextEditingController(text: c?.nome ?? '');
@@ -96,7 +93,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _motivoPerdaDescCtrl = TextEditingController(text: c?.motivoNaoVenda ?? '');
     _tipo = c?.tipo ?? 'Casal';
     _fase = c?.fase ?? FaseCliente.prospeccao;
-    _origem = _origens.contains(c?.origem) ? c?.origem : null;
+    _origem =
+        const ['Presencial', 'WhatsApp', 'Instagram'].contains(c?.origem)
+            ? c?.origem
+            : null;
     _motivoPerdaDropdown = c?.motivoNaoVendaDropdown;
     _dataCaptacao = c?.dataEntradaSala;
     _proximoContato = c?.proximoContato;
@@ -119,6 +119,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     super.dispose();
   }
 
+  // ── Streams ───────────────────────────────────────────────────────────────────
   void _iniciarStreams() {
     _intSub?.cancel();
     _negSub?.cancel();
@@ -130,6 +131,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     });
   }
 
+  // ── Carregamento de usuários ──────────────────────────────────────────────────
   Future<void> _carregarUsuarios() async {
     try {
       final lista = await _service.getTodosUsuarios(apenasAtivos: true);
@@ -138,10 +140,16 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         _usuarios = lista;
         _carregandoUsuarios = false;
         if (widget.cliente?.captadorId != null) {
-          try { _captador = _usuarios.firstWhere((u) => u.id == widget.cliente!.captadorId); } catch (_) {}
+          try {
+            _captador =
+                _usuarios.firstWhere((u) => u.id == widget.cliente!.captadorId);
+          } catch (_) {}
         }
         if (widget.cliente?.vendedorId != null) {
-          try { _vendedor = _usuarios.firstWhere((u) => u.id == widget.cliente!.vendedorId); } catch (_) {}
+          try {
+            _vendedor =
+                _usuarios.firstWhere((u) => u.id == widget.cliente!.vendedorId);
+          } catch (_) {}
         }
       });
     } catch (_) {
@@ -149,19 +157,23 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     }
   }
 
-  // ── Origem → fase automática (só na criação) ─────────────────────────────────
+  // ── Origem → fase automática (só na criação) ──────────────────────────────────
   void _atualizarFasePorOrigem(String? origem) {
     setState(() {
       _origem = origem;
       if (_isNovo) {
-        if (origem == 'Presencial') _fase = FaseCliente.visita;
-        else if (origem == 'WhatsApp' || origem == 'Instagram') _fase = FaseCliente.contato;
+        if (origem == 'Presencial') {
+          _fase = FaseCliente.visita;
+        } else if (origem == 'WhatsApp' || origem == 'Instagram') {
+          _fase = FaseCliente.contato;
+        }
       }
     });
   }
 
-  // ── Seletor de data genérico ─────────────────────────────────────────────────
-  Future<void> _selecionarData(void Function(DateTime?) onSet, DateTime? atual) async {
+  // ── Seletores de data ─────────────────────────────────────────────────────────
+  Future<void> _selecionarData(
+      void Function(DateTime?) onSet, DateTime? atual) async {
     final data = await showDatePicker(
       context: context,
       initialDate: atual ?? DateTime.now(),
@@ -171,33 +183,27 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     if (mounted) setState(() => onSet(data));
   }
 
-  // ── Seletor de Próximo Contato — com rastreamento de mensagem (#16) ──────────
   Future<void> _selecionarProximoContato() async {
     final dataAnterior = _proximoContato;
     await _selecionarData((d) => _proximoContato = d, _proximoContato);
     if (!mounted) return;
 
-    final novadata = _proximoContato;
-    final mudou = novadata != null &&
+    final novaData = _proximoContato;
+    final mudou = novaData != null &&
         !_isNovo &&
         _clienteId != null &&
         dataAnterior != null &&
-        (novadata.year != dataAnterior.year ||
-            novadata.month != dataAnterior.month ||
-            novadata.day != dataAnterior.day);
+        (novaData.year != dataAnterior.year ||
+            novaData.month != dataAnterior.month ||
+            novaData.day != dataAnterior.day);
 
-    if (mudou) {
-      await _mostrarModalRastreamento(dataAnterior);
-    }
+    if (mudou) await _mostrarModalRastreamento(dataAnterior);
   }
 
-  // ── Modal de rastreamento de mensagem ─────────────────────────────────────────
+  // ── Modal de rastreamento de mensagem (#16) ───────────────────────────────────
   Future<void> _mostrarModalRastreamento(DateTime dataAnterior) async {
     if (_clienteId == null) return;
-    final fmt = DateFormat('dd/MM/yyyy');
-    final dataStr = fmt.format(dataAnterior);
-
-    // Etapas: 0 = pergunta principal, 1 = obteve resposta?, 2 = motivo
+    final dataStr = DateFormat('dd/MM/yyyy').format(dataAnterior);
     int etapa = 0;
     final motivoCtrl = TextEditingController();
 
@@ -220,11 +226,11 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               );
             }
             if (etapa == 1) {
-              return Column(
+              return const Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Ótimo! O cliente respondeu?',
+                  Text('Ótimo! O cliente respondeu?',
                       style: TextStyle(fontSize: 15)),
                 ],
               );
@@ -235,7 +241,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Qual o motivo de não ter enviado?',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    style:
+                        TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: motivoCtrl,
@@ -258,7 +265,6 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                 TextButton(
                   onPressed: () async {
                     Navigator.of(ctx).pop();
-                    // Fechar = registra como não enviada silenciosamente
                     await _service.registrarRastreamentoMensagem(
                       clienteId: _clienteId!,
                       status: 'nao_enviada',
@@ -296,7 +302,6 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       clienteId: _clienteId!,
                       status: 'enviada_com_resposta',
                     );
-                    // Limpa o badge
                     await _service.limparStatusMensagem(_clienteId!);
                   },
                   child: const Text('Sim, respondeu!'),
@@ -355,11 +360,11 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     motivoCtrl.dispose();
   }
 
-  // ── Salvar dados ─────────────────────────────────────────────────────────────
+  // ── Salvar dados ──────────────────────────────────────────────────────────────
   Future<void> _salvarDados() async {
     setState(() => _tentouSalvar = true);
     if (!_formKey.currentState!.validate()) return;
-    if (_dataCaptacao == null) return; // validado visualmente
+    if (_dataCaptacao == null) return;
 
     setState(() => _salvandoDados = true);
     try {
@@ -367,9 +372,12 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         final novoCliente = Cliente(
           nome: _nomeCtrl.text.trim(),
           tipo: _tipo,
-          nomeEsposa: _tipo == 'Casal' ? _nomeParceiroCtrl.text.trim() : null,
+          nomeEsposa:
+              _tipo == 'Casal' ? _nomeParceiroCtrl.text.trim() : null,
           telefoneContato: _telefone1Ctrl.text.trim(),
-          telefone2: _telefone2Ctrl.text.trim().isEmpty ? null : _telefone2Ctrl.text.trim(),
+          telefone2: _telefone2Ctrl.text.trim().isEmpty
+              ? null
+              : _telefone2Ctrl.text.trim(),
           origem: _origem,
           fase: _fase,
           dataCadastro: DateTime.now(),
@@ -381,19 +389,19 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           vendedorId: _vendedor?.id,
           vendedorNome: _vendedor?.nome,
           dataEntradaSala: _dataCaptacao,
-          motivoNaoVendaDropdown: _fase == FaseCliente.perdido ? _motivoPerdaDropdown : null,
-          motivoNaoVenda: _fase == FaseCliente.perdido ? _motivoPerdaDescCtrl.text.trim() : null,
+          motivoNaoVendaDropdown:
+              _fase == FaseCliente.perdido ? _motivoPerdaDropdown : null,
+          motivoNaoVenda: _fase == FaseCliente.perdido
+              ? _motivoPerdaDescCtrl.text.trim()
+              : null,
         );
         final id = await _service.adicionarCliente(novoCliente);
-
-        // Salva interações e negociações pendentes
         for (final i in _interacoes) {
           await _service.adicionarInteracao(id, i);
         }
         for (final n in _negociacoes) {
           await _service.adicionarNegociacao(n.copyWith(clienteId: id));
         }
-
         if (!mounted) return;
         setState(() {
           _clienteId = id;
@@ -413,20 +421,29 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         final dados = <String, dynamic>{
           'nome': _nomeCtrl.text.trim(),
           'tipo': _tipo,
-          'nomeEsposa': _tipo == 'Casal' ? _nomeParceiroCtrl.text.trim() : null,
+          'nomeEsposa':
+              _tipo == 'Casal' ? _nomeParceiroCtrl.text.trim() : null,
           'telefoneContato': _telefone1Ctrl.text.trim(),
-          'telefone2': _telefone2Ctrl.text.trim().isEmpty ? null : _telefone2Ctrl.text.trim(),
+          'telefone2': _telefone2Ctrl.text.trim().isEmpty
+              ? null
+              : _telefone2Ctrl.text.trim(),
           'origem': _origem,
           'fase': _fase.toString().split('.').last,
-          'proximoContato': _proximoContato != null ? Timestamp.fromDate(_proximoContato!) : null,
-          'dataVisita': _dataVisita != null ? Timestamp.fromDate(_dataVisita!) : null,
+          'proximoContato': _proximoContato != null
+              ? Timestamp.fromDate(_proximoContato!)
+              : null,
+          'dataVisita':
+              _dataVisita != null ? Timestamp.fromDate(_dataVisita!) : null,
           'captadorId': _captador?.id,
           'captadorNome': _captador?.nome,
           'vendedorId': _vendedor?.id,
           'vendedorNome': _vendedor?.nome,
           'dataEntradaSala': Timestamp.fromDate(_dataCaptacao!),
-          'motivoNaoVenda': _fase == FaseCliente.perdido ? _motivoPerdaDescCtrl.text.trim() : null,
-          'motivoNaoVendaDropdown': _fase == FaseCliente.perdido ? _motivoPerdaDropdown : null,
+          'motivoNaoVenda': _fase == FaseCliente.perdido
+              ? _motivoPerdaDescCtrl.text.trim()
+              : null,
+          'motivoNaoVendaDropdown':
+              _fase == FaseCliente.perdido ? _motivoPerdaDropdown : null,
           'atualizadoPorId': user?.uid,
         };
         await _service.atualizarClienteDetalhes(_clienteId!, dados);
@@ -442,8 +459,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e'),
-              backgroundColor: Theme.of(context).colorScheme.error),
+          SnackBar(
+            content: Text('Erro: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
       }
     } finally {
@@ -451,7 +470,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     }
   }
 
-  // ── Ações rápidas ─────────────────────────────────────────────────────────────
+  // ── Ações rápidas (AppBar menu) ───────────────────────────────────────────────
   void _mudarFaseDialog() {
     showDialog(
       context: context,
@@ -471,7 +490,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             }
           },
           items: FaseCliente.values
-              .map((f) => DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
+              .map((f) =>
+                  DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
               .toList(),
         ),
       ),
@@ -486,14 +506,18 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         title: const Text('Registrar Perda'),
         content: TextField(
           controller: motivoCtrl,
-          decoration: const InputDecoration(hintText: 'Qual o motivo da perda?'),
+          decoration:
+              const InputDecoration(hintText: 'Qual o motivo da perda?'),
           maxLines: 3,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar')),
           FilledButton(
             onPressed: () async {
-              await _service.atualizarFaseCliente(_clienteId!, novaFase, motivo: motivoCtrl.text.trim());
+              await _service.atualizarFaseCliente(_clienteId!, novaFase,
+                  motivo: motivoCtrl.text.trim());
               if (mounted) setState(() => _fase = novaFase);
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
@@ -508,7 +532,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     try {
       await UrlLauncherService().abrirWhatsApp(tel);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
     }
   }
 
@@ -530,7 +557,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         title: const Text('Confirmar Exclusão'),
         content: Text('Apagar permanentemente "${_nomeCtrl.text}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar')),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
@@ -549,7 +578,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     );
   }
 
-  // ── Interações ────────────────────────────────────────────────────────────────
+  // ── Dialogs de interação ──────────────────────────────────────────────────────
   void _mostrarDialogoInteracao(Interacao? interacao) {
     final isEditing = interacao != null;
     final tituloCtrl = TextEditingController(text: interacao?.titulo);
@@ -563,124 +592,138 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
-        title: Text(isEditing ? 'Editar Interação' : 'Nova Interação'),
-        content: SizedBox(
-          width: 480,
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Tipo ──────────────────────────────────────
-                  Text('Tipo',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(ctx).colorScheme.primary)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: TipoInteracao.values.map((t) {
-                      final selecionado = tipoSelecionado == t;
-                      return ChoiceChip(
-                        avatar: Icon(t.icone,
-                            size: 14,
-                            color: selecionado
-                                ? Theme.of(ctx).colorScheme.onPrimaryContainer
-                                : t.cor),
-                        label: Text(t.nome,
-                            style: const TextStyle(fontSize: 12)),
-                        selected: selecionado,
-                        onSelected: (_) =>
-                            setStateDialog(() => tipoSelecionado = t),
-                        selectedColor: t.cor.withValues(alpha: 0.18),
-                        visualDensity: VisualDensity.compact,
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: tituloCtrl,
-                    decoration: const InputDecoration(labelText: 'Título', prefixIcon: Icon(Icons.title)),
-                    textCapitalization: TextCapitalization.sentences,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Insira um título.' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: notaCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Nota', prefixIcon: Icon(Icons.notes), alignLabelWithHint: true,
+          title: Text(isEditing ? 'Editar Interação' : 'Nova Interação'),
+          content: SizedBox(
+            width: 480,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tipo',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(ctx).colorScheme.primary)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: TipoInteracao.values.map((t) {
+                        final selecionado = tipoSelecionado == t;
+                        return ChoiceChip(
+                          avatar: Icon(t.icone,
+                              size: 14,
+                              color: selecionado
+                                  ? Theme.of(ctx)
+                                      .colorScheme
+                                      .onPrimaryContainer
+                                  : t.cor),
+                          label: Text(t.nome,
+                              style: const TextStyle(fontSize: 12)),
+                          selected: selecionado,
+                          onSelected: (_) =>
+                              setStateDialog(() => tipoSelecionado = t),
+                          selectedColor: t.cor.withValues(alpha: 0.18),
+                          visualDensity: VisualDensity.compact,
+                        );
+                      }).toList(),
                     ),
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    maxLines: 4,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Insira uma nota.' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: proximoPassoCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'O que combinamos? (opcional)',
-                      prefixIcon: Icon(Icons.check_circle_outline),
-                      alignLabelWithHint: true,
-                      hintText: 'Ex: Ligar na sexta às 14h...',
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: tituloCtrl,
+                      decoration: const InputDecoration(
+                          labelText: 'Título',
+                          prefixIcon: Icon(Icons.title)),
+                      textCapitalization: TextCapitalization.sentences,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Insira um título.'
+                          : null,
                     ),
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    maxLines: 2,
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: notaCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Nota',
+                        prefixIcon: Icon(Icons.notes),
+                        alignLabelWithHint: true,
+                      ),
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      maxLines: 4,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Insira uma nota.'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: proximoPassoCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'O que combinamos? (opcional)',
+                        prefixIcon: Icon(Icons.check_circle_outline),
+                        alignLabelWithHint: true,
+                        hintText: 'Ex: Ligar na sexta às 14h...',
+                      ),
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              final passotrimmed = proximoPassoCtrl.text.trim();
-              final nova = Interacao(
-                id: interacao?.id ?? 'local_${DateTime.now().millisecondsSinceEpoch}',
-                titulo: tituloCtrl.text.trim(),
-                nota: notaCtrl.text.trim(),
-                dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
-                tipo: tipoSelecionado,
-                proximoPasso: passotrimmed.isEmpty ? null : passotrimmed,
-              );
-              if (_isNovo) {
-                setState(() {
-                  if (isEditing) {
-                    final idx = _interacoes.indexWhere((i) => i.id == interacao.id);
-                    if (idx >= 0) _interacoes[idx] = nova;
-                  } else {
-                    _interacoes.insert(0, nova);
-                  }
-                });
-                if (ctx.mounted) Navigator.of(ctx).pop();
-              } else {
-                if (isEditing) {
-                  await _service.atualizarInteracao(_clienteId!, nova);
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                final passo = proximoPassoCtrl.text.trim();
+                final nova = Interacao(
+                  id: interacao?.id ??
+                      'local_${DateTime.now().millisecondsSinceEpoch}',
+                  titulo: tituloCtrl.text.trim(),
+                  nota: notaCtrl.text.trim(),
+                  dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
+                  tipo: tipoSelecionado,
+                  proximoPasso: passo.isEmpty ? null : passo,
+                );
+                if (_isNovo) {
+                  setState(() {
+                    if (isEditing) {
+                      final idx =
+                          _interacoes.indexWhere((i) => i.id == interacao.id);
+                      if (idx >= 0) _interacoes[idx] = nova;
+                    } else {
+                      _interacoes.insert(0, nova);
+                    }
+                  });
+                  if (ctx.mounted) Navigator.of(ctx).pop();
                 } else {
-                  await _service.adicionarInteracao(_clienteId!, nova);
+                  if (isEditing) {
+                    await _service.atualizarInteracao(_clienteId!, nova);
+                  } else {
+                    await _service.adicionarInteracao(_clienteId!, nova);
+                  }
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                      content: Text(
+                          'Interação ${isEditing ? 'atualizada' : 'registrada'}!'),
+                      backgroundColor: Colors.green.shade700,
+                    ));
+                  }
                 }
-                if (ctx.mounted) {
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                    content: Text('Interação ${isEditing ? 'atualizada' : 'registrada'}!'),
-                    backgroundColor: Colors.green.shade700,
-                  ));
-                }
-              }
-            },
-            child: Text(isEditing ? 'Salvar' : 'Registrar'),
-          ),
-        ],
+              },
+              child: Text(isEditing ? 'Salvar' : 'Registrar'),
+            ),
+          ],
+        ),
       ),
-      ),  // StatefulBuilder
     );
   }
 
@@ -691,17 +734,23 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: Icon(Icons.edit_outlined, color: Theme.of(context).colorScheme.primary),
+            leading: Icon(Icons.edit_outlined,
+                color: Theme.of(context).colorScheme.primary),
             title: const Text('Editar'),
-            onTap: () { Navigator.of(ctx).pop(); _mostrarDialogoInteracao(interacao); },
+            onTap: () {
+              Navigator.of(ctx).pop();
+              _mostrarDialogoInteracao(interacao);
+            },
           ),
           ListTile(
-            leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+            leading: Icon(Icons.delete_outline,
+                color: Theme.of(ctx).colorScheme.error),
             title: const Text('Excluir'),
             onTap: () async {
               Navigator.of(ctx).pop();
               if (_isNovo) {
-                setState(() => _interacoes.removeWhere((i) => i.id == interacao.id));
+                setState(() =>
+                    _interacoes.removeWhere((i) => i.id == interacao.id));
                 return;
               }
               final confirm = await showDialog<bool>(
@@ -710,11 +759,15 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                   title: const Text('Excluir interação?'),
                   content: const Text('Esta ação não pode ser desfeita.'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.of(dctx).pop(false), child: const Text('Não')),
+                    TextButton(
+                        onPressed: () => Navigator.of(dctx).pop(false),
+                        child: const Text('Não')),
                     FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: Theme.of(dctx).colorScheme.error,
-                        foregroundColor: Theme.of(dctx).colorScheme.onError,
+                        backgroundColor:
+                            Theme.of(dctx).colorScheme.error,
+                        foregroundColor:
+                            Theme.of(dctx).colorScheme.onError,
                       ),
                       onPressed: () => Navigator.of(dctx).pop(true),
                       child: const Text('Excluir'),
@@ -725,8 +778,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               if (confirm == true && mounted) {
                 await _service.excluirInteracao(_clienteId!, interacao.id!);
                 if (mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('Interação excluída.')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Interação excluída.')));
                 }
               }
             },
@@ -736,7 +789,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     );
   }
 
-  // ── FAB dinâmico ─────────────────────────────────────────────────────────────
+  // ── FAB dinâmico por aba ──────────────────────────────────────────────────────
   Widget? _buildFab() {
     if (_tabController.index == 0) return null;
     if (_tabController.index == 1) {
@@ -754,9 +807,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         clienteId: _isNovo ? null : _clienteId,
         service: _isNovo ? null : _service,
         proximoNumero: _negociacoes.length + 1,
-        onSaveLocal: _isNovo
-            ? (neg) => setState(() => _negociacoes.add(neg))
-            : null,
+        onSaveLocal:
+            _isNovo ? (neg) => setState(() => _negociacoes.add(neg)) : null,
         currentUserId: _authService.getCurrentUser()?.uid,
         currentUserName: _authService.getCurrentUser()?.displayName,
         userProfile: widget.userProfile,
@@ -782,11 +834,16 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               tooltip: 'Mais ações',
               onSelected: (action) {
                 switch (action) {
-                  case 'whatsapp1': _abrirWhatsApp(_telefone1Ctrl.text.trim());
-                  case 'whatsapp2': _abrirWhatsApp(_telefone2Ctrl.text.trim());
-                  case 'fase': _mudarFaseDialog();
-                  case 'agenda': _adicionarAgenda();
-                  case 'apagar': _apagarClienteDialog();
+                  case 'whatsapp1':
+                    _abrirWhatsApp(_telefone1Ctrl.text.trim());
+                  case 'whatsapp2':
+                    _abrirWhatsApp(_telefone2Ctrl.text.trim());
+                  case 'fase':
+                    _mudarFaseDialog();
+                  case 'agenda':
+                    _adicionarAgenda();
+                  case 'apagar':
+                    _apagarClienteDialog();
                 }
               },
               itemBuilder: (ctx) => [
@@ -794,18 +851,24 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                   PopupMenuItem(
                     value: 'whatsapp1',
                     child: ListTile(
-                      leading: const Icon(FontAwesomeIcons.whatsapp, color: Color(0xFF25D366)),
-                      title: Text('WhatsApp — ${_telefone1Ctrl.text.trim()}'),
-                      contentPadding: EdgeInsets.zero, dense: true,
+                      leading: const Icon(FontAwesomeIcons.whatsapp,
+                          color: Color(0xFF25D366)),
+                      title:
+                          Text('WhatsApp — ${_telefone1Ctrl.text.trim()}'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
                     ),
                   ),
                 if (_telefone2Ctrl.text.trim().isNotEmpty)
                   PopupMenuItem(
                     value: 'whatsapp2',
                     child: ListTile(
-                      leading: const Icon(FontAwesomeIcons.whatsapp, color: Color(0xFF25D366)),
-                      title: Text('WhatsApp 2 — ${_telefone2Ctrl.text.trim()}'),
-                      contentPadding: EdgeInsets.zero, dense: true,
+                      leading: const Icon(FontAwesomeIcons.whatsapp,
+                          color: Color(0xFF25D366)),
+                      title:
+                          Text('WhatsApp 2 — ${_telefone2Ctrl.text.trim()}'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
                     ),
                   ),
                 const PopupMenuItem(
@@ -813,7 +876,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                   child: ListTile(
                     leading: Icon(Icons.swap_horiz_outlined),
                     title: Text('Mudar Fase'),
-                    contentPadding: EdgeInsets.zero, dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
                   ),
                 ),
                 if (_proximoContato != null)
@@ -822,16 +886,20 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                     child: ListTile(
                       leading: Icon(Icons.event_outlined),
                       title: Text('Adicionar à Agenda'),
-                      contentPadding: EdgeInsets.zero, dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
                     ),
                   ),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'apagar',
                   child: ListTile(
-                    leading: Icon(Icons.delete_outline, color: cs.error),
-                    title: Text('Apagar Cliente', style: TextStyle(color: cs.error)),
-                    contentPadding: EdgeInsets.zero, dense: true,
+                    leading:
+                        Icon(Icons.delete_outline, color: cs.error),
+                    title: Text('Apagar Cliente',
+                        style: TextStyle(color: cs.error)),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
                   ),
                 ),
               ],
@@ -855,8 +923,70 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildDadosTab(),
-          _buildInteracoesTab(),
+          // ── Aba 0: Dados ────────────────────────────────────────────────────
+          FichaDadosTab(
+            formKey: _formKey,
+            nomeCtrl: _nomeCtrl,
+            nomeParceiroCtrl: _nomeParceiroCtrl,
+            telefone1Ctrl: _telefone1Ctrl,
+            telefone2Ctrl: _telefone2Ctrl,
+            motivoPerdaDescCtrl: _motivoPerdaDescCtrl,
+            tipo: _tipo,
+            fase: _fase,
+            origem: _origem,
+            motivoPerdaDropdown: _motivoPerdaDropdown,
+            dataCaptacao: _dataCaptacao,
+            proximoContato: _proximoContato,
+            dataVisita: _dataVisita,
+            tentouSalvar: _tentouSalvar,
+            salvandoDados: _salvandoDados,
+            carregandoUsuarios: _carregandoUsuarios,
+            isNovo: _isNovo,
+            usuarios: _usuarios,
+            captador: _captador,
+            vendedor: _vendedor,
+            onTipoChanged: (v) => setState(() {
+              _tipo = v;
+              if (v == 'Individual') _nomeParceiroCtrl.clear();
+            }),
+            onOrigemChanged: _atualizarFasePorOrigem,
+            onFaseChanged: (v) {
+              if (v != null) {
+                setState(() {
+                  _fase = v;
+                  if (v != FaseCliente.perdido) {
+                    _motivoPerdaDropdown = null;
+                    _motivoPerdaDescCtrl.clear();
+                  }
+                });
+              }
+            },
+            onMotivoPerdaDropdownChanged: (v) =>
+                setState(() => _motivoPerdaDropdown = v),
+            onCaptadorChanged: (v) => setState(() => _captador = v),
+            onVendedorChanged: (v) => setState(() => _vendedor = v),
+            onSelectDataCaptacao: () =>
+                _selecionarData((d) => _dataCaptacao = d, _dataCaptacao),
+            onClearDataCaptacao: () =>
+                setState(() => _dataCaptacao = null),
+            onSelectProximoContato: _selecionarProximoContato,
+            onClearProximoContato: () =>
+                setState(() => _proximoContato = null),
+            onSelectDataVisita: () =>
+                _selecionarData((d) => _dataVisita = d, _dataVisita),
+            onClearDataVisita: () => setState(() => _dataVisita = null),
+            onSalvar: _salvarDados,
+            onNomeChanged: () => setState(() {}),
+          ),
+
+          // ── Aba 1: Timeline de Interações ───────────────────────────────────
+          FichaTimelineTab(
+            interacoes: _interacoes,
+            isNovo: _isNovo,
+            onItemTap: _mostrarOpcoesInteracao,
+          ),
+
+          // ── Aba 2: Negociações ──────────────────────────────────────────────
           _buildNegociacoesTab(),
         ],
       ),
@@ -867,7 +997,6 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     );
   }
 
-  // ── Tab label com badge ───────────────────────────────────────────────────────
   Widget _buildTabLabel(String label, int count) {
     if (count == 0) return Text(label);
     return Badge.count(
@@ -879,535 +1008,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     );
   }
 
-  // ── Aba: Dados ────────────────────────────────────────────────────────────────
-  Widget _buildDadosTab() {
-    if (_carregandoUsuarios) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    final cs = Theme.of(context).colorScheme;
-
-    return Form(
-      key: _formKey,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          // ── Dados Principais ─────────────────────────────────────────────
-          _sectionTitle('Dados Principais'),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _nomeCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Nome Completo *',
-              prefixIcon: Icon(Icons.person_outlined),
-            ),
-            textCapitalization: TextCapitalization.words,
-            onChanged: (_) => setState(() {}),
-            validator: (v) => (v?.trim().isEmpty ?? true) ? 'Nome é obrigatório.' : null,
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _tipo,
-            decoration: const InputDecoration(
-              labelText: 'Tipo de Cliente',
-              prefixIcon: Icon(Icons.group_outlined),
-            ),
-            items: ['Individual', 'Casal']
-                .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) setState(() { _tipo = v; if (v == 'Individual') _nomeParceiroCtrl.clear(); });
-            },
-          ),
-          if (_tipo == 'Casal') ...[
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _nomeParceiroCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nome do Cônjuge / Parceiro(a)',
-                prefixIcon: Icon(Icons.favorite_border),
-              ),
-              textCapitalization: TextCapitalization.words,
-            ),
-          ],
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _telefone1Ctrl,
-            decoration: const InputDecoration(
-              labelText: 'Telefone 1',
-              prefixIcon: Icon(Icons.phone_outlined),
-            ),
-            keyboardType: TextInputType.phone,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _telefone2Ctrl,
-            decoration: const InputDecoration(
-              labelText: 'Telefone 2 (opcional)',
-              prefixIcon: Icon(Icons.phone_outlined),
-            ),
-            keyboardType: TextInputType.phone,
-          ),
-
-          // ── Origem e Fase ─────────────────────────────────────────────────
-          const SizedBox(height: 24),
-          _sectionTitle('Origem e Fase'),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _origem,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Origem *',
-              prefixIcon: Icon(Icons.public_outlined),
-            ),
-            hint: const Text('Selecione a origem'),
-            validator: (v) => v == null ? 'A origem é obrigatória.' : null,
-            items: _origens.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-            onChanged: _atualizarFasePorOrigem,
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<FaseCliente>(
-            value: _fase,
-            decoration: const InputDecoration(
-              labelText: 'Fase no Funil',
-              prefixIcon: Icon(Icons.flag_outlined),
-            ),
-            items: FaseCliente.values
-                .map((f) => DropdownMenuItem(value: f, child: Text(f.nomeDisplay)))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) setState(() {
-                _fase = v;
-                if (v != FaseCliente.perdido) { _motivoPerdaDropdown = null; _motivoPerdaDescCtrl.clear(); }
-              });
-            },
-          ),
-          if (_fase == FaseCliente.perdido) ...[
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _motivoPerdaDropdown,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Motivo da Perda',
-                prefixIcon: Icon(Icons.mood_bad_outlined),
-              ),
-              hint: const Text('Selecione o motivo'),
-              items: _motivos.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-              onChanged: (v) => setState(() => _motivoPerdaDropdown = v),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _motivoPerdaDescCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Detalhe do Motivo (opcional)',
-                prefixIcon: Icon(Icons.notes_outlined),
-              ),
-              maxLines: 2,
-            ),
-          ],
-
-          // ── Equipe ────────────────────────────────────────────────────────
-          const SizedBox(height: 24),
-          _sectionTitle('Equipe Responsável'),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<Usuario>(
-            value: _captador,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Captador *',
-              prefixIcon: Icon(Icons.person_add_alt_1_outlined),
-            ),
-            hint: const Text('Quem captou o lead?'),
-            validator: (v) => v == null ? 'Informe o captador.' : null,
-            items: _usuarios.map((u) => DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
-            onChanged: (v) => setState(() => _captador = v),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<Usuario>(
-            value: _vendedor,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Vendedor Responsável *',
-              prefixIcon: Icon(Icons.store_outlined),
-            ),
-            hint: const Text('Atribuir a...'),
-            validator: (v) => v == null ? 'Selecione um vendedor.' : null,
-            items: _usuarios.map((u) => DropdownMenuItem(value: u, child: Text(u.nome))).toList(),
-            onChanged: (v) => setState(() => _vendedor = v),
-          ),
-
-          // ── Datas ─────────────────────────────────────────────────────────
-          const SizedBox(height: 24),
-          _sectionTitle('Datas'),
-          const SizedBox(height: 8),
-
-          // Data Captação — obrigatória
-          _buildDateTile(
-            'Data da Captação *',
-            _dataCaptacao,
-            Icons.person_add_alt_1_outlined,
-            () => _selecionarData((d) => _dataCaptacao = d, _dataCaptacao),
-            () => setState(() => _dataCaptacao = null),
-            obrigatorio: true,
-          ),
-          if (_tentouSalvar && _dataCaptacao == null)
-            Padding(
-              padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-              child: Text(
-                'Data da Captação é obrigatória.',
-                style: TextStyle(color: cs.error, fontSize: 12),
-              ),
-            ),
-          const SizedBox(height: 8),
-          _buildDateTile(
-            'Próximo Contato',
-            _proximoContato,
-            Icons.phone_in_talk_outlined,
-            () => _selecionarProximoContato(),
-            () => setState(() => _proximoContato = null),
-          ),
-          const SizedBox(height: 8),
-          _buildDateTile(
-            'Data da Visita',
-            _dataVisita,
-            Icons.location_on_outlined,
-            () => _selecionarData((d) => _dataVisita = d, _dataVisita),
-            () => setState(() => _dataVisita = null),
-          ),
-
-          // ── Botão salvar ──────────────────────────────────────────────────
-          const SizedBox(height: 32),
-          FilledButton.icon(
-            onPressed: _salvandoDados ? null : _salvarDados,
-            icon: _salvandoDados
-                ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.save_outlined),
-            label: Text(
-              _isNovo ? 'Criar Cliente' : 'Salvar Alterações',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Aba: Timeline de Interações ───────────────────────────────────────────────
-  Widget _buildInteracoesTab() {
-    final cs = Theme.of(context).colorScheme;
-
-    if (_interacoes.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.timeline_outlined,
-                  size: 56, color: cs.outline.withValues(alpha: 0.5)),
-              const SizedBox(height: 16),
-              Text(
-                _isNovo
-                    ? 'Adicione interações antes de salvar\no cliente — serão enviadas junto.'
-                    : 'Nenhuma interação registrada ainda.\nToque no botão abaixo.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.outline, fontSize: 15),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Interações já vêm ordenadas desc; para timeline exibimos igual (mais recente no topo)
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      itemCount: _interacoes.length,
-      itemBuilder: (context, index) {
-        final item = _interacoes[index];
-        final isFirst = index == 0;
-        final isLast = index == _interacoes.length - 1;
-        return _buildTimelineItem(context, item, isFirst, isLast, cs);
-      },
-    );
-  }
-
-  Widget _buildTimelineItem(
-    BuildContext context,
-    Interacao item,
-    bool isFirst,
-    bool isLast,
-    ColorScheme cs,
-  ) {
-    final isSistema = item.isSistema;
-    final dotColor = isSistema
-        ? (item.isMensagem ? Colors.deepPurple.shade400 : cs.outlineVariant)
-        : item.tipo.cor;
-    final lineColor = cs.outlineVariant.withValues(alpha: 0.6);
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Rail esquerdo ────────────────────────────────────────────
-          SizedBox(
-            width: 32,
-            child: Column(
-              children: [
-                // Linha acima do dot
-                if (!isFirst)
-                  Expanded(
-                    flex: 1,
-                    child: Center(
-                      child: Container(width: 2, color: lineColor),
-                    ),
-                  )
-                else
-                  const SizedBox(height: 8),
-
-                // Dot
-                Container(
-                  width: isSistema ? 10 : 14,
-                  height: isSistema ? 10 : 14,
-                  decoration: BoxDecoration(
-                    color: isSistema ? null : dotColor,
-                    border: isSistema
-                        ? Border.all(color: dotColor, width: 1.5)
-                        : null,
-                    shape: BoxShape.circle,
-                  ),
-                  child: isSistema && item.isMensagem
-                      ? Center(
-                          child: Icon(Icons.message_outlined,
-                              size: 6, color: dotColor))
-                      : null,
-                ),
-
-                // Linha abaixo do dot
-                if (!isLast)
-                  Expanded(
-                    flex: 3,
-                    child: Center(
-                      child: Container(width: 2, color: lineColor),
-                    ),
-                  )
-                else
-                  const SizedBox(height: 12),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-
-          // ── Conteúdo ─────────────────────────────────────────────────
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: isSistema
-                  ? _buildSistemaItem(item, cs)
-                  : _buildManualItem(item, cs),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Item de sistema (menor, mais sutil)
-  Widget _buildSistemaItem(Interacao item, ColorScheme cs) {
-    final isMsg = item.isMensagem;
-    final cor = isMsg ? Colors.deepPurple.shade400 : cs.outline;
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: cor.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        isMsg ? 'Mensagem' : 'Sistema',
-                        style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                            color: cor),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      DateFormat('dd/MM/yy · HH:mm').format(item.dataInteracao),
-                      style: TextStyle(fontSize: 10, color: cs.outline),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  item.titulo,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurfaceVariant),
-                ),
-                if (item.nota.isNotEmpty && item.nota != item.titulo)
-                  Text(
-                    item.nota,
-                    style: TextStyle(fontSize: 11, color: cs.outline),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Item manual (tamanho completo, com opções ao tocar)
-  Widget _buildManualItem(Interacao item, ColorScheme cs) {
-    final temProximoPasso =
-        item.proximoPasso != null && item.proximoPasso!.isNotEmpty;
-
-    return GestureDetector(
-      onTap: () => _mostrarOpcoesInteracao(item),
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Cabeçalho: tipo + data ─────────────────────────────
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: item.tipo.cor.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(item.tipo.icone,
-                            size: 11, color: item.tipo.cor),
-                        const SizedBox(width: 4),
-                        Text(
-                          item.tipo.nome,
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: item.tipo.cor),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    DateFormat('dd/MM/yy · HH:mm').format(item.dataInteracao),
-                    style: TextStyle(fontSize: 10, color: cs.outline),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.more_horiz, size: 14, color: cs.outline),
-                ],
-              ),
-              const SizedBox(height: 7),
-
-              // ── Título ─────────────────────────────────────────────
-              Text(
-                item.titulo,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              const SizedBox(height: 3),
-
-              // ── Nota ───────────────────────────────────────────────
-              Text(
-                item.nota,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
-              ),
-
-              // ── Próximo passo ──────────────────────────────────────
-              if (temProximoPasso) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade700.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color:
-                            Colors.green.shade700.withValues(alpha: 0.25)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.check_circle_outline,
-                          size: 13, color: Colors.green.shade700),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          item.proximoPasso!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.green.shade800,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              // ── Autor ──────────────────────────────────────────────
-              if (item.autorNome != null && item.autorNome!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  item.autorNome!,
-                  style: TextStyle(fontSize: 10, color: cs.outline),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // ── Aba: Negociações ──────────────────────────────────────────────────────────
   Widget _buildNegociacoesTab() {
     if (!_isNovo) {
-      // Existente: usa AbaNegociacoes (com stream próprio e cards completos)
       return AbaNegociacoes(
         clienteId: _clienteId!,
         proximoNumero: _negociacoes.length + 1,
@@ -1416,7 +1019,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         userProfile: widget.userProfile,
       );
     }
-    // Novo: lista local simplificada
+
     final cs = Theme.of(context).colorScheme;
     if (_negociacoes.isEmpty) {
       return Center(
@@ -1425,7 +1028,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.handshake_outlined, size: 56, color: cs.outline.withValues(alpha: 0.5)),
+              Icon(Icons.handshake_outlined,
+                  size: 56, color: cs.outline.withValues(alpha: 0.5)),
               const SizedBox(height: 16),
               Text(
                 'Adicione propostas antes de salvar\no cliente — serão enviadas junto.',
@@ -1440,10 +1044,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
       itemCount: _negociacoes.length,
-      itemBuilder: (context, i) {
-        final neg = _negociacoes[i];
-        return _buildNegociacaoPendenteCard(neg, i);
-      },
+      itemBuilder: (context, i) =>
+          _buildNegociacaoPendenteCard(_negociacoes[i], i),
     );
   }
 
@@ -1467,17 +1069,23 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(neg.titulo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text(neg.titulo,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 4),
                   Text(
                     _moedaCompacta.format(neg.valorFinal),
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.primary),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary),
                   ),
                 ],
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: cor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
@@ -1485,7 +1093,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               ),
               child: Text(
                 neg.status.nomeDisplay,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cor),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: cor),
               ),
             ),
             const SizedBox(width: 8),
@@ -1495,7 +1106,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                 context,
                 proximoNumero: _negociacoes.length + 1,
                 editando: neg,
-                onSaveLocal: (updated) => setState(() => _negociacoes[idx] = updated),
+                onSaveLocal: (updated) =>
+                    setState(() => _negociacoes[idx] = updated),
                 currentUserId: _authService.getCurrentUser()?.uid,
                 currentUserName: _authService.getCurrentUser()?.displayName,
                 userProfile: widget.userProfile,
@@ -1504,58 +1116,15 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               tooltip: 'Editar',
             ),
             IconButton(
-              icon: Icon(Icons.delete_outline, size: 18, color: cs.error),
-              onPressed: () => setState(() => _negociacoes.removeAt(idx)),
+              icon:
+                  Icon(Icons.delete_outline, size: 18, color: cs.error),
+              onPressed: () =>
+                  setState(() => _negociacoes.removeAt(idx)),
               visualDensity: VisualDensity.compact,
               tooltip: 'Remover',
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────────
-  Widget _sectionTitle(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w600,
-        color: Theme.of(context).colorScheme.primary, letterSpacing: 0.5,
-      ),
-    );
-  }
-
-  Widget _buildDateTile(
-    String label,
-    DateTime? date,
-    IconData icon,
-    VoidCallback onTap,
-    VoidCallback onClear, {
-    bool obrigatorio = false,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    final hasError = obrigatorio && _tentouSalvar && date == null;
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: hasError ? BorderSide(color: cs.error, width: 1.5) : BorderSide.none,
-      ),
-      child: ListTile(
-        leading: Icon(icon,
-            color: hasError ? cs.error : (date != null ? cs.primary : cs.outline)),
-        title: Text(
-          date == null ? label : '$label: ${DateFormat('dd/MM/yyyy').format(date)}',
-          style: TextStyle(
-            fontWeight: date != null ? FontWeight.bold : FontWeight.normal,
-            color: hasError ? cs.error : null,
-          ),
-        ),
-        trailing: date != null
-            ? IconButton(icon: Icon(Icons.clear, color: cs.outline), onPressed: onClear, tooltip: 'Limpar')
-            : null,
-        onTap: onTap,
       ),
     );
   }
