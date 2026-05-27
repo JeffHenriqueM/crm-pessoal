@@ -112,14 +112,66 @@ class AbaNegociacoes extends StatelessWidget {
                 ),
                 onDelete: () => _confirmarExclusao(context, service, neg),
                 onExportPdf: () => PropostaPdf.gerar(neg),
-                onStatusChange: (s) => service.atualizarNegociacao(
-                    neg.copyWith(status: s)),
+                onStatusChange: (s) =>
+                    _handleStatusMudanca(context, service, neg, s),
               ),
             );
           },
         );
       },
     );
+  }
+
+  /// Trata mudança de status. Se for [contratoEfetivado], exige lead vinculado
+  /// e move o lead para [FaseCliente.fechado] automaticamente.
+  Future<void> _handleStatusMudanca(
+    BuildContext context,
+    FirestoreService service,
+    Negociacao neg,
+    StatusNegociacao novoStatus,
+  ) async {
+    if (novoStatus != StatusNegociacao.contratoEfetivado) {
+      await service.atualizarNegociacao(neg.copyWith(status: novoStatus));
+      return;
+    }
+
+    // ── Contrato Efetivado ── exige lead vinculado ──────────────────────────
+    String? leadId = neg.clienteId;
+    String? leadNome = neg.clienteNome;
+
+    if (leadId == null) {
+      // Abre busca de lead para vinculação obrigatória
+      final result = await showDialog<Cliente>(
+        context: context,
+        builder: (ctx) => _BuscaLeadDialog(service: service),
+      );
+      if (result == null || !context.mounted) return; // usuário cancelou
+      leadId = result.id!;
+      leadNome = result.nome;
+    }
+
+    // Move lead para Fechado
+    await service.atualizarFaseCliente(leadId, FaseCliente.fechado);
+
+    // Salva negociação com novo status + lead vinculado
+    await service.atualizarNegociacao(
+      neg.copyWith(
+        status: StatusNegociacao.contratoEfetivado,
+        clienteId: leadId,
+        clienteNome: leadNome,
+      ),
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Contrato efetivado! Lead "$leadNome" movido para Fechado.',
+          ),
+          backgroundColor: const Color(0xFF2E7D32),
+        ),
+      );
+    }
   }
 
   void _confirmarExclusao(
@@ -203,6 +255,7 @@ class _NegociacaoCard extends StatelessWidget {
     StatusNegociacao.ativa: Color(0xFF1565C0),
     StatusNegociacao.aceita: Color(0xFF2E7D32),
     StatusNegociacao.recusada: Color(0xFFC62828),
+    StatusNegociacao.contratoEfetivado: Color(0xFF6A1B9A),
   };
 
   static const _aprovacaoCores = {
@@ -216,7 +269,7 @@ class _NegociacaoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final cor = _statusCores[negociacao.status]!;
+    final cor = _statusCores[negociacao.status] ?? const Color(0xFF1565C0);
     final temDesconto = negociacao.desconto > 0;
     final temParcelas =
         negociacao.quantidadeParcelas != null &&
@@ -228,10 +281,14 @@ class _NegociacaoCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: negociacao.status == StatusNegociacao.aceita
-              ? const Color(0xFF2E7D32).withValues(alpha: 0.4)
+          color: negociacao.status == StatusNegociacao.aceita ||
+                  negociacao.status == StatusNegociacao.contratoEfetivado
+              ? cor.withValues(alpha: 0.4)
               : cs.outlineVariant.withValues(alpha: 0.5),
-          width: negociacao.status == StatusNegociacao.aceita ? 1.5 : 1,
+          width: negociacao.status == StatusNegociacao.aceita ||
+                  negociacao.status == StatusNegociacao.contratoEfetivado
+              ? 1.5
+              : 1,
         ),
       ),
       child: InkWell(
@@ -672,6 +729,11 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   double _entradaPercMemoria = 10.0;  // % de entrada — preservada ao recalcular valorFinal
   bool _atualizandoEntrada = false;   // evita loop ao atualizar entrada programaticamente
 
+  // ── Rentabilidade ─────────────────────────────────────────────────────────
+  late final TextEditingController _valorDiariaCtrl;
+  double _taxaOcupacao = 0.63;
+  bool _modoOcupacaoDias = false; // false = %, true = dias
+
   // Vínculo com lead (só usado quando não há clienteId pré-definido)
   String? _vinculoClienteId;
   String? _vinculoClienteNome;
@@ -704,6 +766,30 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     final limite = _limitesEspecial[_produtoSelecionado!.nome];
     if (limite == null) return false;
     return _valorFinal > 0 && _valorFinal < limite;
+  }
+
+  // ── Rentabilidade — getters ───────────────────────────────────────────────
+  int? get _diasPlanoProduto {
+    if (_produtoSelecionado == null) return null;
+    final nome = _produtoSelecionado!.nome;
+    if (nome.contains('Bronze')) return 7;
+    if (nome.contains('Prata')) return 14;
+    if (nome.contains('Ouro')) return 28;
+    return null; // Diamante: sem dias fixos por semana
+  }
+
+  double? get _qtdDiarias {
+    final vf = _valorFinal;
+    final vd = _parse(_valorDiariaCtrl.text);
+    if (vf <= 0 || vd <= 0) return null;
+    return vf / vd;
+  }
+
+  double? get _anosEquivalentes {
+    final dias = _qtdDiarias;
+    final diasPlano = _diasPlanoProduto;
+    if (dias == null || diasPlano == null || diasPlano == 0 || _taxaOcupacao == 0) return null;
+    return dias / (diasPlano * _taxaOcupacao);
   }
 
   @override
@@ -761,6 +847,9 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     _valorParcelaCtrl.addListener(_onParcelaEditada);
     _nomeClienteCtrl.addListener(_recalcular); // atualiza título ao digitar nome
 
+    _valorDiariaCtrl = TextEditingController(text: '1600');
+    _valorDiariaCtrl.addListener(() { if (mounted) setState(() {}); });
+
     _carregarUsuarios();
   }
 
@@ -792,6 +881,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       _tituloCtrl, _valorOriginalCtrl, _descontoCtrl,
       _valorEntradaCtrl, _parcelasCtrl, _valorParcelaCtrl,
       _obsCtrl, _condicaoEspecialCtrl, _nomeClienteCtrl,
+      _valorDiariaCtrl,
     ]) {
       c.dispose();
     }
@@ -1618,6 +1708,9 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                         ],
                       ),
 
+                      // ── Rentabilidade (full width) ────────────────────
+                      _buildRentabilidade(cs),
+
                       // ── Condições Especiais (full width, se especial) ─
                       if (isEspecial) ...[
                         const SizedBox(height: 16),
@@ -1745,6 +1838,219 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
           ],
         ),
       ),
+    );
+  }
+
+  // ── Seção de Rentabilidade ────────────────────────────────────────────────
+  Widget _buildRentabilidade(ColorScheme cs) {
+    final diasPlano    = _diasPlanoProduto;
+    final qtdDiarias   = _qtdDiarias;
+    final anosEquiv    = _anosEquivalentes;
+    final vd           = _parse(_valorDiariaCtrl.text);
+    const taxas        = [0.50, 0.63, 0.80, 1.00];
+    final verde        = Colors.green.shade700;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Divider(color: verde.withValues(alpha: 0.3)),
+        const SizedBox(height: 10),
+
+        // ── Cabeçalho da seção ──────────────────────────────────────────────
+        Row(
+          children: [
+            Icon(Icons.trending_up, size: 16, color: verde),
+            const SizedBox(width: 6),
+            Text(
+              'RENTABILIDADE',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: verde,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // ── Controles: diária + taxa de ocupação ────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Diária do resort
+            SizedBox(
+              width: 190,
+              child: TextFormField(
+                controller: _valorDiariaCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Diária do resort',
+                  prefixIcon: Icon(Icons.hotel_outlined),
+                  prefixText: 'R\$ ',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                ],
+              ),
+            ),
+            const SizedBox(width: 20),
+
+            // Taxa de ocupação
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Label + toggle %/dias
+                  Row(
+                    children: [
+                      Text(
+                        'Taxa de ocupação',
+                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: diasPlano != null
+                            ? () => setState(() => _modoOcupacaoDias = !_modoOcupacaoDias)
+                            : null,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: diasPlano != null
+                                ? (_modoOcupacaoDias
+                                    ? cs.primaryContainer
+                                    : cs.surfaceContainerHighest)
+                                : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: cs.outlineVariant),
+                          ),
+                          child: Text(
+                            _modoOcupacaoDias ? 'Dias' : '%',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: diasPlano != null ? cs.primary : cs.outline,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SegmentedButton<double>(
+                    segments: taxas.map((t) {
+                      final String label;
+                      if (_modoOcupacaoDias && diasPlano != null) {
+                        final d = (diasPlano * t).round();
+                        label = '${d}d';
+                      } else {
+                        label = '${(t * 100).toInt()}%';
+                      }
+                      return ButtonSegment<double>(value: t, label: Text(label));
+                    }).toList(),
+                    selected: {_taxaOcupacao},
+                    onSelectionChanged: (s) => setState(() => _taxaOcupacao = s.first),
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        // ── Card de resultado ───────────────────────────────────────────────
+        if (qtdDiarias != null && diasPlano != null && anosEquiv != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: verde.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: verde.withValues(alpha: 0.25)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Linha 1: X diárias = Y anos
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.villa_outlined, size: 16, color: verde),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: TextStyle(fontSize: 13, color: cs.onSurface, height: 1.4),
+                          children: [
+                            const TextSpan(text: 'Com '),
+                            TextSpan(
+                              text: _moeda.format(vd),
+                              style: TextStyle(fontWeight: FontWeight.bold, color: verde),
+                            ),
+                            const TextSpan(text: '/dia você teria '),
+                            TextSpan(
+                              text: '${qtdDiarias.round()} diárias',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const TextSpan(text: ' = '),
+                            TextSpan(
+                              text: '${anosEquiv.toStringAsFixed(1)} anos',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: verde),
+                            ),
+                            TextSpan(
+                              text: ' de uso no resort'
+                                  ' (${((_taxaOcupacao) * 100).toInt()}% de ocupação)',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Linha 2: Vitalício
+                Row(
+                  children: [
+                    Icon(Icons.all_inclusive, size: 16, color: verde),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Com a Villamor, o acesso é vitalício!',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: verde,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ] else if (_valorFinal > 0 && _produtoSelecionado != null && diasPlano == null) ...[
+          // Produto Diamante — plano não tem dias fixos semanais
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 13, color: cs.outline),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Cálculo de anos disponível para planos Bronze, Prata e Ouro',
+                  style: TextStyle(fontSize: 11, color: cs.outline),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 

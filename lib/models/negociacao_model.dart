@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // ── Enums originais ───────────────────────────────────────────────────────────
 enum TipoDesconto { fixo, percentual }
 
-enum StatusNegociacao { ativa, aceita, recusada }
+enum StatusNegociacao { ativa, aceita, recusada, contratoEfetivado }
 
 extension StatusNegociacaoExt on StatusNegociacao {
   String get nomeDisplay {
@@ -14,6 +14,8 @@ extension StatusNegociacaoExt on StatusNegociacao {
         return 'Aceita';
       case StatusNegociacao.recusada:
         return 'Recusada';
+      case StatusNegociacao.contratoEfetivado:
+        return 'Contrato Efetivado';
     }
   }
 
@@ -284,6 +286,8 @@ class Negociacao {
         return StatusNegociacao.aceita;
       case 'recusada':
         return StatusNegociacao.recusada;
+      case 'contratoEfetivado':
+        return StatusNegociacao.contratoEfetivado;
       default:
         return StatusNegociacao.ativa;
     }
