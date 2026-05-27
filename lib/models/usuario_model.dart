@@ -7,8 +7,14 @@ class Usuario {
   final String perfil;
   final bool ativo;
 
-  /// Meta mensal de fechamentos definida pelo próprio vendedor.
+  /// Meta mensal legada (fechamentos). Mantida para retrocompatibilidade.
   final int? metaMensal;
+
+  /// Tipo da meta: 'fechamentos' | 'valorVendido' | 'novosLeads'
+  final String? tipoMeta;
+
+  /// Valor alvo da meta (substitui metaMensal para dados novos).
+  final double? valorMeta;
 
   Usuario({
     required this.id,
@@ -17,6 +23,8 @@ class Usuario {
     required this.perfil,
     this.ativo = true,
     this.metaMensal,
+    this.tipoMeta,
+    this.valorMeta,
   });
 
   factory Usuario.fromMap(Map<String, dynamic> data, String documentId) {
@@ -27,6 +35,8 @@ class Usuario {
       perfil: data['perfil'] ?? 'vendedor',
       ativo: data['ativo'] ?? true,
       metaMensal: data['metaMensal'] as int?,
+      tipoMeta: data['tipoMeta'] as String?,
+      valorMeta: (data['valorMeta'] as num?)?.toDouble(),
     );
   }
 
@@ -37,6 +47,8 @@ class Usuario {
       'perfil': perfil,
       'ativo': ativo,
       if (metaMensal != null) 'metaMensal': metaMensal,
+      if (tipoMeta != null) 'tipoMeta': tipoMeta,
+      if (valorMeta != null) 'valorMeta': valorMeta,
     };
   }
 

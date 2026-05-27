@@ -94,6 +94,25 @@ class AuthService {
     }
   }
 
+  /// Retorna perfil + nome em uma única leitura ao Firestore.
+  Future<Map<String, dynamic>> getCurrentUserProfileAndName() async {
+    final user = _auth.currentUser;
+    if (user == null) return {'perfil': 'vendedor', 'nome': null};
+    try {
+      final doc = await _db.collection('usuarios').doc(user.uid).get();
+      final data = doc.data();
+      return {
+        'perfil': data?['perfil'] ?? 'vendedor',
+        'nome':   data?['nome']   as String?,
+      };
+    } catch (_) {
+      return {
+        'perfil': 'vendedor',
+        'nome':   user.displayName,
+      };
+    }
+  }
+
   /// **Cria um novo usuário no Firebase Auth e salva seus dados no Firestore.**
   /// Este método é chamado pela tela de gerenciamento de usuários do admin.
   Future<void> criarNovoUsuario({

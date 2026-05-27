@@ -7,6 +7,7 @@ import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
 import '../models/negociacao_model.dart';
+import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 
 class FirestoreService {
@@ -469,7 +470,45 @@ class FirestoreService {
 
   // ── Metas mensais (#12) ──────────────────────────────────────────────────
 
-  /// Retorna a meta mensal atual de um usuário.
+  /// Retorna configuração completa de meta de um usuário.
+  /// Suporta retrocompatibilidade com campo legado [metaMensal].
+  /// Retorna null quando nenhuma meta está definida.
+  Future<Map<String, dynamic>?> getMeta(String userId) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(userId).get();
+      final data = doc.data();
+      if (data == null) return null;
+
+      // Novo formato: tipoMeta + valorMeta
+      if (data['valorMeta'] != null) {
+        return {
+          'tipoMeta': data['tipoMeta'] as String? ?? 'fechamentos',
+          'valorMeta': (data['valorMeta'] as num).toDouble(),
+        };
+      }
+      // Retrocompatibilidade: metaMensal legado (fechamentos)
+      final legado = data['metaMensal'] as int?;
+      if (legado != null) {
+        return {'tipoMeta': 'fechamentos', 'valorMeta': legado.toDouble()};
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Define ou remove a meta do usuário (valor null = remover).
+  Future<void> atualizarMeta(
+      String userId, String tipoMeta, double? valor) async {
+    await _db.collection('usuarios').doc(userId).update({
+      'tipoMeta': tipoMeta,
+      'valorMeta': valor,
+      'metaMensal': null, // limpa campo legado
+    });
+  }
+
+  /// [Legado] Retorna a meta mensal atual de um usuário.
+  @Deprecated('Use getMeta() instead')
   Future<int?> getMetaMensal(String userId) async {
     try {
       final doc = await _db.collection('usuarios').doc(userId).get();
@@ -479,7 +518,8 @@ class FirestoreService {
     }
   }
 
-  /// Define ou remove a meta mensal do usuário (null = remover).
+  /// [Legado] Define ou remove a meta mensal do usuário (null = remover).
+  @Deprecated('Use atualizarMeta() instead')
   Future<void> atualizarMetaMensal(String userId, int? meta) async {
     await _db.collection('usuarios').doc(userId).update({
       'metaMensal': meta,
@@ -620,5 +660,75 @@ class FirestoreService {
 
   Future<void> deletarCampanha(String campanhaId) async {
     await _db.collection(_colCampanhas).doc(campanhaId).delete();
+  }
+
+  // ── TICKETS ──────────────────────────────────────────────────────────────────
+
+  static const _colTickets = 'tickets';
+
+  /// Stream de todos os tickets, ordenados por data de atualização.
+  Stream<List<Ticket>> getTicketsStream() {
+    return _db
+        .collection(_colTickets)
+        .orderBy('dataAtualizacao', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map(Ticket.fromFirestore).toList());
+  }
+
+  /// Stream de tickets criados pelo usuário atual.
+  Stream<List<Ticket>> getMeusTicketsStream(String userId) {
+    return _db
+        .collection(_colTickets)
+        .where('criadoPorId', isEqualTo: userId)
+        .orderBy('dataAtualizacao', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map(Ticket.fromFirestore).toList());
+  }
+
+  /// Stream de comentários de um ticket.
+  Stream<List<ComentarioTicket>> getComentariosStream(String ticketId) {
+    return _db
+        .collection(_colTickets)
+        .doc(ticketId)
+        .collection('comentarios')
+        .orderBy('data', descending: false)
+        .snapshots()
+        .map((s) => s.docs.map(ComentarioTicket.fromFirestore).toList());
+  }
+
+  /// Cria um novo ticket.
+  Future<String> criarTicket(Ticket ticket) async {
+    final ref = await _db.collection(_colTickets).add(ticket.toFirestore());
+    return ref.id;
+  }
+
+  /// Atualiza campos de um ticket.
+  Future<void> atualizarTicket(String ticketId, Map<String, dynamic> dados) async {
+    dados['dataAtualizacao'] = Timestamp.now();
+    await _db.collection(_colTickets).doc(ticketId).update(dados);
+  }
+
+  /// Adiciona um comentário e incrementa o contador.
+  Future<void> adicionarComentario(String ticketId, ComentarioTicket comentario) async {
+    final batch = _db.batch();
+    final comentariosRef = _db
+        .collection(_colTickets)
+        .doc(ticketId)
+        .collection('comentarios')
+        .doc();
+    batch.set(comentariosRef, comentario.toFirestore());
+    batch.update(
+      _db.collection(_colTickets).doc(ticketId),
+      {
+        'totalComentarios': FieldValue.increment(1),
+        'dataAtualizacao': Timestamp.now(),
+      },
+    );
+    await batch.commit();
+  }
+
+  /// Deleta um ticket (apenas admin).
+  Future<void> deletarTicket(String ticketId) async {
+    await _db.collection(_colTickets).doc(ticketId).delete();
   }
 }

@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "crm-pessoal-d993d"
+    "default": "crm-pessoal-d993d",
+    "staging": "loja-virtual-943d7"
   }
 }

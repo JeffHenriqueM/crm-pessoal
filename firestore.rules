@@ -38,5 +38,30 @@ service cloud.firestore {
     match /config/{docId} {
       allow read, write: if isAuth();
     }
+
+    // ── Histórico de edições (subcoleção de clientes) ────────────────────────
+    match /clientes/{clienteId}/historico/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Auditoria (exclusões e ações sensíveis) ──────────────────────────────
+    match /audit_log/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Notificações push (tokens FCM por usuário) ────────────────────────────
+    match /notificacoes/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Tickets de suporte ────────────────────────────────────────────────────
+    match /tickets/{ticketId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Comentários de tickets (subcoleção) ───────────────────────────────────
+    match /tickets/{ticketId}/comentarios/{docId} {
+      allow read, write: if isAuth();
+    }
   }
 }

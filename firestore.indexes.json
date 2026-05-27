@@ -1,0 +1,70 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "negociacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clienteId",   "order": "ASCENDING" },
+        { "fieldPath": "dataCriacao", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "negociacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "statusAprovacao",          "order": "ASCENDING" },
+        { "fieldPath": "dataSolicitacaoAprovacao", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "negociacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "embaixadorId", "order": "ASCENDING" },
+        { "fieldPath": "dataCriacao",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletado",      "order": "ASCENDING" },
+        { "fieldPath": "vendedorId",    "order": "ASCENDING" },
+        { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletado",      "order": "ASCENDING" },
+        { "fieldPath": "linerId",       "order": "ASCENDING" },
+        { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletado",        "order": "ASCENDING" },
+        { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tickets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "criadoPorId",     "order": "ASCENDING" },
+        { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "comentarios",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "data", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

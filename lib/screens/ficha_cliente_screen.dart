@@ -70,6 +70,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   DateTime? _dataFechamento;
   double? _valorVendido;
   bool _tentouSalvar = false;
+  bool _dadosAlterados = false; // true quando formulário foi modificado mas não salvo
 
   List<Usuario> _usuarios = [];
   Usuario? _captador;
@@ -83,9 +84,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     super.initState();
     _clienteId = widget.cliente?.id;
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      if (mounted) setState(() {});
-    });
+    _tabController.addListener(_onTabChanged);
 
     final c = widget.cliente;
     _nomeCtrl = TextEditingController(text: c?.nome ?? '');
@@ -106,8 +105,56 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _dataFechamento = c?.dataFechamento;
     _valorVendido = c?.valorVendido;
 
+    // Detectar alterações não salvas na aba Dados
+    for (final c in [_nomeCtrl, _nomeParceiroCtrl, _telefone1Ctrl,
+                     _telefone2Ctrl, _motivoPerdaDescCtrl]) {
+      c.addListener(_marcarAlterado);
+    }
+
     _carregarUsuarios();
     if (!_isNovo) _iniciarStreams();
+  }
+
+  void _marcarAlterado() {
+    if (!_dadosAlterados && mounted) setState(() => _dadosAlterados = true);
+  }
+
+  /// Chamado ao trocar de aba. Se houver alterações não salvas na aba Dados,
+  /// pergunta se o usuário quer salvar antes.
+  void _onTabChanged() {
+    if (!mounted) return;
+    setState(() {});
+    // Só pergunta quando SAI da aba Dados (índice 0) com mudanças pendentes
+    if (!_tabController.indexIsChanging) return;
+    if (_tabController.previousIndex != 0) return;
+    if (!_dadosAlterados) return;
+
+    // Adia para depois do frame (evita conflito com animação do TabController)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Salvar alterações?'),
+          content: const Text(
+            'Você alterou dados do lead mas não salvou.\n'
+            'Deseja salvar antes de continuar?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Ignorar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
+      ).then((salvar) {
+        if (salvar == true && mounted) _salvarDados();
+      });
+    });
   }
 
   @override
@@ -143,19 +190,34 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
       // tenha sido desativado após o cadastro.
       final lista = await _service.getTodosUsuarios();
       if (!mounted) return;
+
+      final currentUid = _authService.getCurrentUser()?.uid;
+      final isAdmin = widget.userProfile == 'admin' ||
+          widget.userProfile == 'super admin';
+
       setState(() {
         _usuarios = lista;
         _carregandoUsuarios = false;
+
         if (widget.cliente?.captadorId != null) {
           try {
-            _captador =
-                _usuarios.firstWhere((u) => u.id == widget.cliente!.captadorId);
+            _captador = _usuarios
+                .firstWhere((u) => u.id == widget.cliente!.captadorId);
           } catch (_) {}
         }
+
         if (widget.cliente?.vendedorId != null) {
+          // Editando: restaura o vendedor salvo
           try {
-            _vendedor =
-                _usuarios.firstWhere((u) => u.id == widget.cliente!.vendedorId);
+            _vendedor = _usuarios
+                .firstWhere((u) => u.id == widget.cliente!.vendedorId);
+          } catch (_) {}
+        } else if (_isNovo && !isAdmin && currentUid != null) {
+          // Novo cliente criado por um vendedor/captador:
+          // auto-preenche o vendedor com o próprio usuário logado
+          // para que o cliente apareça no funil dele imediatamente.
+          try {
+            _vendedor = _usuarios.firstWhere((u) => u.id == currentUid);
           } catch (_) {}
         }
       });
@@ -538,6 +600,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           _clienteId = id;
           _interacoes = [];
           _negociacoes = [];
+          _dadosAlterados = false;
           _iniciarStreams();
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -601,7 +664,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _salvandoDados = false);
+      if (mounted) setState(() {
+        _salvandoDados = false;
+        _dadosAlterados = false; // reset após salvar (sucesso ou erro)
+      });
     }
   }
 
@@ -750,22 +816,33 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                         final selecionado = tipoSelecionado == t;
                         final chipCs = Theme.of(ctx).colorScheme;
                         return ChoiceChip(
-                          avatar: Icon(t.icone,
-                              size: 14,
-                              color: selecionado ? t.cor : t.cor),
+                          avatar: Icon(
+                            t.icone,
+                            size: 14,
+                            color: t.cor,
+                          ),
                           label: Text(
                             t.nome,
                             style: TextStyle(
                               fontSize: 12,
+                              // sempre usa cor do tema para adaptar ao dark mode
                               color: selecionado
                                   ? t.cor
-                                  : chipCs.onSurface,
+                                  : chipCs.onSurfaceVariant,
                             ),
                           ),
                           selected: selecionado,
                           onSelected: (_) =>
                               setStateDialog(() => tipoSelecionado = t),
                           selectedColor: t.cor.withValues(alpha: 0.18),
+                          // fundo não selecionado explicitamente adaptado ao tema
+                          backgroundColor:
+                              chipCs.surfaceContainerHighest,
+                          side: BorderSide(
+                            color: selecionado
+                                ? t.cor.withValues(alpha: 0.5)
+                                : chipCs.outlineVariant,
+                          ),
                           visualDensity: VisualDensity.compact,
                         );
                       }).toList(),
@@ -967,6 +1044,25 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
       appBar: AppBar(
         title: Text(titulo),
         actions: [
+          // ── Salvar sempre visível (qualquer aba) ──────────────────────
+          _salvandoDados
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : Badge(
+                  isLabelVisible: _dadosAlterados,
+                  smallSize: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.save_outlined),
+                    tooltip: _isNovo ? 'Criar Cliente' : 'Salvar Alterações',
+                    onPressed: _salvarDados,
+                  ),
+                ),
           if (!_isNovo)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -1086,11 +1182,16 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             vendedor: _vendedor,
             onTipoChanged: (v) => setState(() {
               _tipo = v;
+              _dadosAlterados = true;
               if (v == 'Individual') _nomeParceiroCtrl.clear();
             }),
-            onOrigemChanged: _atualizarFasePorOrigem,
+            onOrigemChanged: (v) {
+              _dadosAlterados = true;
+              _atualizarFasePorOrigem(v);
+            },
             onFaseChanged: (v) {
               if (v != null) {
+                _dadosAlterados = true;
                 if (v == FaseCliente.fechado && _fase != FaseCliente.fechado) {
                   _mostrarDialogoFechamento(v);
                   return;
@@ -1105,9 +1206,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               }
             },
             onMotivoPerdaDropdownChanged: (v) =>
-                setState(() => _motivoPerdaDropdown = v),
-            onCaptadorChanged: (v) => setState(() => _captador = v),
-            onVendedorChanged: (v) => setState(() => _vendedor = v),
+                setState(() { _motivoPerdaDropdown = v; _dadosAlterados = true; }),
+            onCaptadorChanged: (v) => setState(() { _captador = v; _dadosAlterados = true; }),
+            onVendedorChanged: (v) => setState(() { _vendedor = v; _dadosAlterados = true; }),
             onSelectDataCaptacao: () =>
                 _selecionarData((d) => _dataCaptacao = d, _dataCaptacao),
             onClearDataCaptacao: () =>

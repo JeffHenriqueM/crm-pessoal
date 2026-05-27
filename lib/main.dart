@@ -3,17 +3,28 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
+import 'firebase_options_staging.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'screens/recepcao_screen.dart';
+import 'screens/staging_login_screen.dart';
 import 'screens/tela_login_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 import 'widgets/main_shell.dart';
 
+// ── Ambiente ──────────────────────────────────────────────────────────────────
+// Compilar para staging:  --dart-define=ENV=staging
+// Compilar para produção: sem flag (ou --dart-define=ENV=prod)
+const _env = String.fromEnvironment('ENV', defaultValue: 'prod');
+const kIsStaging = _env == 'staging';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  final options = kIsStaging
+      ? StagingFirebaseOptions.currentPlatform
+      : DefaultFirebaseOptions.currentPlatform;
+  await Firebase.initializeApp(options: options);
   await ThemeController.instance.initialize();
   runApp(const VillamorCrmApp());
 }
@@ -26,7 +37,7 @@ class VillamorCrmApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: ThemeController.instance,
       builder: (_, __) => MaterialApp(
-        title: 'Villamor CRM',
+        title: kIsStaging ? '[STAGING] Villamor CRM' : 'Villamor CRM',
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeController.instance.mode,
@@ -36,7 +47,7 @@ class VillamorCrmApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('pt', 'BR')],
-        home: const AuthWrapper(),
+        home: kIsStaging ? const StagingLoginScreen() : const AuthWrapper(),
         debugShowCheckedModeBanner: false,
       ),
     );
@@ -54,6 +65,7 @@ class AuthWrapper extends StatefulWidget {
 class _AuthWrapperState extends State<AuthWrapper> {
   final _authService = AuthService();
   String? _perfil;
+  String? _currentUserName;
   bool _carregandoPerfil = false;
 
   @override
@@ -71,19 +83,23 @@ class _AuthWrapperState extends State<AuthWrapper> {
         if (user == null) {
           if (_perfil != null) {
             WidgetsBinding.instance.addPostFrameCallback(
-                (_) => setState(() => _perfil = null));
+                (_) => setState(() {
+                  _perfil = null;
+                  _currentUserName = null;
+                }));
           }
           return const TelaLoginScreen();
         }
 
-        // Autenticado — carregando perfil
+        // Autenticado — carregando perfil + nome
         if (_perfil == null) {
           if (!_carregandoPerfil) {
             _carregandoPerfil = true;
-            _authService.getCurrentUserProfile().then((perfil) {
+            _authService.getCurrentUserProfileAndName().then((info) {
               if (mounted) {
                 setState(() {
-                  _perfil = perfil;
+                  _perfil           = info['perfil'] as String;
+                  _currentUserName  = info['nome']   as String?;
                   _carregandoPerfil = false;
                 });
               }
@@ -102,8 +118,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         // Demais perfis → MainShell completo
         return MainShell(
-          userProfile: _perfil!,
-          currentUserId: user.uid,
+          userProfile:     _perfil!,
+          currentUserId:   user.uid,
+          currentUserName: _currentUserName,
         );
       },
     );

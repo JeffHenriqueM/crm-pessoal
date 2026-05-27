@@ -494,9 +494,10 @@ class _NegociacaoGlobalCard extends StatelessWidget {
   });
 
   static const _statusCores = {
-    StatusNegociacao.ativa: Color(0xFF1565C0),
-    StatusNegociacao.aceita: Color(0xFF2E7D32),
-    StatusNegociacao.recusada: Color(0xFFC62828),
+    StatusNegociacao.ativa:              Color(0xFF1565C0),
+    StatusNegociacao.aceita:             Color(0xFF2E7D32),
+    StatusNegociacao.recusada:           Color(0xFFC62828),
+    StatusNegociacao.contratoEfetivado:  Color(0xFF6A1B9A),
   };
 
   static const _aprovacaoCores = {
@@ -510,7 +511,7 @@ class _NegociacaoGlobalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final cor = _statusCores[negociacao.status]!;
+    final cor = _statusCores[negociacao.status] ?? const Color(0xFF1565C0);
     final isEspecial = negociacao.tipo == TipoNegociacao.especial;
     final corAprov = _aprovacaoCores[negociacao.statusAprovacao]!;
 

@@ -231,35 +231,48 @@ class FichaDadosTab extends StatelessWidget {
           const SizedBox(height: 24),
           _sectionTitle(context, 'Equipe Responsável'),
           const SizedBox(height: 12),
-          DropdownButtonFormField<Usuario>(
-            value: captador,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Captador *',
-              prefixIcon: Icon(Icons.person_add_alt_1_outlined),
-            ),
-            hint: const Text('Quem captou o lead?'),
-            validator: (v) => v == null ? 'Informe o captador.' : null,
-            items: usuarios
-                .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
-                .toList(),
-            onChanged: onCaptadorChanged,
-          ),
+          // Garante que o value passado ao Dropdown seja NULL quando o usuário
+          // não existe na lista — evita assert do Flutter em release e o estado
+          // inconsistente que impede edição.
+          Builder(builder: (ctx) {
+            final captadorSafe = usuarios.any((u) => u == captador) ? captador : null;
+            return DropdownButtonFormField<Usuario>(
+              // key força reconstrução completa quando o captador muda,
+              // garantindo que o FormField interno reflita o novo valor.
+              key: ValueKey('captador_${captadorSafe?.id ?? 'none'}'),
+              value: captadorSafe,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Captador *',
+                prefixIcon: Icon(Icons.person_add_alt_1_outlined),
+              ),
+              hint: const Text('Quem captou o lead?'),
+              validator: (v) => v == null ? 'Informe o captador.' : null,
+              items: usuarios
+                  .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
+                  .toList(),
+              onChanged: onCaptadorChanged,
+            );
+          }),
           const SizedBox(height: 12),
-          DropdownButtonFormField<Usuario>(
-            value: vendedor,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Vendedor Responsável *',
-              prefixIcon: Icon(Icons.store_outlined),
-            ),
-            hint: const Text('Atribuir a...'),
-            validator: (v) => v == null ? 'Selecione um vendedor.' : null,
-            items: usuarios
-                .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
-                .toList(),
-            onChanged: onVendedorChanged,
-          ),
+          Builder(builder: (ctx) {
+            final vendedorSafe = usuarios.any((u) => u == vendedor) ? vendedor : null;
+            return DropdownButtonFormField<Usuario>(
+              key: ValueKey('vendedor_${vendedorSafe?.id ?? 'none'}'),
+              value: vendedorSafe,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Vendedor Responsável *',
+                prefixIcon: Icon(Icons.store_outlined),
+              ),
+              hint: const Text('Atribuir a...'),
+              validator: (v) => v == null ? 'Selecione um vendedor.' : null,
+              items: usuarios
+                  .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
+                  .toList(),
+              onChanged: onVendedorChanged,
+            );
+          }),
 
           // ── Datas ─────────────────────────────────────────────────────────────
           const SizedBox(height: 24),

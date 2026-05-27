@@ -33,7 +33,9 @@ const _produtos = [
 ];
 
 // ── Aba principal (usada dentro da FichaClienteScreen) ────────────────────────
-class AbaNegociacoes extends StatelessWidget {
+// StatefulWidget + AutomaticKeepAliveClientMixin para que o TabBarView NÃO
+// destrua a aba ao trocar de tab, evitando recriar o stream e piscar vazio.
+class AbaNegociacoes extends StatefulWidget {
   final String clienteId;
   final int proximoNumero;
   final String? currentUserId;
@@ -50,14 +52,61 @@ class AbaNegociacoes extends StatelessWidget {
   });
 
   @override
+  State<AbaNegociacoes> createState() => _AbaNegociacoesState();
+}
+
+class _AbaNegociacoesState extends State<AbaNegociacoes>
+    with AutomaticKeepAliveClientMixin {
+  // Mantém o widget vivo no TabBarView/PageView quando a aba perde o foco.
+  @override
+  bool get wantKeepAlive => true;
+
+  // Stream criado uma única vez — não recriado quando o widget reconstrói.
+  late final Stream<List<Negociacao>> _stream;
+  final _service = FirestoreService();
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _service.getNegociacoesStream(widget.clienteId);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final service = FirestoreService();
+    // Obrigatório quando usa AutomaticKeepAliveClientMixin.
+    super.build(context);
 
     return StreamBuilder<List<Negociacao>>(
-      stream: service.getNegociacoesStream(clienteId),
+      stream: _stream,
       builder: (context, snapshot) {
+        // Enquanto aguarda a primeira resposta do Firestore.
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
+        }
+
+        // Se o Firestore retornou erro (ex: índice ainda construindo),
+        // mostra mensagem em vez de estado vazio enganoso.
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cloud_off_outlined,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.error),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Erro ao carregar propostas.\nTente novamente.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
         final negociacoes = snapshot.data ?? [];
@@ -102,18 +151,18 @@ class AbaNegociacoes extends StatelessWidget {
                 negociacao: neg,
                 onEdit: () => abrirFormularioNegociacao(
                   context,
-                  clienteId: clienteId,
-                  service: service,
+                  clienteId: widget.clienteId,
+                  service: _service,
                   proximoNumero: proximo,
                   editando: neg,
-                  currentUserId: currentUserId,
-                  currentUserName: currentUserName,
-                  userProfile: userProfile,
+                  currentUserId: widget.currentUserId,
+                  currentUserName: widget.currentUserName,
+                  userProfile: widget.userProfile,
                 ),
-                onDelete: () => _confirmarExclusao(context, service, neg),
+                onDelete: () => _confirmarExclusao(context, _service, neg),
                 onExportPdf: () => PropostaPdf.gerar(neg),
                 onStatusChange: (s) =>
-                    _handleStatusMudanca(context, service, neg, s),
+                    _handleStatusMudanca(context, _service, neg, s),
               ),
             );
           },
@@ -729,10 +778,8 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   double _entradaPercMemoria = 10.0;  // % de entrada — preservada ao recalcular valorFinal
   bool _atualizandoEntrada = false;   // evita loop ao atualizar entrada programaticamente
 
-  // ── Rentabilidade ─────────────────────────────────────────────────────────
+  // ── Economia ──────────────────────────────────────────────────────────────
   late final TextEditingController _valorDiariaCtrl;
-  double _taxaOcupacao = 0.63;
-  bool _modoOcupacaoDias = false; // false = %, true = dias
 
   // Vínculo com lead (só usado quando não há clienteId pré-definido)
   String? _vinculoClienteId;
@@ -768,14 +815,14 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     return _valorFinal > 0 && _valorFinal < limite;
   }
 
-  // ── Rentabilidade — getters ───────────────────────────────────────────────
+  // ── Economia — getters ────────────────────────────────────────────────────
   int? get _diasPlanoProduto {
     if (_produtoSelecionado == null) return null;
     final nome = _produtoSelecionado!.nome;
     if (nome.contains('Bronze')) return 7;
     if (nome.contains('Prata')) return 14;
     if (nome.contains('Ouro')) return 28;
-    return null; // Diamante: sem dias fixos por semana
+    return null; // Diamante: sem dias fixos por ano
   }
 
   double? get _qtdDiarias {
@@ -785,11 +832,12 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     return vf / vd;
   }
 
-  double? get _anosEquivalentes {
+  // Economia: anos = diárias ÷ dias/ano (sem taxa de ocupação)
+  double? get _anosEconomia {
     final dias = _qtdDiarias;
     final diasPlano = _diasPlanoProduto;
-    if (dias == null || diasPlano == null || diasPlano == 0 || _taxaOcupacao == 0) return null;
-    return dias / (diasPlano * _taxaOcupacao);
+    if (dias == null || diasPlano == null || diasPlano == 0) return null;
+    return dias / diasPlano;
   }
 
   @override
@@ -856,18 +904,40 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   Future<void> _carregarUsuarios() async {
     try {
       final service = widget.service ?? FirestoreService();
-      final lista = await service.getTodosUsuarios(apenasAtivos: true);
+      // Carrega todos (inclusive inativos) para garantir que usuários
+      // antigos ainda apareçam ao editar uma negociação existente.
+      final lista = await service.getTodosUsuarios();
       if (!mounted) return;
       setState(() {
         _usuarios = lista;
         _carregandoUsuarios = false;
-        // Pré-seleciona embaixador: quem está editando, ou usuário logado
-        final editId = widget.editando?.embaixadorId;
+
+        // ── Pré-seleciona embaixador ──────────────────────────────────
+        final editId     = widget.editando?.embaixadorId;
         final fallbackId = widget.currentUserId;
+
         if (editId != null) {
+          // Editando: restaura o embaixador salvo
           try { _embaixador = _usuarios.firstWhere((u) => u.id == editId); } catch (_) {}
-        } else if (fallbackId != null) {
+        }
+
+        // Não conseguiu restaurar pelo ID → tenta pelo currentUserId
+        if (_embaixador == null && fallbackId != null) {
           try { _embaixador = _usuarios.firstWhere((u) => u.id == fallbackId); } catch (_) {}
+        }
+
+        // Último fallback: cria um Usuario sintético a partir do nome conhecido,
+        // para garantir que embaixadorNome seja salvo mesmo sem doc no Firestore.
+        if (_embaixador == null &&
+            fallbackId != null &&
+            widget.currentUserName != null &&
+            widget.currentUserName!.isNotEmpty) {
+          _embaixador = Usuario(
+            id: fallbackId,
+            nome: widget.currentUserName!,
+            email: '',
+            perfil: '',
+          );
         }
       });
     } catch (_) {
@@ -1634,34 +1704,67 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                   const SizedBox(height: 12),
                                 ],
 
-                                // Embaixador (somente admin pode alterar)
-                                if (_isAdmin) ...[
-                                  if (_carregandoUsuarios)
-                                    const LinearProgressIndicator()
-                                  else
-                                    DropdownButtonFormField<Usuario>(
-                                      value: _embaixador,
-                                      isExpanded: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Embaixador',
-                                        prefixIcon: Icon(Icons.person_outlined),
-                                      ),
-                                      hint: const Text('Selecione o embaixador'),
-                                      items: _usuarios
-                                          .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
-                                          .toList(),
-                                      onChanged: (v) => setState(() => _embaixador = v),
+                                // Embaixador: admin pode alterar, não-admin vê chip fixo
+                                if (_carregandoUsuarios)
+                                  const LinearProgressIndicator()
+                                else if (_isAdmin)
+                                  DropdownButtonFormField<Usuario>(
+                                    value: _embaixador,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Embaixador',
+                                      prefixIcon: Icon(Icons.person_outlined),
                                     ),
-                                  const SizedBox(height: 12),
-                                ],
+                                    hint: const Text('Selecione o embaixador'),
+                                    items: _usuarios
+                                        .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
+                                        .toList(),
+                                    onChanged: (v) => setState(() => _embaixador = v),
+                                  )
+                                else
+                                  // Não-admin: apenas exibe quem é o embaixador
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: cs.surfaceContainerHighest
+                                          .withValues(alpha: 0.4),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: cs.outlineVariant),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.badge_outlined,
+                                            size: 18,
+                                            color: cs.onSurfaceVariant),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            _embaixador?.nome ??
+                                                widget.currentUserName ??
+                                                'Embaixador não definido',
+                                            style: TextStyle(
+                                                fontSize: 14,
+                                                color: cs.onSurface),
+                                          ),
+                                        ),
+                                        Text('Embaixador',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: cs.onSurfaceVariant)),
+                                      ],
+                                    ),
+                                  ),
+                                const SizedBox(height: 12),
                               ],
                             ),
                           ),
                         ],
                       ),
 
-                      // ── Rentabilidade (full width) ────────────────────
-                      _buildRentabilidade(cs),
+                      // ── Economia (full width) ─────────────────────────
+                      _buildEconomia(cs),
 
                       // ── Condições Especiais (full width, se especial) ─
                       if (isEspecial) ...[
@@ -1793,14 +1896,12 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     );
   }
 
-  // ── Seção de Rentabilidade ────────────────────────────────────────────────
-  Widget _buildRentabilidade(ColorScheme cs) {
-    final diasPlano    = _diasPlanoProduto;
-    final qtdDiarias   = _qtdDiarias;
-    final anosEquiv    = _anosEquivalentes;
-    final vd           = _parse(_valorDiariaCtrl.text);
-    const taxas        = [0.50, 0.63, 0.80, 1.00];
-    final verde        = Colors.green.shade700;
+  // ── Seção de Economia ─────────────────────────────────────────────────────
+  Widget _buildEconomia(ColorScheme cs) {
+    final diasPlano  = _diasPlanoProduto;
+    final qtdDiarias = _qtdDiarias;
+    final anos       = _anosEconomia;
+    final verde      = Colors.green.shade700;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1809,13 +1910,13 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
         Divider(color: verde.withValues(alpha: 0.3)),
         const SizedBox(height: 10),
 
-        // ── Cabeçalho da seção ──────────────────────────────────────────────
+        // ── Cabeçalho ─────────────────────────────────────────────────────
         Row(
           children: [
-            Icon(Icons.trending_up, size: 16, color: verde),
+            Icon(Icons.savings_outlined, size: 16, color: verde),
             const SizedBox(width: 6),
             Text(
-              'RENTABILIDADE',
+              'ECONOMIA',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1827,101 +1928,30 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
         ),
         const SizedBox(height: 12),
 
-        // ── Controles: diária + taxa de ocupação ────────────────────────────
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Diária do resort
-            SizedBox(
-              width: 190,
-              child: TextFormField(
-                controller: _valorDiariaCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Diária do resort',
-                  prefixIcon: Icon(Icons.hotel_outlined),
-                  prefixText: 'R\$ ',
-                  isDense: true,
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-                ],
-              ),
+        // ── Campo: Diária do resort ────────────────────────────────────────
+        SizedBox(
+          width: 200,
+          child: TextFormField(
+            controller: _valorDiariaCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Diária do resort',
+              prefixIcon: Icon(Icons.hotel_outlined),
+              prefixText: 'R\$ ',
+              isDense: true,
             ),
-            const SizedBox(width: 20),
-
-            // Taxa de ocupação
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Label + toggle %/dias
-                  Row(
-                    children: [
-                      Text(
-                        'Taxa de ocupação',
-                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: diasPlano != null
-                            ? () => setState(() => _modoOcupacaoDias = !_modoOcupacaoDias)
-                            : null,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: diasPlano != null
-                                ? (_modoOcupacaoDias
-                                    ? cs.primaryContainer
-                                    : cs.surfaceContainerHighest)
-                                : cs.surfaceContainerHighest.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: cs.outlineVariant),
-                          ),
-                          child: Text(
-                            _modoOcupacaoDias ? 'Dias' : '%',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: diasPlano != null ? cs.primary : cs.outline,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  SegmentedButton<double>(
-                    segments: taxas.map((t) {
-                      final String label;
-                      if (_modoOcupacaoDias && diasPlano != null) {
-                        final d = (diasPlano * t).round();
-                        label = '${d}d';
-                      } else {
-                        label = '${(t * 100).toInt()}%';
-                      }
-                      return ButtonSegment<double>(value: t, label: Text(label));
-                    }).toList(),
-                    selected: {_taxaOcupacao},
-                    onSelectionChanged: (s) => setState(() => _taxaOcupacao = s.first),
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+            ],
+          ),
         ),
 
-        // ── Card de resultado ───────────────────────────────────────────────
-        if (qtdDiarias != null && diasPlano != null && anosEquiv != null) ...[
+        // ── Card de resultado ──────────────────────────────────────────────
+        if (qtdDiarias != null && diasPlano != null && anos != null) ...[
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
               color: verde.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(10),
@@ -1930,7 +1960,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Linha 1: X diárias = Y anos
+                // Linha 1: diárias + anos
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1939,46 +1969,39 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                     Expanded(
                       child: RichText(
                         text: TextSpan(
-                          style: TextStyle(fontSize: 13, color: cs.onSurface, height: 1.4),
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurface, height: 1.5),
                           children: [
-                            const TextSpan(text: 'Com '),
-                            TextSpan(
-                              text: _moeda.format(vd),
-                              style: TextStyle(fontWeight: FontWeight.bold, color: verde),
-                            ),
-                            const TextSpan(text: '/dia você teria '),
+                            const TextSpan(text: 'Com o valor da sua cota, você conseguiria pagar um total de '),
                             TextSpan(
                               text: '${qtdDiarias.round()} diárias',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, color: verde),
                             ),
-                            const TextSpan(text: ' = '),
-                            TextSpan(
-                              text: '${anosEquiv.toStringAsFixed(1)} anos',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: verde),
-                            ),
-                            TextSpan(
-                              text: ' de uso no resort'
-                                  ' (${((_taxaOcupacao) * 100).toInt()}% de ocupação)',
-                              style: TextStyle(color: cs.onSurfaceVariant),
-                            ),
+                            const TextSpan(text: ' (o restante pode fazer igual)'),
                           ],
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                // Linha 2: Vitalício
+                const SizedBox(height: 10),
+                // Linha 2: mensagem vitalício
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.all_inclusive, size: 16, color: verde),
                     const SizedBox(width: 8),
-                    Text(
-                      'Com a Villamor, o acesso é vitalício!',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: verde,
+                    Expanded(
+                      child: Text(
+                        'Em nosso Resort, você pode utilizar suas diárias todo ano, '
+                        'até quando decidir que não quer mais!',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: verde,
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
@@ -1987,7 +2010,6 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
             ),
           ),
         ] else if (_valorFinal > 0 && _produtoSelecionado != null && diasPlano == null) ...[
-          // Produto Diamante — plano não tem dias fixos semanais
           const SizedBox(height: 8),
           Row(
             children: [
@@ -1995,7 +2017,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Cálculo de anos disponível para planos Bronze, Prata e Ouro',
+                  'Cálculo disponível para planos Bronze, Prata e Ouro',
                   style: TextStyle(fontSize: 11, color: cs.outline),
                 ),
               ),
