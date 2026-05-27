@@ -9,11 +9,13 @@ class _VendedorStats {
   final String vendedorId;
   final String vendedorNome;
   final List<Cliente> clientes;
+  final int? metaMensal;
 
   _VendedorStats({
     required this.vendedorId,
     required this.vendedorNome,
     required this.clientes,
+    this.metaMensal,
   });
 
   int get total => clientes.length;
@@ -37,6 +39,16 @@ class _VendedorStats {
 
   int get perdidos =>
       clientes.where((c) => c.fase == FaseCliente.perdido).length;
+
+  int get fechadosMes {
+    final agora = DateTime.now();
+    final inicioMes = DateTime(agora.year, agora.month, 1);
+    return clientes
+        .where((c) =>
+            c.fase == FaseCliente.fechado &&
+            !c.dataAtualizacao.isBefore(inicioMes))
+        .length;
+  }
 
   int get ativos => clientes
       .where((c) =>
@@ -85,6 +97,7 @@ class AbaAdminOverview extends StatelessWidget {
         vendedorId: v.id,
         vendedorNome: v.nome,
         clientes: clientes,
+        metaMensal: v.metaMensal,
       ));
     }
 
@@ -543,6 +556,12 @@ class AbaAdminOverview extends StatelessWidget {
 
           const SizedBox(height: 14),
 
+          // ── Meta mensal (se definida) ─────────────────────────────────
+          if (s.metaMensal != null) ...[
+            _metaProgressRow(cs, s),
+            const SizedBox(height: 10),
+          ],
+
           // ── Rodapé: conversão + link ─────────────────────────────────
           Row(
             children: [
@@ -696,6 +715,48 @@ class AbaAdminOverview extends StatelessWidget {
           fontSize: radius * 0.9,
         ),
       ),
+    );
+  }
+
+  Widget _metaProgressRow(ColorScheme cs, _VendedorStats s) {
+    final meta = s.metaMensal!;
+    final fechados = s.fechadosMes;
+    final pct = (meta == 0 ? 0.0 : fechados / meta).clamp(0.0, 1.0);
+    final atingiu = fechados >= meta;
+    final corMeta = atingiu
+        ? Colors.green.shade600
+        : pct >= 0.7
+            ? Colors.orange.shade600
+            : cs.primary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.flag_outlined, size: 13, color: cs.outline),
+            const SizedBox(width: 4),
+            Text(
+              'Meta do mês: $fechados/$meta fechamento${meta != 1 ? 's' : ''}',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            if (atingiu) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.check_circle, size: 13, color: Colors.green.shade600),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: pct,
+            backgroundColor: corMeta.withValues(alpha: 0.12),
+            valueColor: AlwaysStoppedAnimation<Color>(corMeta),
+            minHeight: 5,
+          ),
+        ),
+      ],
     );
   }
 

@@ -7,12 +7,16 @@ class Usuario {
   final String perfil;
   final bool ativo;
 
+  /// Meta mensal de fechamentos definida pelo próprio vendedor.
+  final int? metaMensal;
+
   Usuario({
     required this.id,
     required this.nome,
     required this.email,
     required this.perfil,
     this.ativo = true,
+    this.metaMensal,
   });
 
   factory Usuario.fromMap(Map<String, dynamic> data, String documentId) {
@@ -21,8 +25,8 @@ class Usuario {
       nome: data['nome'] ?? 'Nome não encontrado',
       email: data['email'] ?? 'Email não encontrado',
       perfil: data['perfil'] ?? 'vendedor',
-      // Se o campo não existir (usuários antigos), considera ativo
       ativo: data['ativo'] ?? true,
+      metaMensal: data['metaMensal'] as int?,
     );
   }
 
@@ -32,6 +36,7 @@ class Usuario {
       'email': email,
       'perfil': perfil,
       'ativo': ativo,
+      if (metaMensal != null) 'metaMensal': metaMensal,
     };
   }
 

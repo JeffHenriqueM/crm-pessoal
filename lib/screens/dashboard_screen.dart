@@ -9,6 +9,7 @@ import '../widgets/aba_estatisticas.dart';
 import '../widgets/aba_financeiro.dart';
 import '../widgets/aba_motivos_perda.dart';
 import '../widgets/aba_relatorios.dart';
+import '../widgets/meta_mensal_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -234,12 +235,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Nenhum dado encontrado.'));
-          }
-          return TabBarView(
+          final clientes = snapshot.data ?? [];
+          return Column(
             children: [
-              AbaEstatisticas(clientes: snapshot.data!),
+              // ── Meta mensal do vendedor ──────────────────────────────
+              if (_vendedorIdFiltro != null)
+                MetaMensalCard(
+                  userId: _vendedorIdFiltro!,
+                  clientes: clientes,
+                ),
+              // ── Aba de estatísticas ─────────────────────────────────
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    AbaEstatisticas(clientes: clientes),
+                  ],
+                ),
+              ),
             ],
           );
         },

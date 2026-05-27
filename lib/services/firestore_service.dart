@@ -407,6 +407,25 @@ class FirestoreService {
 
   // --- USUÁRIOS ---
 
+  // ── Metas mensais (#12) ──────────────────────────────────────────────────
+
+  /// Retorna a meta mensal atual de um usuário.
+  Future<int?> getMetaMensal(String userId) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(userId).get();
+      return doc.data()?['metaMensal'] as int?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Define ou remove a meta mensal do usuário (null = remover).
+  Future<void> atualizarMetaMensal(String userId, int? meta) async {
+    await _db.collection('usuarios').doc(userId).update({
+      'metaMensal': meta,
+    });
+  }
+
   Future<List<Usuario>> getTodosUsuarios({
     String? perfil,
     bool apenasAtivos = false,
