@@ -134,7 +134,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   // ── Carregamento de usuários ──────────────────────────────────────────────────
   Future<void> _carregarUsuarios() async {
     try {
-      final lista = await _service.getTodosUsuarios(apenasAtivos: true);
+      // Carrega TODOS os usuários (incluindo inativos) para garantir que o
+      // captador/vendedor atual seja sempre encontrado no dropdown, mesmo que
+      // tenha sido desativado após o cadastro.
+      final lista = await _service.getTodosUsuarios();
       if (!mounted) return;
       setState(() {
         _usuarios = lista;
@@ -613,16 +616,20 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       runSpacing: 4,
                       children: TipoInteracao.values.map((t) {
                         final selecionado = tipoSelecionado == t;
+                        final chipCs = Theme.of(ctx).colorScheme;
                         return ChoiceChip(
                           avatar: Icon(t.icone,
                               size: 14,
+                              color: selecionado ? t.cor : t.cor),
+                          label: Text(
+                            t.nome,
+                            style: TextStyle(
+                              fontSize: 12,
                               color: selecionado
-                                  ? Theme.of(ctx)
-                                      .colorScheme
-                                      .onPrimaryContainer
-                                  : t.cor),
-                          label: Text(t.nome,
-                              style: const TextStyle(fontSize: 12)),
+                                  ? t.cor
+                                  : chipCs.onSurface,
+                            ),
+                          ),
                           selected: selecionado,
                           onSelected: (_) =>
                               setStateDialog(() => tipoSelecionado = t),

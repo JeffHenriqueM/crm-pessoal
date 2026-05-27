@@ -292,7 +292,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             // Opções
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: Text(_isSuperAdmin ? 'Editar nome e perfil' : 'Editar nome'),
+              title: Text(_isSuperAdmin ? 'Editar Usuário (nome + perfil)' : 'Editar Usuário'),
               subtitle: _isSuperAdmin
                   ? null
                   : Text(

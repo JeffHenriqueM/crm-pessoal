@@ -50,8 +50,8 @@ class _MainShellState extends State<MainShell> {
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
-    icon: Icons.badge_outlined,
-    activeIcon: Icons.badge,
+    icon: Icons.how_to_reg_outlined,
+    activeIcon: Icons.how_to_reg,
     label: 'Recepção',
   );
 
@@ -61,7 +61,7 @@ class _MainShellState extends State<MainShell> {
     if (_isAdmin) {
       return const [
         _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,    label: 'Dashboard'),
-        _NavItem(icon: Icons.view_kanban_outlined,     activeIcon: Icons.view_kanban,          label: 'Leads'),
+        _NavItem(icon: Icons.view_kanban_outlined,     activeIcon: Icons.view_kanban,          label: 'Funil de Vendas'),
         _NavItem(icon: Icons.handshake_outlined,       activeIcon: Icons.handshake_rounded,    label: 'Negociações'),
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
@@ -72,17 +72,17 @@ class _MainShellState extends State<MainShell> {
     if (!_isListaProfile) {
       return const [
         _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,    label: 'Agenda'),
-        _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Leads'),
+        _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
         _NavItem(icon: Icons.handshake_outlined,      activeIcon: Icons.handshake_rounded,  label: 'Negociações'),
         _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
         _recepcaoItem,
       ];
     }
-    // ── pós-venda / financeiro ────────────────────────────────────
+    // ── pós-venda / financeiro: Dashboard primeiro ────────────────
     return const [
-      _NavItem(icon: Icons.view_kanban_outlined, activeIcon: Icons.view_kanban,       label: 'Leads'),
-      _NavItem(icon: Icons.handshake_outlined,   activeIcon: Icons.handshake_rounded, label: 'Negociações'),
       _NavItem(icon: Icons.bar_chart_outlined,   activeIcon: Icons.bar_chart_rounded, label: 'Dashboard'),
+      _NavItem(icon: Icons.view_kanban_outlined,  activeIcon: Icons.view_kanban,       label: 'Funil de Vendas'),
+      _NavItem(icon: Icons.handshake_outlined,   activeIcon: Icons.handshake_rounded, label: 'Negociações'),
       _recepcaoItem,
     ];
   }
@@ -103,9 +103,10 @@ class _MainShellState extends State<MainShell> {
       const DashboardScreen(),
       const RecepcaoScreen(),
     ] else ...[
+      // pós-venda / financeiro: Dashboard primeiro
+      const DashboardScreen(),
       const ListaClientesScreen(),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId),
-      const DashboardScreen(),
       const RecepcaoScreen(),
     ],
   ];
