@@ -1570,7 +1570,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                     prefixIcon: Icon(Icons.notes_outlined),
                                     alignLabelWithHint: true,
                                   ),
-                                  maxLines: 4,
+                                  maxLines: 2,
                                   textCapitalization: TextCapitalization.sentences,
                                 ),
                                 const SizedBox(height: 12),
@@ -1634,74 +1634,26 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                   const SizedBox(height: 12),
                                 ],
 
-                                // Embaixador
-                                if (_carregandoUsuarios)
-                                  const LinearProgressIndicator()
-                                else if (_isAdmin)
-                                  DropdownButtonFormField<Usuario>(
-                                    value: _embaixador,
-                                    isExpanded: true,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Embaixador',
-                                      prefixIcon: Icon(Icons.person_outlined),
-                                    ),
-                                    hint: const Text('Selecione o embaixador'),
-                                    items: _usuarios
-                                        .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
-                                        .toList(),
-                                    onChanged: (v) => setState(() => _embaixador = v),
-                                  )
-                                else
-                                  InputDecorator(
-                                    decoration: InputDecoration(
-                                      labelText: 'Embaixador',
-                                      prefixIcon: const Icon(Icons.person_outlined),
-                                      suffixIcon: Tooltip(
-                                        message: 'Somente Admin pode alterar o embaixador',
-                                        child: Icon(Icons.lock_outline, size: 18, color: cs.onSurfaceVariant),
+                                // Embaixador (somente admin pode alterar)
+                                if (_isAdmin) ...[
+                                  if (_carregandoUsuarios)
+                                    const LinearProgressIndicator()
+                                  else
+                                    DropdownButtonFormField<Usuario>(
+                                      value: _embaixador,
+                                      isExpanded: true,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Embaixador',
+                                        prefixIcon: Icon(Icons.person_outlined),
                                       ),
+                                      hint: const Text('Selecione o embaixador'),
+                                      items: _usuarios
+                                          .map((u) => DropdownMenuItem(value: u, child: Text(u.nome)))
+                                          .toList(),
+                                      onChanged: (v) => setState(() => _embaixador = v),
                                     ),
-                                    child: Text(
-                                      _embaixador?.nome ?? '—',
-                                      style: TextStyle(fontSize: 14, color: cs.onSurface),
-                                    ),
-                                  ),
-                                const SizedBox(height: 12),
-
-                                // Título (read-only, gerado automaticamente)
-                                _sectionLabel(cs, 'Título da proposta'),
-                                const SizedBox(height: 6),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: cs.outlineVariant),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.label_outline, size: 16, color: cs.onSurfaceVariant),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          _tituloCtrl.text.isEmpty
-                                              ? 'Gerado ao escolher o produto…'
-                                              : _tituloCtrl.text,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: _tituloCtrl.text.isEmpty
-                                                ? cs.onSurfaceVariant
-                                                : cs.onSurface,
-                                            fontStyle: _tituloCtrl.text.isEmpty
-                                                ? FontStyle.italic
-                                                : FontStyle.normal,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                  const SizedBox(height: 12),
+                                ],
                               ],
                             ),
                           ),

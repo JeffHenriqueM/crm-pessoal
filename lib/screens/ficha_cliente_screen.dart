@@ -67,6 +67,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   DateTime? _dataCaptacao;
   DateTime? _proximoContato;
   DateTime? _dataVisita;
+  DateTime? _dataFechamento;
+  double? _valorVendido;
   bool _tentouSalvar = false;
 
   List<Usuario> _usuarios = [];
@@ -101,6 +103,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _dataCaptacao = c?.dataEntradaSala;
     _proximoContato = c?.proximoContato;
     _dataVisita = c?.dataVisita;
+    _dataFechamento = c?.dataFechamento;
+    _valorVendido = c?.valorVendido;
 
     _carregarUsuarios();
     if (!_isNovo) _iniciarStreams();
@@ -172,6 +176,128 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         }
       }
     });
+  }
+
+  // ── Diálogo de fechamento ─────────────────────────────────────────────────────
+  Future<void> _mostrarDialogoFechamento(FaseCliente novaFase) async {
+    DateTime? dataEscolhida = _dataFechamento ?? DateTime.now();
+    final valorCtrl = TextEditingController(
+      text: _valorVendido != null ? _valorVendido!.toStringAsFixed(0) : '',
+    );
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: Colors.green),
+              SizedBox(width: 10),
+              Text('Fechamento'),
+            ],
+          ),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Registre a data e o valor do fechamento.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Data de fechamento
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: dataEscolhida ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (d != null) setD(() => dataEscolhida = d);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 14),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                          color: Theme.of(ctx).colorScheme.outline),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today_outlined,
+                            size: 18,
+                            color: dataEscolhida != null
+                                ? Theme.of(ctx).colorScheme.primary
+                                : Theme.of(ctx).colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 10),
+                        Text(
+                          dataEscolhida != null
+                              ? 'Data: ${DateFormat('dd/MM/yyyy').format(dataEscolhida!)}'
+                              : 'Selecionar data do fechamento',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: dataEscolhida != null
+                                ? Theme.of(ctx).colorScheme.onSurface
+                                : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Valor vendido
+                TextField(
+                  controller: valorCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Valor vendido (opcional)',
+                    prefixIcon: Icon(Icons.attach_money),
+                    prefixText: 'R\$ ',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: dataEscolhida == null
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmado == true && mounted) {
+      final valorDigitado = double.tryParse(
+          valorCtrl.text.replaceAll(',', '.'));
+      setState(() {
+        _fase = novaFase;
+        _dataFechamento = dataEscolhida;
+        _valorVendido = valorDigitado;
+        _motivoPerdaDropdown = null;
+        _motivoPerdaDescCtrl.clear();
+      });
+    }
+    valorCtrl.dispose();
   }
 
   // ── Seletores de data ─────────────────────────────────────────────────────────
@@ -397,6 +523,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           motivoNaoVenda: _fase == FaseCliente.perdido
               ? _motivoPerdaDescCtrl.text.trim()
               : null,
+          dataFechamento: _dataFechamento,
+          valorVendido: _valorVendido,
         );
         final id = await _service.adicionarCliente(novoCliente);
         for (final i in _interacoes) {
@@ -447,6 +575,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               : null,
           'motivoNaoVendaDropdown':
               _fase == FaseCliente.perdido ? _motivoPerdaDropdown : null,
+          'dataFechamento': _dataFechamento != null
+              ? Timestamp.fromDate(_dataFechamento!)
+              : null,
+          'valorVendido': _valorVendido,
           'atualizadoPorId': user?.uid,
         };
         await _service.atualizarClienteDetalhes(_clienteId!, dados);
@@ -959,6 +1091,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             onOrigemChanged: _atualizarFasePorOrigem,
             onFaseChanged: (v) {
               if (v != null) {
+                if (v == FaseCliente.fechado && _fase != FaseCliente.fechado) {
+                  _mostrarDialogoFechamento(v);
+                  return;
+                }
                 setState(() {
                   _fase = v;
                   if (v != FaseCliente.perdido) {

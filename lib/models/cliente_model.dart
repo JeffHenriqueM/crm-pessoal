@@ -42,6 +42,10 @@ class Cliente {
   // Valores: null | 'nao_enviada' | 'enviada_sem_resposta' | 'enviada_com_resposta'
   final String? statusMensagem;
 
+  // ── Fechamento ────────────────────────────────────────────────────────────
+  final DateTime? dataFechamento;
+  final double? valorVendido;
+
   // ── Soft-delete (#19) ─────────────────────────────────────────────────────
   final bool deletado;
   final String? excluidoPorId;
@@ -82,6 +86,8 @@ class Cliente {
     this.linerId,
     this.linerNome,
     this.statusMensagem,
+    this.dataFechamento,
+    this.valorVendido,
     this.deletado = false,
     this.excluidoPorId,
     this.excluidoPorNome,
@@ -123,6 +129,8 @@ class Cliente {
       'linerId': linerId,
       'linerNome': linerNome,
       'statusMensagem': statusMensagem,
+      'dataFechamento': dataFechamento != null ? Timestamp.fromDate(dataFechamento!) : null,
+      'valorVendido': valorVendido,
       // soft-delete: só serializa se true para não poluir docs normais
       if (deletado) 'deletado': true,
       if (excluidoPorId != null) 'excluidoPorId': excluidoPorId,
@@ -184,6 +192,8 @@ class Cliente {
       linerId: data['linerId'],
       linerNome: data['linerNome'],
       statusMensagem: data['statusMensagem'] as String?,
+      dataFechamento: (data['dataFechamento'] as Timestamp?)?.toDate(),
+      valorVendido: (data['valorVendido'] as num?)?.toDouble(),
       deletado: data['deletado'] == true,
       excluidoPorId: data['excluidoPorId'] as String?,
       excluidoPorNome: data['excluidoPorNome'] as String?,
