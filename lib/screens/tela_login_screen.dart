@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../theme/theme_controller.dart';
 
@@ -26,6 +27,8 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    // Sinaliza ao navegador que o autofill pode ser salvo
+    TextInput.finishAutofillContext();
     setState(() => _isLoading = true);
     final error = await _authService.signIn(
       _emailController.text.trim(),
@@ -353,7 +356,8 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
   Widget _buildForm(ColorScheme cs) {
     return Form(
       key: _formKey,
-      child: Column(
+      child: AutofillGroup(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextFormField(
@@ -364,6 +368,7 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
             ),
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
             validator: (v) =>
                 (v == null || !v.contains('@')) ? 'E-mail inválido.' : null,
           ),
@@ -385,6 +390,7 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
             ),
             obscureText: !_senhaVisivel,
             textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
             onFieldSubmitted: (_) => _submit(),
             validator: (v) =>
                 (v == null || v.length < 6) ? 'Mínimo 6 caracteres.' : null,
@@ -412,6 +418,7 @@ class _TelaLoginScreenState extends State<TelaLoginScreen> {
             child: const Text('Esqueceu a senha?'),
           ),
         ],
+      ),
       ),
     );
   }
