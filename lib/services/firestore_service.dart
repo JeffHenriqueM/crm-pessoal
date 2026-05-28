@@ -745,8 +745,15 @@ class FirestoreService {
   }
 
   /// Cria um novo ticket com número sequencial automático.
+  /// Se a transação do contador falhar (ex: regras do Firestore para não-admin),
+  /// o ticket é criado sem número sequencial (numero = 0).
   Future<String> criarTicket(Ticket ticket) async {
-    final numero = await proximoNumeroTicket();
+    int numero = 0;
+    try {
+      numero = await proximoNumeroTicket();
+    } catch (e) {
+      debugPrint('[Firestore] proximoNumeroTicket falhou, ticket sem número: $e');
+    }
     final dados = _flagTeste(ticket.toFirestore());
     dados['numero'] = numero;
     final ref = await _db.collection(_colTickets).add(dados);

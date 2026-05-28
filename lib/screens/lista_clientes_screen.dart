@@ -85,11 +85,16 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
       }
     });
 
-    final initialIndex = widget.faseInicial != null
-        ? FaseCliente.values.indexOf(widget.faseInicial!)
+    // Exclui atendimento das abas do funil (só aparece na recepção)
+    final fasesVisiveis = FaseCliente.values
+        .where((f) => f != FaseCliente.atendimento)
+        .toList();
+    final initialIndex = widget.faseInicial != null &&
+            fasesVisiveis.contains(widget.faseInicial!)
+        ? fasesVisiveis.indexOf(widget.faseInicial!)
         : 0;
     _tabController = TabController(
-      length: FaseCliente.values.length,
+      length: fasesVisiveis.length,
       vsync: this,
       initialIndex: initialIndex,
     );
@@ -499,11 +504,13 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
             ),
           ),
 
-        // Lista por abas
+        // Lista por abas (atendimento excluído — fica só na recepção)
         Expanded(
           child: TabBarView(
             controller: _tabController,
-            children: FaseCliente.values.map((fase) {
+            children: FaseCliente.values
+                .where((f) => f != FaseCliente.atendimento)
+                .map((fase) {
               final clientesDaAba = _aplicarFiltros(
                   todosClientes.where((c) => c.fase == fase).toList());
               return ClienteListFiltered(

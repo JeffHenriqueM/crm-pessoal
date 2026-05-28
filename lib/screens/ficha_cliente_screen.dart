@@ -99,7 +99,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             ? c?.origem
             : null;
     _motivoPerdaDropdown = c?.motivoNaoVendaDropdown;
-    _dataCaptacao = c?.dataEntradaSala;
+    _dataCaptacao = c?.dataEntradaSala ?? (c == null ? DateTime.now() : null);
     _proximoContato = c?.proximoContato;
     _dataVisita = c?.dataVisita;
     _dataFechamento = c?.dataFechamento;

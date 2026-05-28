@@ -139,6 +139,7 @@ class ListaClientesAppBar extends StatelessWidget
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               tabs: FaseCliente.values
+                  .where((f) => f != FaseCliente.atendimento)
                   .map((fase) => Tab(text: fase.nomeDisplay))
                   .toList(),
             )

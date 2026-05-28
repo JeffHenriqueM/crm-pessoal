@@ -115,7 +115,8 @@ class _TicketsScreenState extends State<TicketsScreen>
       ].join(','));
     }
 
-    final csv = buffer.toString();
+    // BOM UTF-8 garante que Excel/Numbers abra com encoding correto
+    final csv = '﻿${buffer.toString()}';
     final blob = web.Blob(
       [csv.toJS].toJS,
       web.BlobPropertyBag(type: 'text/csv;charset=utf-8'),

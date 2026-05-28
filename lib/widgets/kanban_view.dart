@@ -114,6 +114,7 @@ class _KanbanColumnState extends State<_KanbanColumn> {
 
   Future<void> _mostrarDialogoPerdido(Cliente cliente) async {
     final motivoCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -124,14 +125,20 @@ class _KanbanColumnState extends State<_KanbanColumn> {
             Text('Registrar Perda'),
           ],
         ),
-        content: TextField(
-          controller: motivoCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Motivo da perda',
-            hintText: 'Ex: preço, concorrência, sem interesse...',
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: motivoCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Motivo da perda *',
+              hintText: 'Ex: preço, concorrência, sem interesse...',
+            ),
+            maxLines: 3,
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Informe o motivo da perda.'
+                : null,
           ),
-          maxLines: 3,
         ),
         actions: [
           TextButton(
@@ -139,7 +146,10 @@ class _KanbanColumnState extends State<_KanbanColumn> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.of(ctx).pop(true);
+            },
             child: const Text('Confirmar'),
           ),
         ],
