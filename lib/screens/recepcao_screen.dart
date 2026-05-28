@@ -38,9 +38,16 @@ class _PhoneFormatter extends TextInputFormatter {
 }
 
 // ── Shell da recepção (perfil recepcao — tem próprio AppBar + Sair) ──────────
-class RecepcaoShell extends StatelessWidget {
+class RecepcaoShell extends StatefulWidget {
   final String? currentUserId;
   const RecepcaoShell({super.key, this.currentUserId});
+
+  @override
+  State<RecepcaoShell> createState() => _RecepcaoShellState();
+}
+
+class _RecepcaoShellState extends State<RecepcaoShell> {
+  int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +72,157 @@ class RecepcaoShell extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: const RecepcaoScreen(),
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          const RecepcaoScreen(),
+          _FunilRecepcaoTab(currentUserId: widget.currentUserId),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.badge_outlined),
+            selectedIcon: Icon(Icons.badge),
+            label: 'Atendimentos',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.view_kanban_outlined),
+            selectedIcon: Icon(Icons.view_kanban),
+            label: 'Funil',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Tab de funil para recepcionista ─────────────────────────────────────────
+class _FunilRecepcaoTab extends StatelessWidget {
+  final String? currentUserId;
+  const _FunilRecepcaoTab({this.currentUserId});
+
+  static final _dataFmt = DateFormat('dd/MM/yyyy');
+
+  Color _corFase(FaseCliente fase) {
+    switch (fase) {
+      case FaseCliente.prospeccao:  return const Color(0xFF6366F1);
+      case FaseCliente.contato:     return const Color(0xFF0EA5E9);
+      case FaseCliente.negociacao:  return const Color(0xFFF59E0B);
+      case FaseCliente.visita:      return const Color(0xFF8B5CF6);
+      case FaseCliente.fechado:     return const Color(0xFF10B981);
+      case FaseCliente.perdido:     return const Color(0xFFEF4444);
+      default:                      return const Color(0xFF9CA3AF);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = FirestoreService();
+    final cs = Theme.of(context).colorScheme;
+
+    return StreamBuilder<List<Cliente>>(
+      stream: service.getFunilRecepcaoStream(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final leads = snap.data ?? [];
+
+        if (leads.isEmpty) {
+          return Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.view_kanban_outlined,
+                  size: 56, color: cs.outline.withValues(alpha: 0.35)),
+              const SizedBox(height: 14),
+              Text('Nenhum lead no funil ainda.',
+                  style: TextStyle(color: cs.outline, fontSize: 14)),
+              const SizedBox(height: 6),
+              Text('Leads criados por você aparecerão aqui após avançar de fase.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+            ]),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+          itemCount: leads.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          itemBuilder: (context, i) {
+            final c = leads[i];
+            final cor = _corFase(c.fase);
+            return Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: cs.outlineVariant),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        FichaClienteScreen(cliente: c, userProfile: 'recepcao'),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: cor.withValues(alpha: 0.15),
+                      child: Text(
+                        c.nome.isNotEmpty ? c.nome[0].toUpperCase() : '?',
+                        style: TextStyle(
+                            color: cor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text(c.nome,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14)),
+                        if (c.vendedorNome?.isNotEmpty == true)
+                          Text('Vendedor: ${c.vendedorNome}',
+                              style: TextStyle(
+                                  fontSize: 12, color: cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(c.fase.nomeDisplay,
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: cor)),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(_dataFmt.format(c.dataAtualizacao),
+                          style: TextStyle(
+                              fontSize: 11, color: cs.onSurfaceVariant)),
+                    ]),
+                  ]),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -179,12 +336,22 @@ class RecepcaoScreen extends StatelessWidget {
       itens.add(_AtendimentoCard(
         cliente: c,
         horaFmt: _horaFmt,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) =>
-                  FichaClienteScreen(cliente: c, userProfile: 'recepcao')),
-        ),
+        onTap: () async {
+          final salvo = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+                builder: (_) =>
+                    FichaClienteScreen(cliente: c, userProfile: 'recepcao')),
+          );
+          if (salvo == true && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Atendimento atualizado!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        },
         onReimprimir: () => _reimprimir(c),
       ));
     }
@@ -419,7 +586,7 @@ class _RegistrarAtendimentoScreenState
   final _telefoneConjugeCtrl = TextEditingController();
 
   // Geral
-  final _pontoCapCtrl = TextEditingController(text: 'Hotel');
+  final _pontoCapCtrl = TextEditingController(text: 'Presencial');
 
   String _sala = 'Villa';
   String? _brinde;
@@ -518,8 +685,8 @@ class _RegistrarAtendimentoScreenState
         captadorNome: _captador?.nome,
         linerId: _liner?.id,
         linerNome: _liner?.nome,
-        vendedorId: null, // closer definido depois
-        vendedorNome: null,
+        vendedorId: _liner?.id,   // pré-associa o vendedor para aparecer no funil
+        vendedorNome: _liner?.nome,
         numeroAtendimento: numero,
         dataEntradaSala: agora,
         dataCadastro: agora,
@@ -611,11 +778,11 @@ class _RegistrarAtendimentoScreenState
                                 final novaSala = v ?? _sala;
                                 setState(() {
                                   final autoAtual = _sala == 'Villa'
-                                      ? 'Hotel'
+                                      ? 'Presencial'
                                       : 'WhatsApp';
                                   final autoNovo =
                                       novaSala == 'Villa'
-                                          ? 'Hotel'
+                                          ? 'Presencial'
                                           : 'WhatsApp';
                                   if (_pontoCapCtrl.text.isEmpty ||
                                       _pontoCapCtrl.text ==

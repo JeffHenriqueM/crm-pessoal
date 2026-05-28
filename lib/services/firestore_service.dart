@@ -150,6 +150,21 @@ class FirestoreService {
     );
   }
 
+  /// Stream de leads da recepcionista que já avançaram no funil
+  /// (criados por ela, mas fase != atendimento).
+  Stream<List<Cliente>> getFunilRecepcaoStream() {
+    final uid = _currentUserId;
+    return _db
+        .collection(_colClientes)
+        .where('criadoPorId', isEqualTo: uid)
+        .orderBy('dataAtualizacao', descending: true)
+        .snapshots()
+        .map((s) => s.docs
+            .map<Cliente>(Cliente.fromFirestore)
+            .where((c) => c.fase != FaseCliente.atendimento && !c.deletado)
+            .toList());
+  }
+
   Future<String> adicionarCliente(Cliente cliente) async {
     final dados = cliente.toFirestore();
     dados['criadoPorId'] = _currentUserId;
@@ -717,9 +732,24 @@ class FirestoreService {
         .map((s) => s.docs.map(ComentarioTicket.fromFirestore).toList());
   }
 
-  /// Cria um novo ticket.
+  /// Retorna o próximo número de ticket (atômico via transação Firestore).
+  Future<int> proximoNumeroTicket() async {
+    final ref = _db.collection('config').doc('contadores');
+    return await _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final atual = (snap.data()?['tickets'] ?? 0) as int;
+      final proximo = atual + 1;
+      tx.set(ref, {'tickets': proximo}, SetOptions(merge: true));
+      return proximo;
+    });
+  }
+
+  /// Cria um novo ticket com número sequencial automático.
   Future<String> criarTicket(Ticket ticket) async {
-    final ref = await _db.collection(_colTickets).add(_flagTeste(ticket.toFirestore()));
+    final numero = await proximoNumeroTicket();
+    final dados = _flagTeste(ticket.toFirestore());
+    dados['numero'] = numero;
+    final ref = await _db.collection(_colTickets).add(dados);
     return ref.id;
   }
 
