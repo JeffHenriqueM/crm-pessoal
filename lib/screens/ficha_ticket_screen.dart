@@ -19,14 +19,6 @@ Color _corStatus(StatusTicket s) {
   }
 }
 
-Color _corPrioridade(PrioridadeTicket p) {
-  switch (p) {
-    case PrioridadeTicket.baixa:   return const Color(0xFF78909C);
-    case PrioridadeTicket.normal:  return const Color(0xFF1565C0);
-    case PrioridadeTicket.alta:    return const Color(0xFFE65100);
-    case PrioridadeTicket.urgente: return const Color(0xFFC62828);
-  }
-}
 
 // ── Tela de detalhe / formulário de ticket ────────────────────────────────────
 
@@ -35,6 +27,7 @@ class FichaTicketScreen extends StatefulWidget {
   final String userProfile;
   final String? currentUserId;
   final String? currentUserName;
+  final String? contexto;
 
   const FichaTicketScreen({
     super.key,
@@ -42,6 +35,7 @@ class FichaTicketScreen extends StatefulWidget {
     required this.userProfile,
     this.currentUserId,
     this.currentUserName,
+    this.contexto,
   });
 
   @override
@@ -59,8 +53,8 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
   late final TextEditingController _comentarioCtrl;
 
   StatusTicket _status = StatusTicket.aberto;
-  PrioridadeTicket _prioridade = PrioridadeTicket.normal;
-  CategoriaTicket _categoria = CategoriaTicket.suporte;
+  PrioridadeTicket _prioridade = PrioridadeTicket.media;
+  TipoTicket _tipo = TipoTicket.bug;
   Usuario? _atribuidoPara;
 
   List<Usuario> _usuarios = [];
@@ -73,9 +67,10 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
-  // Pode editar se for admin ou se for o criador
+  // Pode editar se for admin, se for ticket novo, ou se for o criador
   bool get _podeEditar {
     if (_isAdmin) return true;
+    if (_isNovo) return true; // qualquer perfil pode criar novo ticket
     final uid = widget.currentUserId ?? _authService.getCurrentUser()?.uid ?? '';
     return widget.ticket?.criadoPorId == uid;
   }
@@ -88,8 +83,8 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
     _descCtrl = TextEditingController(text: t?.descricao ?? '');
     _comentarioCtrl = TextEditingController();
     _status = t?.status ?? StatusTicket.aberto;
-    _prioridade = t?.prioridade ?? PrioridadeTicket.normal;
-    _categoria = t?.categoria ?? CategoriaTicket.suporte;
+    _prioridade = t?.prioridade ?? PrioridadeTicket.media;
+    _tipo = t?.tipo ?? TipoTicket.bug;
 
     if (_isAdmin) _carregarUsuarios();
     if (!_isNovo) _iniciarStreamComentarios();
@@ -148,9 +143,11 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
           descricao:         _descCtrl.text.trim(),
           status:            _status,
           prioridade:        _prioridade,
-          categoria:         _categoria,
+          tipo:              _tipo,
           criadoPorId:       uid,
           criadoPorNome:     nome,
+          criadoPorPerfil:   widget.userProfile,
+          contexto:          widget.contexto,
           atribuidoParaId:   _atribuidoPara?.id,
           atribuidoParaNome: _atribuidoPara?.nome,
           dataCriacao:       agora,
@@ -172,7 +169,7 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
           'descricao':         _descCtrl.text.trim(),
           'status':            _status.nome,
           'prioridade':        _prioridade.nome,
-          'categoria':         _categoria.nome,
+          'tipo':              _tipo.nome,
           'atribuidoParaId':   _atribuidoPara?.id,
           'atribuidoParaNome': _atribuidoPara?.nome,
         });
@@ -308,6 +305,46 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Breadcrumb de contexto (somente ao criar novo ticket)
+            if (_isNovo) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.location_on_outlined,
+                        size: 13, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Villamor CRM',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    if (widget.contexto != null) ...[
+                      Icon(Icons.chevron_right,
+                          size: 13, color: cs.onSurfaceVariant),
+                      Text(
+                        widget.contexto!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // Título
             TextFormField(
               controller: _tituloCtrl,
@@ -328,6 +365,7 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
               enabled: _podeEditar,
               decoration: const InputDecoration(
                 labelText: 'Descrição *',
+                hintText: 'Passos para reproduzir, o que esperava vs o que aconteceu...',
                 prefixIcon: Icon(Icons.description_outlined),
                 alignLabelWithHint: true,
               ),
@@ -338,36 +376,97 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Linha: Categoria + Prioridade
+            // Tipo: Bug / Funcionalidade
+            Text('Tipo *',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 6),
             Row(
-              children: [
-                Expanded(
-                  child: _buildDropdown<CategoriaTicket>(
-                    label: 'Categoria',
-                    value: _categoria,
-                    items: CategoriaTicket.values,
-                    displayText: (c) => c.nomeDisplay,
-                    onChanged: _podeEditar
-                        ? (v) => setState(() => _categoria = v!)
-                        : null,
+              children: TipoTicket.values.map((t) {
+                final sel = _tipo == t;
+                final idx = TipoTicket.values.indexOf(t);
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: _podeEditar ? () => setState(() => _tipo = t) : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: EdgeInsets.only(
+                          right: idx < TipoTicket.values.length - 1 ? 6 : 0),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? t.cor.withValues(alpha: 0.12)
+                            : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                        border: Border.all(
+                          color: sel ? t.cor : cs.outlineVariant,
+                          width: sel ? 1.5 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(t.icone,
+                              size: 18,
+                              color: sel ? t.cor : cs.onSurfaceVariant),
+                          const SizedBox(width: 6),
+                          Text(
+                            t.nomeDisplay,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: sel ? t.cor : cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildDropdown<PrioridadeTicket>(
-                    label: 'Prioridade',
-                    value: _prioridade,
-                    items: PrioridadeTicket.values,
-                    displayText: (p) => p.nomeDisplay,
-                    onChanged: _podeEditar
-                        ? (v) => setState(() => _prioridade = v!)
-                        : null,
-                    itemColor: _corPrioridade,
-                  ),
-                ),
-              ],
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+
+            // Prioridade: Baixa / Média / Alta
+            Text('Prioridade *',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 6),
+            Row(
+              children: PrioridadeTicket.values.map((p) {
+                final sel = _prioridade == p;
+                final idx = PrioridadeTicket.values.indexOf(p);
+                return Expanded(
+                  child: GestureDetector(
+                    onTap:
+                        _podeEditar ? () => setState(() => _prioridade = p) : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: EdgeInsets.only(right: idx < 2 ? 6 : 0),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? p.cor.withValues(alpha: 0.12)
+                            : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                        border: Border.all(
+                          color: sel ? p.cor : cs.outlineVariant,
+                          width: sel ? 1.5 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        p.nomeDisplay,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: sel ? p.cor : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
 
             // Status (editável inline + botão rápido no header)
             _buildDropdown<StatusTicket>(

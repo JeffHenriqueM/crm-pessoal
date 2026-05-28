@@ -19,25 +19,6 @@ Color _corStatus(StatusTicket s) {
   }
 }
 
-Color _corPrioridade(PrioridadeTicket p) {
-  switch (p) {
-    case PrioridadeTicket.baixa:   return const Color(0xFF78909C);
-    case PrioridadeTicket.normal:  return const Color(0xFF1565C0);
-    case PrioridadeTicket.alta:    return const Color(0xFFE65100);
-    case PrioridadeTicket.urgente: return const Color(0xFFC62828);
-  }
-}
-
-IconData _iconeCategoria(CategoriaTicket c) {
-  switch (c) {
-    case CategoriaTicket.suporte:  return Icons.support_agent_outlined;
-    case CategoriaTicket.bug:      return Icons.bug_report_outlined;
-    case CategoriaTicket.melhoria: return Icons.lightbulb_outlined;
-    case CategoriaTicket.duvida:   return Icons.help_outline;
-    case CategoriaTicket.outro:    return Icons.label_outline;
-  }
-}
-
 // ── Tela principal ────────────────────────────────────────────────────────────
 
 class TicketsScreen extends StatefulWidget {
@@ -69,6 +50,7 @@ class _TicketsScreenState extends State<TicketsScreen>
 
   StatusTicket? _filtroStatus;
   PrioridadeTicket? _filtroPrioridade;
+  TipoTicket? _filtroTipo;
 
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
@@ -108,11 +90,12 @@ class _TicketsScreenState extends State<TicketsScreen>
     return lista.where((t) {
       if (_filtroStatus != null && t.status != _filtroStatus) return false;
       if (_filtroPrioridade != null && t.prioridade != _filtroPrioridade) return false;
+      if (_filtroTipo != null && t.tipo != _filtroTipo) return false;
       return true;
     }).toList();
   }
 
-  // ── Criar ticket ───────────────────────────────────────────────────────────
+  // ── Abrir / criar ticket ───────────────────────────────────────────────────
 
   void _abrirNovoTicket() {
     Navigator.push(
@@ -122,6 +105,7 @@ class _TicketsScreenState extends State<TicketsScreen>
           userProfile: widget.userProfile,
           currentUserId: widget.currentUserId,
           currentUserName: widget.currentUserName,
+          contexto: 'Central de Tickets',
         ),
       ),
     );
@@ -145,27 +129,27 @@ class _TicketsScreenState extends State<TicketsScreen>
 
   Widget _buildFiltros() {
     final cs = Theme.of(context).colorScheme;
+    final temFiltro = _filtroStatus != null || _filtroPrioridade != null || _filtroTipo != null;
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Row(
         children: [
-          // Status chips
-          ...StatusTicket.values.map((s) {
-            final sel = _filtroStatus == s;
+          // Tipo chips
+          ...TipoTicket.values.map((t) {
+            final sel = _filtroTipo == t;
             return Padding(
               padding: const EdgeInsets.only(right: 6),
               child: FilterChip(
-                label: Text(s.nomeDisplay, style: const TextStyle(fontSize: 12)),
+                avatar: Icon(t.icone, size: 14,
+                    color: sel ? t.cor : cs.onSurfaceVariant),
+                label: Text(t.nomeDisplay, style: const TextStyle(fontSize: 12)),
                 selected: sel,
-                onSelected: (_) => setState(() => _filtroStatus = sel ? null : s),
-                selectedColor: _corStatus(s).withValues(alpha: 0.15),
-                side: BorderSide(
-                  color: sel ? _corStatus(s) : cs.outlineVariant,
-                ),
-                labelStyle: TextStyle(
-                  color: sel ? _corStatus(s) : cs.onSurfaceVariant,
-                ),
+                onSelected: (_) => setState(() => _filtroTipo = sel ? null : t),
+                selectedColor: t.cor.withValues(alpha: 0.12),
+                side: BorderSide(color: sel ? t.cor : cs.outlineVariant),
+                labelStyle: TextStyle(color: sel ? t.cor : cs.onSurfaceVariant),
                 visualDensity: VisualDensity.compact,
                 showCheckmark: false,
               ),
@@ -174,6 +158,29 @@ class _TicketsScreenState extends State<TicketsScreen>
           const SizedBox(width: 6),
           const VerticalDivider(width: 1, thickness: 1, indent: 4, endIndent: 4),
           const SizedBox(width: 6),
+
+          // Status chips
+          ...StatusTicket.values.map((s) {
+            final sel = _filtroStatus == s;
+            final cor = _corStatus(s);
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(
+                label: Text(s.nomeDisplay, style: const TextStyle(fontSize: 12)),
+                selected: sel,
+                onSelected: (_) => setState(() => _filtroStatus = sel ? null : s),
+                selectedColor: cor.withValues(alpha: 0.15),
+                side: BorderSide(color: sel ? cor : cs.outlineVariant),
+                labelStyle: TextStyle(color: sel ? cor : cs.onSurfaceVariant),
+                visualDensity: VisualDensity.compact,
+                showCheckmark: false,
+              ),
+            );
+          }),
+          const SizedBox(width: 6),
+          const VerticalDivider(width: 1, thickness: 1, indent: 4, endIndent: 4),
+          const SizedBox(width: 6),
+
           // Prioridade chips
           ...PrioridadeTicket.values.map((p) {
             final sel = _filtroPrioridade == p;
@@ -183,25 +190,23 @@ class _TicketsScreenState extends State<TicketsScreen>
                 label: Text(p.nomeDisplay, style: const TextStyle(fontSize: 12)),
                 selected: sel,
                 onSelected: (_) => setState(() => _filtroPrioridade = sel ? null : p),
-                selectedColor: _corPrioridade(p).withValues(alpha: 0.15),
-                side: BorderSide(
-                  color: sel ? _corPrioridade(p) : cs.outlineVariant,
-                ),
-                labelStyle: TextStyle(
-                  color: sel ? _corPrioridade(p) : cs.onSurfaceVariant,
-                ),
+                selectedColor: p.cor.withValues(alpha: 0.15),
+                side: BorderSide(color: sel ? p.cor : cs.outlineVariant),
+                labelStyle: TextStyle(color: sel ? p.cor : cs.onSurfaceVariant),
                 visualDensity: VisualDensity.compact,
                 showCheckmark: false,
               ),
             );
           }),
-          if (_filtroStatus != null || _filtroPrioridade != null) ...[
+
+          if (temFiltro) ...[
             const SizedBox(width: 6),
             ActionChip(
               label: const Text('Limpar', style: TextStyle(fontSize: 12)),
               onPressed: () => setState(() {
                 _filtroStatus = null;
                 _filtroPrioridade = null;
+                _filtroTipo = null;
               }),
               avatar: Icon(Icons.clear, size: 14, color: cs.error),
               side: BorderSide(color: cs.outlineVariant),
@@ -218,7 +223,6 @@ class _TicketsScreenState extends State<TicketsScreen>
   Widget _buildCard(Ticket ticket) {
     final cs = Theme.of(context).colorScheme;
     final corS = _corStatus(ticket.status);
-    final corP = _corPrioridade(ticket.prioridade);
     final fmt = DateFormat('dd/MM', 'pt_BR');
 
     return Card(
@@ -236,15 +240,20 @@ class _TicketsScreenState extends State<TicketsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Linha superior: categoria ícone + título + prioridade badge
+              // Linha superior: ícone tipo + #numero + título + badge prioridade
               Row(
                 children: [
-                  Icon(
-                    _iconeCategoria(ticket.categoria),
-                    size: 15,
-                    color: cs.onSurfaceVariant,
-                  ),
+                  Icon(ticket.tipo.icone, size: 15, color: ticket.tipo.cor),
                   const SizedBox(width: 6),
+                  if (ticket.numero > 0)
+                    Text(
+                      '#${ticket.numero} ',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
                   Expanded(
                     child: Text(
                       ticket.titulo,
@@ -257,28 +266,29 @@ class _TicketsScreenState extends State<TicketsScreen>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Badge de prioridade (apenas alta/urgente são visíveis)
-                  if (ticket.prioridade == PrioridadeTicket.alta ||
-                      ticket.prioridade == PrioridadeTicket.urgente)
+                  // Badge de prioridade (somente Alta)
+                  if (ticket.prioridade == PrioridadeTicket.alta)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
-                        color: corP.withValues(alpha: 0.12),
+                        color: ticket.prioridade.cor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: corP.withValues(alpha: 0.3)),
+                        border: Border.all(
+                            color: ticket.prioridade.cor.withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         ticket.prioridade.nomeDisplay,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: corP,
+                          color: ticket.prioridade.cor,
                         ),
                       ),
                     ),
                 ],
               ),
               const SizedBox(height: 4),
+
               // Descrição preview
               Text(
                 ticket.descricao,
@@ -287,7 +297,8 @@ class _TicketsScreenState extends State<TicketsScreen>
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 8),
-              // Linha inferior: status + data + autor + comentários
+
+              // Linha inferior: status + tipo badge + data + comentários
               Row(
                 children: [
                   // Status chip
@@ -307,27 +318,60 @@ class _TicketsScreenState extends State<TicketsScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Categoria
-                  Text(
-                    ticket.categoria.nomeDisplay,
-                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 6),
+
+                  // Tipo badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: ticket.tipo.cor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: ticket.tipo.cor.withValues(alpha: 0.25)),
+                    ),
+                    child: Text(
+                      ticket.tipo.nomeDisplay,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: ticket.tipo.cor,
+                      ),
+                    ),
                   ),
+
                   const Spacer(),
-                  // Comentários
-                  if (ticket.totalComentarios > 0) ...[
-                    Icon(Icons.chat_bubble_outline, size: 12, color: cs.onSurfaceVariant),
+
+                  // Criador
+                  if (ticket.criadoPorNome.isNotEmpty) ...[
+                    Icon(Icons.person_outline,
+                        size: 12, color: cs.onSurfaceVariant),
                     const SizedBox(width: 3),
                     Text(
-                      '${ticket.totalComentarios}',
-                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                      ticket.criadoPorNome,
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                     ),
                     const SizedBox(width: 8),
                   ],
+
+                  // Comentários
+                  if (ticket.totalComentarios > 0) ...[
+                    Icon(Icons.chat_bubble_outline,
+                        size: 12, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${ticket.totalComentarios}',
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+
                   // Data
                   Text(
                     fmt.format(ticket.dataAtualizacao),
-                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                   ),
                 ],
               ),

@@ -10,6 +10,7 @@ import '../screens/negociacoes_screen.dart';
 import '../screens/recepcao_screen.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/vendedor_home_screen.dart';
+import '../screens/ficha_ticket_screen.dart';
 import '../services/auth_service.dart';
 import '../utils/env.dart';
 import 'notificacao_bell.dart';
@@ -164,6 +165,36 @@ class _MainShellState extends State<MainShell> {
     await prefs.setBool('sidebar_expanded', novoEstado);
   }
 
+  // ── Nome da tela atual (para contexto do ticket) ──────────────────────────
+  String get _nomeTelaAtual {
+    final items = _navItems;
+    if (_selectedIndex >= items.length) return 'Sistema';
+    return items[_selectedIndex].label;
+  }
+
+  // ── FAB global de ticket (canto inferior esquerdo) ────────────────────────
+  Widget _buildTicketFab(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return FloatingActionButton.small(
+      heroTag: 'global_ticket_fab',
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FichaTicketScreen(
+            userProfile: widget.userProfile,
+            currentUserId: widget.currentUserId,
+            currentUserName: widget.currentUserName,
+            contexto: _nomeTelaAtual,
+          ),
+        ),
+      ),
+      tooltip: 'Abrir ticket',
+      backgroundColor: cs.secondaryContainer,
+      foregroundColor: cs.onSecondaryContainer,
+      child: const Icon(Icons.confirmation_number_outlined, size: 20),
+    );
+  }
+
   // ── Configurações ─────────────────────────────────────────────────────────
   void _abrirConfiguracoes(BuildContext context) {
     Navigator.push(
@@ -203,6 +234,8 @@ class _MainShellState extends State<MainShell> {
                   ))
               .toList(),
         ),
+        floatingActionButton: _buildTicketFab(context),
+        floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       );
     }
 
@@ -217,9 +250,18 @@ class _MainShellState extends State<MainShell> {
               children: [
                 _buildSidebarPanel(context),
                 Expanded(
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: _pages,
+                  child: Stack(
+                    children: [
+                      IndexedStack(
+                        index: _selectedIndex,
+                        children: _pages,
+                      ),
+                      Positioned(
+                        bottom: 16,
+                        left: 16,
+                        child: _buildTicketFab(context),
+                      ),
+                    ],
                   ),
                 ),
               ],
