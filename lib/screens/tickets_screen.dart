@@ -1,8 +1,10 @@
 // lib/screens/tickets_screen.dart
 
 import 'dart:async';
+import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:web/web.dart' as web;
 import '../models/ticket_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
@@ -82,6 +84,50 @@ class _TicketsScreenState extends State<TicketsScreen>
     _todosSub?.cancel();
     _meusSub?.cancel();
     super.dispose();
+  }
+
+  // ── Export CSV ────────────────────────────────────────────────────────────
+
+  String _csvEscape(String v) {
+    if (v.contains(',') || v.contains('"') || v.contains('\n')) {
+      return '"${v.replaceAll('"', '""')}"';
+    }
+    return v;
+  }
+
+  void _exportarCSV() {
+    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    final buffer = StringBuffer();
+    buffer.writeln('Numero,Titulo,Tipo,Prioridade,Status,Criado Por,Perfil,Contexto,Data Criacao,Data Atualizacao');
+
+    for (final t in _todos) {
+      buffer.writeln([
+        t.numero > 0 ? '#${t.numero}' : '',
+        _csvEscape(t.titulo),
+        t.tipo.nomeDisplay,
+        t.prioridade.nomeDisplay,
+        t.status.nomeDisplay,
+        _csvEscape(t.criadoPorNome),
+        _csvEscape(t.criadoPorPerfil),
+        _csvEscape(t.contexto ?? ''),
+        fmt.format(t.dataCriacao),
+        fmt.format(t.dataAtualizacao),
+      ].join(','));
+    }
+
+    final csv = buffer.toString();
+    final blob = web.Blob(
+      [csv.toJS].toJS,
+      web.BlobPropertyBag(type: 'text/csv;charset=utf-8'),
+    );
+    final url = web.URL.createObjectURL(blob);
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement
+      ..href = url
+      ..download = 'tickets_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv';
+    web.document.body!.append(anchor);
+    anchor.click();
+    anchor.remove();
+    web.URL.revokeObjectURL(url);
   }
 
   // ── Filtros ────────────────────────────────────────────────────────────────
@@ -425,6 +471,14 @@ class _TicketsScreenState extends State<TicketsScreen>
       appBar: AppBar(
         title: const Text('Tickets'),
         automaticallyImplyLeading: false,
+        actions: [
+          if (_isAdmin && _todos.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.download_outlined),
+              tooltip: 'Exportar CSV',
+              onPressed: _exportarCSV,
+            ),
+        ],
         bottom: _isAdmin
             ? TabBar(
                 controller: _tabCtrl,
