@@ -73,6 +73,14 @@ const _usuarios = [
     icone: Icons.account_balance_outlined,
     descricao: 'Visão financeira e relatórios',
   ),
+  _MockUser(
+    nome: 'Marcio',
+    perfil: 'super admin',
+    id: 'mock_marcio',
+    cor: Color(0xFFB8860B),
+    icone: Icons.verified_user_outlined,
+    descricao: 'Acesso completo + gerenciamento de usuários',
+  ),
 ];
 
 // ── Tela principal ────────────────────────────────────────────────────────────
