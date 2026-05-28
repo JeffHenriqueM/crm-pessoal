@@ -11,6 +11,7 @@ import '../screens/recepcao_screen.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/vendedor_home_screen.dart';
 import '../services/auth_service.dart';
+import '../utils/env.dart';
 import 'notificacao_bell.dart';
 
 // ── Modelo interno de item de nav ─────────────────────────────────────────────
@@ -180,9 +181,16 @@ class _MainShellState extends State<MainShell> {
     if (isMobile) {
       return Scaffold(
         appBar: _buildMobileAppBar(context),
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: _pages,
+        body: Column(
+          children: [
+            if (kIsStaging) _buildStagingBanner(),
+            Expanded(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: _pages,
+              ),
+            ),
+          ],
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _selectedIndex,
@@ -200,14 +208,46 @@ class _MainShellState extends State<MainShell> {
 
     // ── Desktop: collapsible sidebar ───────────────────────────────────────
     return Scaffold(
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Column(
         children: [
-          _buildSidebarPanel(context),
+          if (kIsStaging) _buildStagingBanner(),
           Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: _pages,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildSidebarPanel(context),
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _pages,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Banner de staging ──────────────────────────────────────────────────────
+  Widget _buildStagingBanner() {
+    return Container(
+      width: double.infinity,
+      color: Colors.orange.shade700,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.science_outlined, size: 13, color: Colors.white),
+          SizedBox(width: 6),
+          Text(
+            'STAGING — Lançamentos de teste serão excluídos automaticamente',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
             ),
           ),
         ],

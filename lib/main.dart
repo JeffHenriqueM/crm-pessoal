@@ -3,28 +3,22 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
-import 'firebase_options_staging.dart';
 import 'services/auth_service.dart';
+import 'services/firestore_service.dart';
 import 'services/push_notification_service.dart';
 import 'screens/recepcao_screen.dart';
-import 'screens/staging_login_screen.dart';
 import 'screens/tela_login_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
+import 'utils/env.dart';
 import 'widgets/main_shell.dart';
-
-// ── Ambiente ──────────────────────────────────────────────────────────────────
-// Compilar para staging:  --dart-define=ENV=staging
-// Compilar para produção: sem flag (ou --dart-define=ENV=prod)
-const _env = String.fromEnvironment('ENV', defaultValue: 'prod');
-const kIsStaging = _env == 'staging';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final options = kIsStaging
-      ? StagingFirebaseOptions.currentPlatform
-      : DefaultFirebaseOptions.currentPlatform;
-  await Firebase.initializeApp(options: options);
+  // Sempre usa Firebase de produção — staging e prod compartilham o mesmo banco.
+  // A detecção do ambiente é feita em runtime por kIsStaging (utils/env.dart).
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (kIsStaging) FirestoreService.modoTeste = true;
   await ThemeController.instance.initialize();
   runApp(const VillamorCrmApp());
 }
@@ -37,7 +31,7 @@ class VillamorCrmApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: ThemeController.instance,
       builder: (_, __) => MaterialApp(
-        title: kIsStaging ? '[STAGING] Villamor CRM' : 'Villamor CRM',
+        title: kIsStaging ? '[STAGING] Villamor CRM' : 'Villamor CRM', // kIsStaging de utils/env.dart
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeController.instance.mode,
@@ -47,7 +41,7 @@ class VillamorCrmApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('pt', 'BR')],
-        home: kIsStaging ? const StagingLoginScreen() : const AuthWrapper(),
+        home: const AuthWrapper(),
         debugShowCheckedModeBanner: false,
       ),
     );

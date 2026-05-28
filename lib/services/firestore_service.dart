@@ -18,6 +18,23 @@ class FirestoreService {
   String get _currentUserId => _auth.currentUser?.uid ?? 'sistema';
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário';
 
+  // ── Modo teste (staging) ──────────────────────────────────────────────────
+  /// Quando true, todos os documentos criados recebem isTeste:true + expireAt:amanhã.
+  /// Ativado automaticamente em ambiente staging via main.dart.
+  static bool modoTeste = false;
+
+  /// Aplica a flag de teste ao mapa de dados, se estiver em modo teste.
+  Map<String, dynamic> _flagTeste(Map<String, dynamic> dados) {
+    if (!modoTeste) return dados;
+    return {
+      ...dados,
+      'isTeste': true,
+      'expireAt': Timestamp.fromDate(
+        DateTime.now().add(const Duration(days: 1)),
+      ),
+    };
+  }
+
   // --- CLIENTES ---
 
   Stream<List<Cliente>> getTodosClientesStream({
@@ -141,7 +158,7 @@ class FirestoreService {
     dados['atualizadoPorNome'] = _currentUserName;
     dados['dataCadastro'] = FieldValue.serverTimestamp();
     dados['dataAtualizacao'] = FieldValue.serverTimestamp();
-    final docRef = await _db.collection(_colClientes).add(dados);
+    final docRef = await _db.collection(_colClientes).add(_flagTeste(dados));
     return docRef.id;
   }
 
@@ -233,7 +250,7 @@ class FirestoreService {
         .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
-        .add(dados);
+        .add(_flagTeste(dados));
   }
 
   Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
@@ -396,7 +413,7 @@ class FirestoreService {
     dados['criadoPorNome'] = _currentUserName;
     dados['editadoPorId'] = _currentUserId;
     dados['editadoPorNome'] = _currentUserName;
-    final docRef = await _db.collection(_colNegociacoes).add(dados);
+    final docRef = await _db.collection(_colNegociacoes).add(_flagTeste(dados));
     // Atualiza dataAtualizacao do cliente vinculado, se houver
     if (negociacao.clienteId != null) {
       await _db.collection(_colClientes).doc(negociacao.clienteId).update({
@@ -645,7 +662,7 @@ class FirestoreService {
     dados['criadoPorId'] = _currentUserId;
     dados['criadoPorNome'] = _currentUserName;
     dados['criadoEm'] = FieldValue.serverTimestamp();
-    await _db.collection(_colCampanhas).add(dados);
+    await _db.collection(_colCampanhas).add(_flagTeste(dados));
   }
 
   Future<void> atualizarCampanha(Campanha campanha) async {
@@ -702,7 +719,7 @@ class FirestoreService {
 
   /// Cria um novo ticket.
   Future<String> criarTicket(Ticket ticket) async {
-    final ref = await _db.collection(_colTickets).add(ticket.toFirestore());
+    final ref = await _db.collection(_colTickets).add(_flagTeste(ticket.toFirestore()));
     return ref.id;
   }
 
@@ -720,7 +737,7 @@ class FirestoreService {
         .doc(ticketId)
         .collection('comentarios')
         .doc();
-    batch.set(comentariosRef, comentario.toFirestore());
+    batch.set(comentariosRef, _flagTeste(comentario.toFirestore()));
     batch.update(
       _db.collection(_colTickets).doc(ticketId),
       {
