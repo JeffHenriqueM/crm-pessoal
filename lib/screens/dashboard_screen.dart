@@ -37,11 +37,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       setState(() {
         _userProfile = perfil;
-        if (perfil != 'admin') {
+        if (perfil != 'admin' && perfil != 'super admin') {
           _vendedorIdFiltro = currentUser?.uid;
         }
       });
-      if (perfil == 'admin') {
+      if (perfil == 'admin' || perfil == 'super admin') {
         _firestoreService.getTodosUsuarios().then((vendedores) {
           if (!mounted) return;
           setState(() => _todosVendedores = vendedores);
@@ -52,7 +52,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = _userProfile == 'admin';
+    final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
       length: isAdmin ? 6 : 1,

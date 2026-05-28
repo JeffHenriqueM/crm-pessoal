@@ -34,6 +34,7 @@ class _NegociacoesScreenState extends State<NegociacoesScreen>
 
   bool get _isAdmin =>
       widget.userProfile == 'admin' ||
+      widget.userProfile == 'super admin' ||
       widget.userProfile == 'pós-venda' ||
       widget.userProfile == 'financeiro';
 

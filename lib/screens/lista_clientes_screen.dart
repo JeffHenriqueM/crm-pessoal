@@ -50,7 +50,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
       (_filtroEmbaixadorId != null ? 1 : 0) +
       (_filtroPeriodo != null ? 1 : 0);
 
-  bool get _isAdmin => _userProfile == 'admin';
+  bool get _isAdmin => _userProfile == 'admin' || _userProfile == 'super admin';
 
   @override
   void initState() {
@@ -69,7 +69,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     _authService.getCurrentUserProfile().then((perfil) {
       if (!mounted) return;
       setState(() => _userProfile = perfil);
-      if (perfil == 'admin') {
+      if (perfil == 'admin' || perfil == 'super admin') {
         setState(() {
           _vendedorIdFiltro = widget.vendedorIdInicial;
           _clientesStream = _firestoreService.getTodosClientesStream(
