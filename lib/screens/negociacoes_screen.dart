@@ -194,14 +194,33 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
   String _filtroStatus = ''; // '' = todos
   String _filtroTipo = ''; // '' = todos
 
+  // Stream cacheado para não ser recriado a cada rebuild (causava appear/disappear)
+  late Stream<List<Negociacao>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = widget.service.getNegociacoesGlobaisStream(
+      embaixadorId: widget.embaixadorId,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_ListaNegociacoes old) {
+    super.didUpdateWidget(old);
+    if (old.embaixadorId != widget.embaixadorId) {
+      _stream = widget.service.getNegociacoesGlobaisStream(
+        embaixadorId: widget.embaixadorId,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return StreamBuilder<List<Negociacao>>(
-      stream: widget.service.getNegociacoesGlobaisStream(
-        embaixadorId: widget.embaixadorId,
-      ),
+      stream: _stream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

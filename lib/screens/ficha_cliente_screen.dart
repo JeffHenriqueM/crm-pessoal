@@ -646,12 +646,17 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         };
         await _service.atualizarClienteDetalhes(_clienteId!, dados);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${_nomeCtrl.text.trim()} atualizado!'),
-              backgroundColor: Colors.green.shade700,
-            ),
-          );
+          if (widget.userProfile == 'recepcao') {
+            // Volta para a lista da recepção com resultado "salvo"
+            Navigator.of(context).pop(true);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_nomeCtrl.text.trim()} atualizado!'),
+                backgroundColor: Colors.green.shade700,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -701,15 +706,23 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
 
   void _pedirMotivoPerda(FaseCliente novaFase) {
     final motivoCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Registrar Perda'),
-        content: TextField(
-          controller: motivoCtrl,
-          decoration:
-              const InputDecoration(hintText: 'Qual o motivo da perda?'),
-          maxLines: 3,
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: motivoCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Qual o motivo da perda?',
+              labelText: 'Motivo *',
+            ),
+            maxLines: 3,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Informe o motivo da perda.' : null,
+          ),
         ),
         actions: [
           TextButton(
@@ -717,6 +730,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               child: const Text('Cancelar')),
           FilledButton(
             onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
               await _service.atualizarFaseCliente(_clienteId!, novaFase,
                   motivo: motivoCtrl.text.trim());
               if (mounted) setState(() => _fase = novaFase);
@@ -1125,6 +1139,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       dense: true,
                     ),
                   ),
+                if (widget.userProfile == 'admin' || widget.userProfile == 'super admin') ...[
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'apagar',
@@ -1137,6 +1152,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                     dense: true,
                   ),
                 ),
+                ], // fim if (isAdmin)
               ],
             ),
         ],

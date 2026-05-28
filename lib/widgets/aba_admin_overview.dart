@@ -132,7 +132,7 @@ class _AbaAdminOverviewState extends State<AbaAdminOverview> {
         ? todoStats
         : todoStats.where((s) => s.vendedorId == _filtroVendedorId).toList();
 
-    final totalLeads = widget.todosClientes.length;
+    final totalLeads = stats.fold<int>(0, (s, v) => s + v.total);
     final totalAtrasados = stats.fold<int>(0, (s, v) => s + v.atrasados);
     final totalNegociacao = stats.fold<int>(0, (s, v) => s + v.emNegociacao);
     final totalFechados = stats.fold<int>(0, (s, v) => s + v.fechados);
