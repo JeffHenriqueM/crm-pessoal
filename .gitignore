@@ -18,10 +18,8 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -34,9 +32,23 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Screenshots de tickets (somente o .gitkeep é versionado)
+tickets_screenshots/*.png
+tickets_screenshots/*.jpg
+tickets_screenshots/*.jpeg
+tickets_screenshots/*.gif
+tickets_screenshots/*.webp
+
+# Secrets / Variáveis de ambiente
+.env
+.env.*
+serviceAccount.json
+
 # Firebase
 .firebase/
 firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # Symbolication related
 app.*.symbols

@@ -1,0 +1,77 @@
+# CLAUDE.md — Villamor CRM (`crm_pessoal`)
+
+## 🛠️ Comandos de Execução e Deploy
+- Rodar Web Local: `flutter run -d chrome --web-port 5173`
+- Build Release: `flutter build web --release --no-tree-shake-icons`
+- Deploy Preview: `firebase hosting:channel:deploy preview_nome --project crm-pessoal-d993d`
+- Deploy Produção: `firebase deploy --only hosting --project crm-pessoal-d993d`
+- Build Functions: `cd functions && npm run build`
+- Deploy Functions: `firebase deploy --only functions --project crm-pessoal-d993d`
+
+## 📐 Diretrizes de Arquitetura e Código
+- Idioma: Código de negócio, variáveis, métodos, comentários e Firestore em **Português**. Widgets Flutter e padrões de framework em **Inglês**.
+- Camada de Dados: Widgets NUNCA chamam o Firestore diretamente. Toda comunicação deve passar obrigatoriamente por `lib/services/firestore_service.dart` ou `auth_service.dart`.
+- Logs: Use `debugPrint()` em vez de `print()`.
+- Convenção de Commits: Seguir rigidamente o Conventional Commits (ex: `feat(escopo): descrição`, `fix(escopo): descrição`). Nunca comitar em `main`.
+
+## 🔒 Regras Críticas de Negócio e Auditoria
+- Soft-Delete Obrigatório: NUNCA usar `.delete()` em documentos da coleção `clientes/`. Use `deletado = true` e grave a operação em `/audit_log`.
+- Histórico de Modificações: Toda alteração de fase ou save de cliente deve gerar um snapshot parcial na subcoleção `clientes/{id}/historico/`.
+- Permissões de Escopo:
+  * Perfis `admin`, `pós-venda`, `financeiro`, `super admin` veem TODOS os clientes.
+  * Perfis `vendedor`, `captador` veem APENAS os seus próprios leads (onde são donos/criadores).
+
+## 🗺️ Mapa de Telas e Responsabilidades
+
+Use este mapa para ir direto ao arquivo correto sem grep:
+
+| Tela / Widget | Arquivo | Responsabilidade |
+|---|---|---|
+| Login (produção) | `lib/screens/tela_login_screen.dart` | Autenticação e roteamento por perfil |
+| Login (staging) | `lib/screens/staging_login_screen.dart` | Login com mocks para ambiente de testes |
+| Dashboard admin | `lib/screens/dashboard_screen.dart` | Shell das abas do dashboard |
+| Aba Equipe (admin) | `lib/widgets/aba_admin_overview.dart` | Ranking, filtro por vendedor, contagem de leads |
+| Aba Financeiro | `lib/widgets/aba_financeiro.dart` | KPIs e gráfico de fechamentos |
+| Aba Captação | `lib/widgets/aba_captacao.dart` | Ranking de captadores |
+| Aba Estatísticas | `lib/widgets/aba_estatisticas.dart` | Funil de conversão |
+| Aba Relatórios | `lib/widgets/aba_relatorios.dart` | Saúde da carteira e leads esquecidos |
+| Aba Perdas | `lib/widgets/aba_motivos_perda.dart` | Motivos de não-venda |
+| Home vendedor | `lib/screens/vendedor_home_screen.dart` | Dashboard pessoal + meta do vendedor |
+| Pipeline (lista/kanban) | `lib/screens/lista_clientes_screen.dart` | Listagem e filtros de leads |
+| Kanban board | `lib/widgets/kanban_view.dart` | Drag-and-drop de fases, modal de mudança de fase |
+| Ficha do lead | `lib/screens/ficha_cliente_screen.dart` | Dados, timeline e negociações do lead |
+| Negociações | `lib/screens/negociacoes_screen.dart` | Lista de propostas; `lib/widgets/aba_negociacoes.dart` dentro da ficha |
+| Recepção | `lib/screens/recepcao_screen.dart` | Cadastro de atendimento e promoção para lead |
+| Tickets | `lib/screens/tickets_screen.dart` + `lib/screens/ficha_ticket_screen.dart` | Pós-venda |
+| Campanhas | `lib/screens/campanhas_screen.dart` | Gestão de campanhas |
+| Gerenciar usuários | `lib/screens/gerenciar_usuarios_screen.dart` | CRUD de usuários (admin) |
+| Configurações | `lib/screens/configuracoes_screen.dart` | Preferências do usuário logado |
+| PDF da ficha | `lib/services/ficha_pdf.dart` | Geração e impressão da ficha do cliente |
+| PDF de proposta | `lib/services/proposta_pdf.dart` | Exportação de proposta comercial |
+| Notificações push | `lib/services/push_notification_service.dart` | FCM |
+| Detecção de ambiente | `lib/utils/env.dart` | Flag `isTeste` (staging vs produção) |
+
+---
+
+## 🪓 Contexto para Resolução de Backlog Ativo
+Ao atuar nos tickets abertos do sistema, consulte os seguintes arquivos-alvo para evitar buscas globais (grep) desnecessárias:
+
+1. **Bug do Filtro no Dashboard Admin (Contagem de Leads Geral vs Selecionado):**
+   - *Arquivo-alvo:* `lib/widgets/aba_admin_overview.dart` e `lib/screens/dashboard_screen.dart`.
+   - *Ação:* Garantir que a recontagem de leads aplique o filtro do UID do vendedor selecionado e não o tamanho total do snapshot.
+
+2. **Erro na Impressão de Ficha no Ambiente de Teste:**
+   - *Arquivo-alvo:* `lib/services/ficha_pdf.dart` e o gatilho de chamada em `lib/screens/ficha_cliente_screen.dart`.
+
+3. **Sumisso/Aparecimento de Negociações no Perfil Vendedor:**
+   - *Arquivo-alvo:* `lib/screens/negociacoes_screen.dart` e `lib/widgets/aba_negociacoes.dart`.
+   - *Ação:* Validar se a query do Firestore na coleção raiz `/negociacoes` está filtrando corretamente pelo `vendedorId` ou se está aplicando regras restritivas demais.
+
+4. **Campo de Motivo de Perda Obrigatório:**
+   - *Arquivo-alvo:* `lib/models/fase_enum.dart` (validação), `lib/widgets/kanban_view.dart` (modal de mudança de fase) e `lib/widgets/aba_motivos_perda.dart`.
+
+5. **Erro ao Exportar PDF da Proposta:**
+   - *Arquivo-alvo:* `lib/services/proposta_pdf.dart` e a chamada do botão de exportação.
+
+6. **Vendedor Desassociando ao Reabrir Lead Criado na Recepção:**
+   - *Arquivo-alvo:* `lib/screens/recepcao_screen.dart` ao promover o atendimento para o funil, e o mapeamento de campos em `lib/models/cliente_model.dart`.

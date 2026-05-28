@@ -1,5 +1,9 @@
 # Guia de Contribuição — Villamor CRM
 
+> Convenções de commit e regras de código estão em `CLAUDE.md`. Este arquivo cobre apenas o fluxo Git.
+
+---
+
 ## Fluxo de branches
 
 ```
@@ -10,61 +14,32 @@ fix/...       → correções de bugs
 hotfix/...    → correções urgentes em produção
 ```
 
-### Exemplo de fluxo:
+### Exemplo de fluxo
 ```bash
 git checkout develop
-git checkout -b feature/nova-funcionalidade
+git checkout -b feature/nome-da-feature
 
 # ... desenvolva ...
 
-git push origin feature/nova-funcionalidade
-# Abra um Pull Request de feature/... → develop
-```
-
----
-
-## Padrão de commits (Conventional Commits)
-
-```
-<tipo>(<escopo>): <descrição curta no imperativo>
-```
-
-### Tipos permitidos:
-
-| Tipo       | Quando usar                                              |
-|------------|----------------------------------------------------------|
-| `feat`     | Nova funcionalidade                                      |
-| `fix`      | Correção de bug                                          |
-| `refactor` | Melhoria de código sem mudar comportamento               |
-| `style`    | Ajuste de UI, cores, espaçamento (sem lógica)            |
-| `chore`    | Atualização de dependências, config, scripts             |
-| `docs`     | Documentação                                             |
-| `test`     | Adição ou correção de testes                             |
-
-### Exemplos:
-
-```bash
-git commit -m "feat(clientes): adicionar filtro por data de captação"
-git commit -m "fix(busca): corrigir pesquisa que não retornava resultados"
-git commit -m "style(login): aplicar identidade visual Villamor CRM"
-git commit -m "refactor(firestore): substituir print por debugPrint"
-git commit -m "chore(deps): atualizar fl_chart para 1.2.0"
+git push origin feature/nome-da-feature
+# Abra um Pull Request: feature/... → develop
 ```
 
 ---
 
 ## Pull Requests
 
-- Todo PR deve ter título seguindo o padrão de commits
+- Título do PR segue o mesmo padrão de commits (ver `CLAUDE.md`)
 - Descreva brevemente **o que** e **por que** foi feito
-- Nunca faça merge sem ao menos uma revisão (quando a equipe crescer)
 - PRs em `main` exigem que o build passe
+- Nunca fazer merge sem ao menos uma revisão (quando a equipe crescer)
 
 ---
 
-## Regras gerais
+## Arquivos sensíveis — nunca commitar
 
-- **Nunca comitar diretamente em `main`**
-- Não commitar arquivos sensíveis (`.env`, `firebase_options.dart` contém chaves — já está no `.gitignore` excluído? Verificar)
-- Manter o `CHANGELOG.md` atualizado ao fazer releases
-- Usar `debugPrint` em vez de `print` no código Dart
+- `lib/firebase_options.dart`
+- `lib/firebase_options_staging.dart`
+- `.env` (se criado)
+
+Todos já estão no `.gitignore`.
