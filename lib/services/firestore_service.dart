@@ -348,13 +348,17 @@ class FirestoreService {
   static const _colNegociacoes = 'negociacoes';
 
   /// Stream de negociações filtrado por clienteId (aba do cliente).
+  /// Ordenação feita em Dart para evitar dependência de índice composto no Firestore.
   Stream<List<Negociacao>> getNegociacoesStream(String clienteId) {
     return _db
         .collection(_colNegociacoes)
         .where('clienteId', isEqualTo: clienteId)
-        .orderBy('dataCriacao', descending: false)
         .snapshots()
-        .map((s) => s.docs.map((d) => Negociacao.fromFirestore(d)).toList());
+        .map((s) {
+          final lista = s.docs.map((d) => Negociacao.fromFirestore(d)).toList();
+          lista.sort((a, b) => a.dataCriacao.compareTo(b.dataCriacao));
+          return lista;
+        });
   }
 
   /// Stream global: admin vê todas; embaixador vê as suas.
