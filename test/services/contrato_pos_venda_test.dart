@@ -119,7 +119,6 @@ void main() {
               'criadoEm: serverTimestamp() com merge em todo save.',
         );
       },
-      tags: 'bug-aberto',
     );
   });
 }

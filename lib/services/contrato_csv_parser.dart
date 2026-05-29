@@ -34,7 +34,7 @@ List<Contrato> parsearCsvContratos(String conteudo) {
     return i;
   }
 
-  final iLoc = idx('LOCALIZADOR');
+  final iLoc = idxExato('LOCALIZADOR');
   if (iLoc < 0) throw Exception('Coluna LOCALIZADOR não encontrada');
 
   final contratos = <Contrato>[];
@@ -94,7 +94,7 @@ List<Contrato> parsearCsvContratos(String conteudo) {
       Contrato(
         localizador: localizador,
         localizadorAtendimento: cel(idx('LOCALIZADOR ATENDIMENTO')),
-        dataContrato: parseData(idx('DATA')),
+        dataContrato: parseData(idxExato('DATA')),
         nomeComprador: cel(idx('CESSIONÁRIO 1')),
         cpfComprador: cel(idx('CPF/CNPJ cessionário 1')),
         emailComprador: cel(idx('E-mail cessionário 1')),

@@ -25,14 +25,20 @@ class AuthService {
         password: password,
       );
 
-      // Verifica se o usuário está ativo no Firestore
+      // Verifica se o usuário está ativo no Firestore — fail-closed:
+      // qualquer falha na verificação faz signOut para evitar estado inconsistente.
       final uid = credential.user?.uid;
       if (uid != null) {
-        final doc = await _db.collection('usuarios').doc(uid).get();
-        final ativo = doc.exists ? (doc.data()?['ativo'] ?? true) : true;
-        if (!ativo) {
+        try {
+          final doc = await _db.collection('usuarios').doc(uid).get();
+          final ativo = doc.exists ? (doc.data()?['ativo'] ?? true) : true;
+          if (!ativo) {
+            await _auth.signOut();
+            return 'Seu acesso foi desativado. Entre em contato com o administrador.';
+          }
+        } catch (_) {
           await _auth.signOut();
-          return 'Seu acesso foi desativado. Entre em contato com o administrador.';
+          return 'Não foi possível verificar sua conta. Tente novamente.';
         }
       }
 

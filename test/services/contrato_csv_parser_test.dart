@@ -62,7 +62,6 @@ void main() {
               'errada. A resolução deveria ser por nome exato de coluna.',
         );
       },
-      tags: 'bug-aberto',
     );
 
     test(
@@ -84,7 +83,6 @@ void main() {
               'nascimento em vez da data do contrato.',
         );
       },
-      tags: 'bug-aberto',
     );
   });
 

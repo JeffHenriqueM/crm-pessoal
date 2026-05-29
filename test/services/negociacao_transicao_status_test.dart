@@ -55,7 +55,7 @@ void main() {
       expect(await statusAtual('n1'), isNot('aprovada'),
           reason:
               'Aprovou sem passar por "pendente" — transição inválida (#3).');
-    }, tags: 'bug-aberto');
+    });
 
     test('não nega negociação que nunca foi solicitada (semSolicitacao)',
         () async {
@@ -65,7 +65,7 @@ void main() {
 
       expect(await statusAtual('n2'), isNot('negada'),
           reason: 'Negou algo nunca submetido a aprovação — inválido (#3).');
-    }, tags: 'bug-aberto');
+    });
 
     test('não aprova negociação já negada (negada → aprovada)', () async {
       await semearNegociacao('n3', 'negada');
@@ -75,7 +75,7 @@ void main() {
       expect(await statusAtual('n3'), isNot('aprovada'),
           reason:
               'Reverteu negação direto para aprovada sem novo fluxo (#3).');
-    }, tags: 'bug-aberto');
+    });
   });
 
   group('Transições VÁLIDAS continuam funcionando (green)', () {

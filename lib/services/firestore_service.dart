@@ -232,23 +232,27 @@ class FirestoreService {
         .get()
         .then((d) => d.data()?['nome'] as String? ?? 'Cliente');
 
-    // Soft-delete no documento
-    await _db.collection(_colClientes).doc(id).update({
-      'deletado': true,
-      'excluidoPorId': _currentUserId,
-      'excluidoPorNome': _currentUserName,
-      'dataExclusao': FieldValue.serverTimestamp(),
-      'dataAtualizacao': FieldValue.serverTimestamp(),
-    });
+    // Soft-delete + auditoria em transação atômica:
+    // se o audit_log não puder ser gravado, o soft-delete também não persiste.
+    final clienteRef = _db.collection(_colClientes).doc(id);
+    final auditRef   = _db.collection('audit_log').doc();
 
-    // Registro de auditoria em coleção dedicada
-    await _db.collection('audit_log').add({
-      'tipo': 'exclusao_cliente',
-      'clienteId': id,
-      'clienteNome': nomeCliente,
-      'autorId': _currentUserId,
-      'autorNome': _currentUserName,
-      'timestamp': FieldValue.serverTimestamp(),
+    await _db.runTransaction((tx) async {
+      tx.update(clienteRef, {
+        'deletado': true,
+        'excluidoPorId': _currentUserId,
+        'excluidoPorNome': _currentUserName,
+        'dataExclusao': FieldValue.serverTimestamp(),
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+      });
+      tx.set(auditRef, {
+        'tipo': 'exclusao_cliente',
+        'clienteId': id,
+        'clienteNome': nomeCliente,
+        'autorId': _currentUserId,
+        'autorNome': _currentUserName,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
     });
   }
 
@@ -494,6 +498,14 @@ class FirestoreService {
   }
 
   Future<void> aprovarNegociacao(String negId, {String? comentario}) async {
+    final doc = await _db.collection(_colNegociacoes).doc(negId).get();
+    final atual = (doc.data()?['statusAprovacao'] as String?) ?? 'semSolicitacao';
+    if (atual != 'pendente') {
+      throw StateError(
+        'Transição inválida: "$atual" → "aprovada". '
+        'A negociação precisa estar "pendente".',
+      );
+    }
     await _db.collection(_colNegociacoes).doc(negId).update({
       'statusAprovacao': 'aprovada',
       'dataAprovacao': FieldValue.serverTimestamp(),
@@ -506,6 +518,14 @@ class FirestoreService {
   }
 
   Future<void> negarNegociacao(String negId, {String? comentario}) async {
+    final doc = await _db.collection(_colNegociacoes).doc(negId).get();
+    final atual = (doc.data()?['statusAprovacao'] as String?) ?? 'semSolicitacao';
+    if (atual != 'pendente') {
+      throw StateError(
+        'Transição inválida: "$atual" → "negada". '
+        'A negociação precisa estar "pendente".',
+      );
+    }
     await _db.collection(_colNegociacoes).doc(negId).update({
       'statusAprovacao': 'negada',
       'comentarioAprovacao': comentario,
@@ -836,29 +856,42 @@ class FirestoreService {
 
   /// Salva (upsert) um contrato. Usa o localizador como ID do documento.
   Future<void> salvarContrato(Contrato c) async {
+    final docRef = _db.collection(_colContratos).doc(c.localizador);
+    final existing = await docRef.get();
     final dados = _flagTeste({
       ...c.toFirestore(),
-      'criadoEm': FieldValue.serverTimestamp(),
+      // criadoEm só é gravado na criação; reimportações preservam a data original.
+      if (!existing.exists || existing.data()!['criadoEm'] == null)
+        'criadoEm': FieldValue.serverTimestamp(),
     });
-    await _db
-        .collection(_colContratos)
-        .doc(c.localizador)
-        .set(dados, SetOptions(merge: true));
+    await docRef.set(dados, SetOptions(merge: true));
   }
 
   /// Salva uma lista de contratos em lotes (máx 500 por batch).
   Future<void> salvarContratosLote(List<Contrato> contratos) async {
     const batchSize = 400;
     for (var i = 0; i < contratos.length; i += batchSize) {
+      final fatia = contratos.skip(i).take(batchSize).toList();
+
+      // Lê existência dos docs para preservar criadoEm nas reimportações.
+      final refs = fatia
+          .map((c) => _db.collection(_colContratos).doc(c.localizador))
+          .toList();
+      final snaps = await Future.wait(refs.map((r) => r.get()));
+      final temCriadoEm = {
+        for (final s in snaps)
+          s.id: s.exists && s.data()?['criadoEm'] != null
+      };
+
       final batch = _db.batch();
-      final fatia = contratos.skip(i).take(batchSize);
-      for (final c in fatia) {
-        final ref = _db.collection(_colContratos).doc(c.localizador);
+      for (var j = 0; j < fatia.length; j++) {
+        final c = fatia[j];
         final dados = _flagTeste({
           ...c.toFirestore(),
-          'criadoEm': FieldValue.serverTimestamp(),
+          if (!(temCriadoEm[c.localizador] ?? false))
+            'criadoEm': FieldValue.serverTimestamp(),
         });
-        batch.set(ref, dados, SetOptions(merge: true));
+        batch.set(refs[j], dados, SetOptions(merge: true));
       }
       await batch.commit();
     }

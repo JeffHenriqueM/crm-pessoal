@@ -68,7 +68,6 @@ void main() {
                 'usuário ficou autenticado mesmo com signIn retornando erro — '
                 'fail-open inconsistente (risco #5).');
       },
-      tags: 'bug-aberto',
     );
   });
 }

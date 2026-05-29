@@ -117,7 +117,6 @@ void main() {
               'A deduplicação deveria usar uma identidade estável (ex.: CPF).',
         );
       },
-      tags: 'bug-aberto',
     );
   });
 }

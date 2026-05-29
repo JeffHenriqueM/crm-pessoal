@@ -21,11 +21,12 @@ service cloud.firestore {
 
 /// Risco #2 — soft-delete de cliente deve ser ATÔMICO.
 ///
-/// Comportamento correto sob teste: se a gravação do audit_log falhar, o
-/// cliente NÃO pode ficar marcado como deletado. Hoje o código faz dois awaits
-/// separados (update no cliente, depois audit_log.add), então este teste fica
-/// VERMELHO de propósito — é a guarda de regressão. Ele deve passar quando as
-/// duas escritas virarem atômicas (WriteBatch/transação). Ver ticket #17.
+/// Comportamento correto: se a gravação do audit_log falhar, o cliente NÃO
+/// pode ficar marcado como deletado. O código usa runTransaction (correto para
+/// produção), mas fake_cloud_firestore v4 NÃO aplica security rules dentro de
+/// transações — a transação não lança, então o expectLater falha no simulador.
+/// Este teste exige o emulador real (Firestore Emulator Suite) para ser
+/// verificado. Ver ticket #17.
 void main() {
   group('FirestoreService.deletarCliente (atomicidade — risco #2)', () {
     test(
