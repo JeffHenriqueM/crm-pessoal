@@ -151,7 +151,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Excluir interação?'),
-        content: Text(interacao.titulo),
+        content: Text(interacao.titulo ?? interacao.nota),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -457,17 +457,19 @@ class _InteracaoFormDialog extends StatefulWidget {
 }
 
 class _InteracaoFormDialogState extends State<_InteracaoFormDialog> {
-  TipoInteracao _tipo = TipoInteracao.ligacao;
+  Canal _canal = Canal.whatsapp;
+  Modalidade _modalidade = Modalidade.online;
+  bool _houveResposta = false;
   final _tituloCtrl = TextEditingController();
   final _notaCtrl = TextEditingController();
-  final _proximoCtrl = TextEditingController();
+  final _combinamosCtrl = TextEditingController();
   bool _salvando = false;
 
   @override
   void dispose() {
     _tituloCtrl.dispose();
     _notaCtrl.dispose();
-    _proximoCtrl.dispose();
+    _combinamosCtrl.dispose();
     super.dispose();
   }
 
@@ -479,31 +481,50 @@ class _InteracaoFormDialogState extends State<_InteracaoFormDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Tipo
-            // ignore: deprecated_member_use
-            DropdownButtonFormField<TipoInteracao>(
-              value: _tipo,
-              decoration: const InputDecoration(labelText: 'Tipo'),
-              items: TipoInteracao.values
-                  .map(
-                    (t) => DropdownMenuItem(
-                      value: t,
-                      child: Row(
-                        children: [
-                          Icon(t.icone, size: 16, color: t.cor),
-                          const SizedBox(width: 8),
-                          Text(t.nome),
-                        ],
-                      ),
-                    ),
-                  )
+            // Canal
+            DropdownButtonFormField<Canal>(
+              value: _canal,
+              decoration: const InputDecoration(labelText: 'Canal'),
+              items: Canal.values
+                  .where((c) => c != Canal.sistema)
+                  .map((c) => DropdownMenuItem(
+                        value: c,
+                        child: Row(
+                          children: [
+                            Icon(c.icone, size: 16, color: c.cor),
+                            const SizedBox(width: 8),
+                            Text(c.nome),
+                          ],
+                        ),
+                      ))
                   .toList(),
-              onChanged: (v) => setState(() => _tipo = v!),
+              onChanged: (v) => setState(() => _canal = v!),
             ),
             const SizedBox(height: 12),
+            // Modalidade
+            DropdownButtonFormField<Modalidade>(
+              value: _modalidade,
+              decoration: const InputDecoration(labelText: 'Modalidade'),
+              items: Modalidade.values
+                  .map((m) => DropdownMenuItem(
+                      value: m, child: Text(m.nome)))
+                  .toList(),
+              onChanged: (v) => setState(() => _modalidade = v!),
+            ),
+            const SizedBox(height: 12),
+            // Houve resposta
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Houve resposta?',
+                  style: TextStyle(fontSize: 14)),
+              value: _houveResposta,
+              onChanged: (v) => setState(() => _houveResposta = v),
+            ),
+            const SizedBox(height: 4),
             TextFormField(
               controller: _tituloCtrl,
-              decoration: const InputDecoration(labelText: 'Título *'),
+              decoration:
+                  const InputDecoration(labelText: 'Título (opcional)'),
             ),
             const SizedBox(height: 8),
             TextFormField(
@@ -513,8 +534,9 @@ class _InteracaoFormDialogState extends State<_InteracaoFormDialog> {
             ),
             const SizedBox(height: 8),
             TextFormField(
-              controller: _proximoCtrl,
-              decoration: const InputDecoration(labelText: 'Próximo passo'),
+              controller: _combinamosCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'O que combinamos?'),
             ),
           ],
         ),
@@ -540,22 +562,24 @@ class _InteracaoFormDialogState extends State<_InteracaoFormDialog> {
 
   Future<void> _salvar() async {
     final titulo = _tituloCtrl.text.trim();
-    if (titulo.isEmpty) {
+    final nota = _notaCtrl.text.trim();
+    if (nota.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe o título da interação.')),
+        const SnackBar(content: Text('Insira uma nota para a interação.')),
       );
       return;
     }
 
     setState(() => _salvando = true);
+    final combinamos = _combinamosCtrl.text.trim();
     final interacao = Interacao(
-      titulo: titulo,
+      titulo: titulo.isEmpty ? null : titulo,
       nota: _notaCtrl.text.trim(),
       dataInteracao: DateTime.now(),
-      tipo: _tipo,
-      proximoPasso: _proximoCtrl.text.trim().isEmpty
-          ? null
-          : _proximoCtrl.text.trim(),
+      canal: _canal,
+      modalidade: _modalidade,
+      houveResposta: _houveResposta,
+      oQueCombinamos: combinamos.isEmpty ? null : combinamos,
     );
 
     try {

@@ -266,14 +266,22 @@ class FirestoreService {
 
   Future<void> adicionarInteracao(String clienteId, Interacao interacao) async {
     final dados = interacao.toFirestore();
-    dados['autorId'] = _currentUserId;
-    dados['autorNome'] = _currentUserName;
+    dados['autorId']       = _currentUserId;
+    dados['autorNome']     = _currentUserName;
     dados['dataInteracao'] = FieldValue.serverTimestamp();
-    await _db
-        .collection(_colClientes)
-        .doc(clienteId)
-        .collection('interacoes')
-        .add(_flagTeste(dados));
+    dados['criadoEm']      = FieldValue.serverTimestamp();
+
+    final clienteRef = _db.collection(_colClientes).doc(clienteId);
+    await Future.wait([
+      clienteRef.collection('interacoes').add(_flagTeste(dados)),
+      clienteRef.update({
+        'interaction_count': FieldValue.increment(1),
+        if (!interacao.houveResposta)
+          'no_response_count': FieldValue.increment(1),
+        if (interacao.houveResposta)
+          'no_response_count': 0,
+      }),
+    ]);
   }
 
   Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
@@ -286,30 +294,37 @@ class FirestoreService {
   }
 
   Future<void> excluirInteracao(String clienteId, String interacaoId) async {
-    await _db
+    final ref = _db
         .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
-        .doc(interacaoId)
-        .delete();
+        .doc(interacaoId);
+    await Future.wait([
+      ref.delete(),
+      _db.collection(_colClientes).doc(clienteId).update({
+        'interaction_count': FieldValue.increment(-1),
+      }),
+    ]);
   }
 
   Future<void> _adicionarInteracaoAutomatica(
     String clienteId,
     String texto, {
     String titulo = 'Evento do Sistema',
-    String tipo = 'sistema',
   }) async {
     await _db
         .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
         .add({
-      'titulo': titulo,
-      'nota': texto,
+      'titulo':        titulo,
+      'nota':          texto,
+      'canal':         'sistema',
+      'modalidade':    'online',
+      'houveResposta': true,
       'dataInteracao': FieldValue.serverTimestamp(),
-      'tipo': tipo,
-      'autorNome': 'Sistema',
+      'criadoEm':      FieldValue.serverTimestamp(),
+      'autorNome':     'Sistema',
     });
   }
 
@@ -370,7 +385,6 @@ class FirestoreService {
       clienteId,
       nota,
       titulo: titulo,
-      tipo: 'mensagem',
     );
   }
 
