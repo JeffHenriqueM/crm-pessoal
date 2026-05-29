@@ -14,10 +14,11 @@ import 'ficha_ticket_screen.dart';
 
 Color _corStatus(StatusTicket s) {
   switch (s) {
-    case StatusTicket.aberto:      return const Color(0xFF1565C0);
-    case StatusTicket.emAndamento: return const Color(0xFFE65100);
-    case StatusTicket.resolvido:   return const Color(0xFF2E7D32);
-    case StatusTicket.fechado:     return const Color(0xFF546E7A);
+    case StatusTicket.aberto:               return const Color(0xFF1565C0);
+    case StatusTicket.emAndamento:          return const Color(0xFFE65100);
+    case StatusTicket.aguardandoValidacao:  return const Color(0xFF7B1FA2);
+    case StatusTicket.resolvido:            return const Color(0xFF2E7D32);
+    case StatusTicket.fechado:              return const Color(0xFF546E7A);
   }
 }
 

@@ -5,17 +5,18 @@ import 'package:flutter/material.dart';
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
-enum StatusTicket { aberto, emAndamento, resolvido, fechado }
+enum StatusTicket { aberto, emAndamento, aguardandoValidacao, resolvido, fechado }
 
 extension StatusTicketExt on StatusTicket {
   String get nome => name;
 
   String get nomeDisplay {
     switch (this) {
-      case StatusTicket.aberto:       return 'Aberto';
-      case StatusTicket.emAndamento:  return 'Em andamento';
-      case StatusTicket.resolvido:    return 'Resolvido';
-      case StatusTicket.fechado:      return 'Fechado';
+      case StatusTicket.aberto:               return 'Aberto';
+      case StatusTicket.emAndamento:          return 'Em andamento';
+      case StatusTicket.aguardandoValidacao:  return 'Aguardando Validação';
+      case StatusTicket.resolvido:            return 'Resolvido';
+      case StatusTicket.fechado:              return 'Fechado';
     }
   }
 
