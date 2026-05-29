@@ -8,6 +8,7 @@ import '../widgets/aba_captacao.dart';
 import '../widgets/aba_estatisticas.dart';
 import '../widgets/aba_financeiro.dart';
 import '../widgets/aba_motivos_perda.dart';
+import '../widgets/aba_pos_venda.dart';
 import '../widgets/aba_relatorios.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 6 : 1,
+      length: isAdmin ? 7 : 1,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -77,6 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
             Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
             Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
+            Tab(text: 'Pós-Venda',    icon: Icon(Icons.dashboard_outlined)),
           ],
         ),
       ),
@@ -110,6 +112,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               AbaRelatorios(clientes: todos),
               // 5 — Perdas
               AbaMotivosPerda(clientes: todos),
+              // 6 — Pós-Venda
+              const AbaPosVenda(),
             ],
           );
         },

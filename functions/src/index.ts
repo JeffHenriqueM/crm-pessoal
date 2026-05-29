@@ -11,6 +11,7 @@
  * Funções implementadas:
  * - onNegociacaoAprovada: notifica o embaixador quando o admin aprova/nega/pede atualização
  * - onCampanhaPublicada: notifica todos os usuários quando uma campanha é publicada
+ * - notificarAniversariantes: diariamente às 08:00 BRT, notifica perfis pós-venda sobre aniversariantes
  */
 
 import * as functions from 'firebase-functions';
@@ -185,5 +186,74 @@ export const onCampanhaPublicada = functions
     );
 
     functions.logger.info(`Campanha "${nome}" publicada — ${tokens.length} notificações enviadas`);
+    return null;
+  });
+
+// ── Função 3: Notifica aniversariantes do dia para usuários pós-venda ─────────
+export const notificarAniversariantes = functions
+  .region('us-central1')
+  .pubsub.schedule('0 8 * * *')
+  .timeZone('America/Sao_Paulo')
+  .onRun(async () => {
+    const hoje = new Date();
+    const dia = hoje.getDate();
+    const mes = hoje.getMonth() + 1;
+
+    // Busca compradores 1 e 2 com aniversário hoje (campos denormalizados)
+    const [snap1, snap2] = await Promise.all([
+      db.collection('contratos')
+        .where('diaNascimentoComprador', '==', dia)
+        .where('mesNascimentoComprador', '==', mes)
+        .get(),
+      db.collection('contratos')
+        .where('diaNascimentoComprador2', '==', dia)
+        .where('mesNascimentoComprador2', '==', mes)
+        .get(),
+    ]);
+
+    // Coleta nomes deduplicados por nome
+    const nomes = new Set<string>();
+    snap1.forEach((doc) => {
+      const nome = doc.data().nomeComprador as string | undefined;
+      if (nome) nomes.add(nome);
+    });
+    snap2.forEach((doc) => {
+      const nome = doc.data().nomeComprador2 as string | undefined;
+      if (nome) nomes.add(nome);
+    });
+
+    if (nomes.size === 0) {
+      functions.logger.info('Nenhum aniversariante hoje — notificação não enviada');
+      return null;
+    }
+
+    const lista = [...nomes].join(', ');
+    const titulo = 'Villamor CRM — Aniversariantes';
+    const corpo = nomes.size === 1
+      ? `🎂 Aniversariante de hoje: ${lista}`
+      : `🎂 Aniversariantes de hoje (${nomes.size}): ${lista}`;
+
+    // Busca tokens apenas dos usuários com perfil pós-venda
+    const snapUsuarios = await db.collection('usuarios')
+      .where('perfil', '==', 'pós-venda')
+      .where('ativo', '==', true)
+      .get();
+
+    const tokens: string[] = [];
+    snapUsuarios.forEach((doc) => {
+      const token = doc.data().fcmToken;
+      if (token && typeof token === 'string') tokens.push(token);
+    });
+
+    if (tokens.length === 0) {
+      functions.logger.info('Nenhum usuário pós-venda com token FCM ativo');
+      return null;
+    }
+
+    await enviarParaTokens(tokens, titulo, corpo, { tipo: 'aniversario' });
+
+    functions.logger.info(
+      `Aniversariantes notificados: ${lista} → ${tokens.length} usuário(s) pós-venda`
+    );
     return null;
   });

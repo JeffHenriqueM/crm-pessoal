@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
+import '../models/contrato_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
 import '../models/negociacao_model.dart';
@@ -14,6 +15,7 @@ class FirestoreService {
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
   static const _colClientes = 'clientes';
+  static const _colContratos = 'contratos';
 
   /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
   /// instâncias reais do Firebase (comportamento de produção inalterado).
@@ -794,5 +796,132 @@ class FirestoreService {
   /// Deleta um ticket (apenas admin).
   Future<void> deletarTicket(String ticketId) async {
     await _db.collection(_colTickets).doc(ticketId).delete();
+  }
+
+  // ── CONTRATOS PÓS-VENDA ──────────────────────────────────────────────────
+
+  /// Stream de todos os contratos ativos, ordenados por nome do comprador.
+  Stream<List<Contrato>> getContratosStream() {
+    return _db
+        .collection(_colContratos)
+        .orderBy('nomeComprador')
+        .snapshots()
+        .map((snap) => snap.docs.map(Contrato.fromFirestore).toList());
+  }
+
+  /// Stream das interações de um contrato específico.
+  Stream<List<Interacao>> getInteracoesContrato(String contratoId) {
+    return _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .orderBy('dataInteracao', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(Interacao.fromFirestore).toList());
+  }
+
+  /// Salva (upsert) um contrato. Usa o localizador como ID do documento.
+  Future<void> salvarContrato(Contrato c) async {
+    final dados = _flagTeste({
+      ...c.toFirestore(),
+      'criadoEm': FieldValue.serverTimestamp(),
+    });
+    await _db
+        .collection(_colContratos)
+        .doc(c.localizador)
+        .set(dados, SetOptions(merge: true));
+  }
+
+  /// Salva uma lista de contratos em lotes (máx 500 por batch).
+  Future<void> salvarContratosLote(List<Contrato> contratos) async {
+    const batchSize = 400;
+    for (var i = 0; i < contratos.length; i += batchSize) {
+      final batch = _db.batch();
+      final fatia = contratos.skip(i).take(batchSize);
+      for (final c in fatia) {
+        final ref = _db.collection(_colContratos).doc(c.localizador);
+        final dados = _flagTeste({
+          ...c.toFirestore(),
+          'criadoEm': FieldValue.serverTimestamp(),
+        });
+        batch.set(ref, dados, SetOptions(merge: true));
+      }
+      await batch.commit();
+    }
+  }
+
+  /// Registra uma interação na subcoleção do contrato.
+  Future<void> adicionarInteracaoContrato(
+    String contratoId,
+    Interacao interacao,
+  ) async {
+    await _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .add(_flagTeste(interacao.toFirestore()));
+  }
+
+  /// Exclui uma interação da subcoleção de um contrato.
+  Future<void> deletarInteracaoContrato(
+    String contratoId,
+    String interacaoId,
+  ) async {
+    await _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .doc(interacaoId)
+        .delete();
+  }
+
+  /// Atualiza apenas o status de assinatura de um contrato.
+  Future<void> atualizarStatusAssinatura(
+    String contratoId,
+    StatusAssinatura status,
+  ) async {
+    await _db.collection(_colContratos).doc(contratoId).update({
+      'statusAssinatura': status.value,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Busca aniversariantes de hoje na coleção de contratos.
+  /// Retorna os nomes e o contrato localizador.
+  Future<List<Map<String, String>>> getAniversariantesHoje() async {
+    final hoje = DateTime.now();
+    final dia = hoje.day;
+    final mes = hoje.month;
+
+    final results = <Map<String, String>>[];
+    final seen = <String>{};
+
+    final snaps = await Future.wait([
+      _db
+          .collection(_colContratos)
+          .where('diaNascimentoComprador', isEqualTo: dia)
+          .where('mesNascimentoComprador', isEqualTo: mes)
+          .get(),
+      _db
+          .collection(_colContratos)
+          .where('diaNascimentoComprador2', isEqualTo: dia)
+          .where('mesNascimentoComprador2', isEqualTo: mes)
+          .get(),
+    ]);
+
+    for (final doc in snaps[0].docs) {
+      final nome = doc['nomeComprador'] as String? ?? '';
+      if (nome.isNotEmpty && seen.add(nome)) {
+        results.add({'nome': nome, 'localizador': doc.id});
+      }
+    }
+    for (final doc in snaps[1].docs) {
+      final nome = doc['nomeComprador2'] as String? ?? '';
+      if (nome.isNotEmpty && seen.add(nome)) {
+        results.add({'nome': nome, 'localizador': doc.id});
+      }
+    }
+
+    return results;
   }
 }

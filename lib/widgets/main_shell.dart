@@ -7,7 +7,9 @@ import '../screens/dashboard_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
 import '../screens/negociacoes_screen.dart';
+import '../screens/pos_venda_screen.dart';
 import '../screens/recepcao_screen.dart';
+import 'aba_pos_venda.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/vendedor_home_screen.dart';
 import '../screens/ficha_ticket_screen.dart';
@@ -53,6 +55,7 @@ class _MainShellState extends State<MainShell> {
   bool get _isListaProfile => _listaProfiles.contains(widget.userProfile);
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
+  bool get _isPosVenda => widget.userProfile == 'pós-venda';
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
@@ -102,7 +105,14 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── pós-venda / financeiro: Dashboard primeiro ────────────────
+    // ── pós-venda: Dashboard KPIs + Contratos ────────────────────
+    if (_isPosVenda) {
+      return const [
+        _NavItem(icon: Icons.dashboard_outlined,    activeIcon: Icons.dashboard_rounded,    label: 'Pós-Venda'),
+        _NavItem(icon: Icons.article_outlined,       activeIcon: Icons.article_rounded,      label: 'Contratos'),
+      ];
+    }
+    // ── financeiro: Dashboard primeiro ────────────────────────────
     return const [
       _NavItem(icon: Icons.bar_chart_outlined,   activeIcon: Icons.bar_chart_rounded, label: 'Dashboard'),
       _NavItem(icon: Icons.view_kanban_outlined,  activeIcon: Icons.view_kanban,       label: 'Funil de Vendas'),
@@ -132,8 +142,11 @@ class _MainShellState extends State<MainShell> {
       const DashboardScreen(),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
+    ] else if (_isPosVenda) ...[
+      const _PosVendaHomeScreen(),
+      const PosVendaScreen(),
     ] else ...[
-      // pós-venda / financeiro: Dashboard primeiro
+      // financeiro: Dashboard primeiro
       const DashboardScreen(),
       const ListaClientesScreen(),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
@@ -593,6 +606,19 @@ class _MainShellState extends State<MainShell> {
           const SizedBox(height: 12),
         ],
       ),
+    );
+  }
+}
+
+// ── Tela home do perfil pós-venda ─────────────────────────────────────────────
+class _PosVendaHomeScreen extends StatelessWidget {
+  const _PosVendaHomeScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pós-Venda')),
+      body: const AbaPosVenda(),
     );
   }
 }
