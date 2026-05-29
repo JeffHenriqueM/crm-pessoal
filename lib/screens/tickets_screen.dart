@@ -51,7 +51,7 @@ class _TicketsScreenState extends State<TicketsScreen>
   StreamSubscription<List<Ticket>>? _todosSub;
   StreamSubscription<List<Ticket>>? _meusSub;
 
-  StatusTicket? _filtroStatus;
+  StatusTicket? _filtroStatus = StatusTicket.aberto;
   PrioridadeTicket? _filtroPrioridade;
   TipoTicket? _filtroTipo;
 
