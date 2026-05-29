@@ -4,8 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _db;
+
+  /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
+  /// instâncias reais do Firebase (comportamento de produção inalterado).
+  AuthService({FirebaseAuth? auth, FirebaseFirestore? db})
+    : _auth = auth ?? FirebaseAuth.instance,
+      _db = db ?? FirebaseFirestore.instance;
 
   /// Fornece um Stream para ouvir as mudanças de estado de autenticação.
   Stream<User?> get authStateChanges => _auth.authStateChanges();

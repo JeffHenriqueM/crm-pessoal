@@ -11,9 +11,15 @@ import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db;
+  final FirebaseAuth _auth;
   static const _colClientes = 'clientes';
+
+  /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
+  /// instâncias reais do Firebase (comportamento de produção inalterado).
+  FirestoreService({FirebaseFirestore? db, FirebaseAuth? auth})
+    : _db = db ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
 
   String get _currentUserId => _auth.currentUser?.uid ?? 'sistema';
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário';

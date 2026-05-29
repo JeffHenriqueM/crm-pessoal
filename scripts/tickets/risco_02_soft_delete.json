@@ -1,0 +1,7 @@
+{
+  "titulo": "Soft-delete de cliente não é atômico (risco #2)",
+  "prioridade": "alta",
+  "tipo": "bug",
+  "contexto": "lib/services/firestore_service.dart (deletarCliente)",
+  "descricao": "O método deletarCliente faz duas escritas em awaits SEPARADOS: primeiro update({deletado:true,...}) no cliente e só depois audit_log.add({...}). Se a segunda escrita falhar (rede, regra de segurança, indisponibilidade), o cliente fica soft-deleted SEM nenhum registro de auditoria — exatamente o cenário que o audit_log deveria evitar. Viola a regra de negócio do CLAUDE.md (toda exclusão grava em /audit_log).\n\nCorreção sugerida: tornar as duas escritas atômicas com WriteBatch (ou transação) — ou ambas confirmam, ou nenhuma. Assim uma falha no audit_log impede o soft-delete.\n\nBloqueio de testabilidade (precisa ser resolvido p/ ter teste automatizado): hoje deletarCliente NÃO é testável em unidade porque (1) flutter test não roda o Firestore real nem o emulador (plugins exigem camada nativa) e (2) FirestoreService instancia FirebaseFirestore.instance internamente, sem injeção de dependência. Recomenda-se injetar FirebaseFirestore (e FirebaseAuth) pelo construtor do FirestoreService; com isso, dá para usar fake_cloud_firestore em flutter test.\n\nCritério de aceite: após injetar a dependência e usar WriteBatch, um teste deve provar que, se a escrita do audit_log falhar, o cliente NÃO permanece marcado como deletado (atomicidade)."
+}

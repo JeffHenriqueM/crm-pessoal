@@ -1,0 +1,8 @@
+# Tags de teste do projeto.
+#
+# bug-aberto: testes propositalmente VERMELHOS que afirmam o comportamento
+# correto de um bug ainda não corrigido (guarda de regressão, atrelada a um
+# ticket). O gate de deploy os exclui: `flutter test --exclude-tags bug-aberto`.
+# Quando o time corrigir o bug, remover a tag para o teste virar guarda viva.
+tags:
+  bug-aberto:
