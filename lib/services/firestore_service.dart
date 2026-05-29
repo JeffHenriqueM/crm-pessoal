@@ -885,43 +885,4 @@ class FirestoreService {
       'atualizadoEm': FieldValue.serverTimestamp(),
     });
   }
-
-  /// Busca aniversariantes de hoje na coleção de contratos.
-  /// Retorna os nomes e o contrato localizador.
-  Future<List<Map<String, String>>> getAniversariantesHoje() async {
-    final hoje = DateTime.now();
-    final dia = hoje.day;
-    final mes = hoje.month;
-
-    final results = <Map<String, String>>[];
-    final seen = <String>{};
-
-    final snaps = await Future.wait([
-      _db
-          .collection(_colContratos)
-          .where('diaNascimentoComprador', isEqualTo: dia)
-          .where('mesNascimentoComprador', isEqualTo: mes)
-          .get(),
-      _db
-          .collection(_colContratos)
-          .where('diaNascimentoComprador2', isEqualTo: dia)
-          .where('mesNascimentoComprador2', isEqualTo: mes)
-          .get(),
-    ]);
-
-    for (final doc in snaps[0].docs) {
-      final nome = doc['nomeComprador'] as String? ?? '';
-      if (nome.isNotEmpty && seen.add(nome)) {
-        results.add({'nome': nome, 'localizador': doc.id});
-      }
-    }
-    for (final doc in snaps[1].docs) {
-      final nome = doc['nomeComprador2'] as String? ?? '';
-      if (nome.isNotEmpty && seen.add(nome)) {
-        results.add({'nome': nome, 'localizador': doc.id});
-      }
-    }
-
-    return results;
-  }
 }

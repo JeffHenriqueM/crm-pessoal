@@ -10,38 +10,13 @@ final _moedaCompacta = NumberFormat.compactCurrency(
   decimalDigits: 1,
 );
 
-class AbaPosVenda extends StatefulWidget {
+class AbaPosVenda extends StatelessWidget {
   const AbaPosVenda({super.key});
-
-  @override
-  State<AbaPosVenda> createState() => _AbaPosVendaState();
-}
-
-class _AbaPosVendaState extends State<AbaPosVenda> {
-  final _fs = FirestoreService();
-  List<Map<String, String>> _aniversariantes = [];
-  bool _carregandoAniversariantes = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _carregarAniversariantes();
-  }
-
-  Future<void> _carregarAniversariantes() async {
-    setState(() => _carregandoAniversariantes = true);
-    try {
-      final lista = await _fs.getAniversariantesHoje();
-      if (mounted) setState(() => _aniversariantes = lista);
-    } finally {
-      if (mounted) setState(() => _carregandoAniversariantes = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Contrato>>(
-      stream: _fs.getContratosStream(),
+      stream: FirestoreService().getContratosStream(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -49,18 +24,43 @@ class _AbaPosVendaState extends State<AbaPosVenda> {
         if (snap.hasError) {
           return Center(child: Text('Erro: ${snap.error}'));
         }
-
-        final contratos = snap.data ?? [];
-        return _buildConteudo(context, contratos);
+        return _buildConteudo(context, snap.data ?? []);
       },
     );
+  }
+
+  // Computa aniversariantes do dia direto da lista já carregada — sem query extra
+  List<({String nome, String localizador})> _aniversariantesHoje(
+      List<Contrato> contratos) {
+    final hoje = DateTime.now();
+    final dia = hoje.day;
+    final mes = hoje.month;
+    final vistos = <String>{};
+    final resultado = <({String nome, String localizador})>[];
+
+    for (final c in contratos) {
+      if (c.diaNascimentoComprador == dia &&
+          c.mesNascimentoComprador == mes &&
+          c.nomeComprador.isNotEmpty &&
+          vistos.add(c.nomeComprador)) {
+        resultado.add((nome: c.nomeComprador, localizador: c.localizador));
+      }
+      final nome2 = c.nomeComprador2;
+      if (nome2 != null &&
+          nome2.isNotEmpty &&
+          c.diaNascimentoComprador2 == dia &&
+          c.mesNascimentoComprador2 == mes &&
+          vistos.add(nome2)) {
+        resultado.add((nome: nome2, localizador: c.localizador));
+      }
+    }
+    return resultado;
   }
 
   Widget _buildConteudo(BuildContext context, List<Contrato> contratos) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    // KPIs computados em memória
     final total = contratos.length;
     final quitados = contratos.where((c) => c.estaQuitado).length;
     final emAndamento = total - quitados;
@@ -84,103 +84,95 @@ class _AbaPosVendaState extends State<AbaPosVenda> {
         .where((c) => c.statusAssinatura == StatusAssinatura.naoAssinado)
         .length;
 
-    return RefreshIndicator(
-      onRefresh: _carregarAniversariantes,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Pós-Venda', style: tt.headlineSmall),
-            const SizedBox(height: 4),
-            Text(
-              '$total contrato${total != 1 ? 's' : ''} ativos',
-              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
+    final aniversariantes = _aniversariantesHoje(contratos);
 
-            // ── Linha 1: Financeiro ───────────────────────────────────────
-            _buildSecaoTitulo(context, 'Financeiro'),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _KpiCard(
-                    titulo: 'Valor financiado',
-                    valor: _moedaCompacta.format(valorFinanciadoTotal),
-                    subtitulo: _moeda.format(valorFinanciadoTotal),
-                    icone: Icons.attach_money_rounded,
-                  ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Pós-Venda', style: tt.headlineSmall),
+          const SizedBox(height: 4),
+          Text(
+            '$total contrato${total != 1 ? 's' : ''} ativos',
+            style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Financeiro ────────────────────────────────────────────────
+          _buildSecaoTitulo(context, 'Financeiro'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _KpiCard(
+                  titulo: 'Valor financiado',
+                  valor: _moedaCompacta.format(valorFinanciadoTotal),
+                  subtitulo: _moeda.format(valorFinanciadoTotal),
+                  icone: Icons.attach_money_rounded,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _KpiCard(
-                    titulo: 'Em atraso',
-                    valor: _moedaCompacta.format(valorAtrasadoTotal),
-                    subtitulo: '$comAtraso contrato${comAtraso != 1 ? 's' : ''}',
-                    icone: Icons.warning_amber_rounded,
-                    corDestaque: valorAtrasadoTotal > 0 ? cs.error : null,
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _KpiCard(
+                  titulo: 'Em atraso',
+                  valor: _moedaCompacta.format(valorAtrasadoTotal),
+                  subtitulo: '$comAtraso contrato${comAtraso != 1 ? 's' : ''}',
+                  icone: Icons.warning_amber_rounded,
+                  corDestaque: valorAtrasadoTotal > 0 ? cs.error : null,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _KpiCard(
-                    titulo: 'Quitados',
-                    valor: '$quitados',
-                    subtitulo: total > 0
-                        ? '${(quitados / total * 100).toStringAsFixed(1)}% do total'
-                        : '–',
-                    icone: Icons.check_circle_outline_rounded,
-                    corDestaque: cs.primary,
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _KpiCard(
+                  titulo: 'Quitados',
+                  valor: '$quitados',
+                  subtitulo: total > 0
+                      ? '${(quitados / total * 100).toStringAsFixed(1)}% do total'
+                      : '–',
+                  icone: Icons.check_circle_outline_rounded,
+                  corDestaque: cs.primary,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _KpiCard(
-                    titulo: 'Em andamento',
-                    valor: '$emAndamento',
-                    subtitulo: total > 0
-                        ? '${(emAndamento / total * 100).toStringAsFixed(1)}% do total'
-                        : '–',
-                    icone: Icons.pending_outlined,
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _KpiCard(
+                  titulo: 'Em andamento',
+                  valor: '$emAndamento',
+                  subtitulo: total > 0
+                      ? '${(emAndamento / total * 100).toStringAsFixed(1)}% do total'
+                      : '–',
+                  icone: Icons.pending_outlined,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Barra de integralização média
-            _IntegralizacaoCard(percentual: percMedioIntegralizado),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _IntegralizacaoCard(percentual: percMedioIntegralizado),
 
-            const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-            // ── Assinatura ────────────────────────────────────────────────
-            _buildSecaoTitulo(context, 'Status de assinatura'),
-            const SizedBox(height: 8),
-            _AssinaturaCard(
-              assinados: assinados,
-              emAndamento: assinaturaEmAndamento,
-              naoAssinados: naoAssinados,
-              total: total,
-            ),
+          // ── Assinatura ────────────────────────────────────────────────
+          _buildSecaoTitulo(context, 'Status de assinatura'),
+          const SizedBox(height: 8),
+          _AssinaturaCard(
+            assinados: assinados,
+            emAndamento: assinaturaEmAndamento,
+            naoAssinados: naoAssinados,
+            total: total,
+          ),
 
-            const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-            // ── Aniversariantes ───────────────────────────────────────────
-            _buildSecaoTitulo(context, 'Aniversariantes de hoje'),
-            const SizedBox(height: 8),
-            _AniversariantesCard(
-              aniversariantes: _aniversariantes,
-              carregando: _carregandoAniversariantes,
-            ),
+          // ── Botão aniversariantes ─────────────────────────────────────
+          _BotaoAniversariantes(aniversariantes: aniversariantes),
 
-            const SizedBox(height: 24),
-          ],
-        ),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }
@@ -192,6 +184,100 @@ class _AbaPosVendaState extends State<AbaPosVenda> {
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,
           ),
+    );
+  }
+}
+
+// ── Botão de aniversariantes — abre bottom sheet com a lista ─────────────────
+class _BotaoAniversariantes extends StatelessWidget {
+  final List<({String nome, String localizador})> aniversariantes;
+
+  const _BotaoAniversariantes({required this.aniversariantes});
+
+  void _abrirBottomSheet(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cake_rounded, color: cs.primary, size: 22),
+                const SizedBox(width: 10),
+                Text('Aniversariantes de hoje', style: tt.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (aniversariantes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'Nenhum aniversariante hoje.',
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              )
+            else
+              for (final a in aniversariantes) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(Icons.cake_outlined, size: 16, color: cs.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(a.nome, style: tt.bodyMedium),
+                      ),
+                      Text(
+                        'Loc. ${a.localizador}',
+                        style: tt.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                if (a != aniversariantes.last) const Divider(height: 1),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final temAniversariantes = aniversariantes.isNotEmpty;
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _abrirBottomSheet(context),
+        icon: Badge(
+          isLabelVisible: temAniversariantes,
+          label: Text('${aniversariantes.length}'),
+          child: const Icon(Icons.cake_outlined),
+        ),
+        label: const Text('Ver aniversariantes de hoje'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor:
+              temAniversariantes ? cs.primary : cs.onSurfaceVariant,
+          side: BorderSide(
+            color: temAniversariantes
+                ? cs.primary
+                : cs.outlineVariant,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
     );
   }
 }
@@ -285,7 +371,8 @@ class _IntegralizacaoCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.trending_up_rounded, size: 16, color: cs.onSurfaceVariant),
+                Icon(Icons.trending_up_rounded,
+                    size: 16, color: cs.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Text(
                   'Integralização média',
@@ -350,7 +437,6 @@ class _AssinaturaCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Barra tripartida
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: SizedBox(
@@ -372,7 +458,6 @@ class _AssinaturaCard extends StatelessWidget {
                         flex: (fracNao * 1000).round(),
                         child: Container(color: cs.surfaceContainerHighest),
                       ),
-                    // Garante que a barra sempre ocupa espaço quando total == 0
                     if (total == 0)
                       Expanded(child: Container(color: cs.surfaceContainerHighest)),
                   ],
@@ -380,7 +465,6 @@ class _AssinaturaCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            // Legenda
             Row(
               children: [
                 _LegendaItem(
@@ -471,78 +555,6 @@ class _LegendaItem extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Aniversariantes ───────────────────────────────────────────────────────────
-class _AniversariantesCard extends StatelessWidget {
-  final List<Map<String, String>> aniversariantes;
-  final bool carregando;
-
-  const _AniversariantesCard({
-    required this.aniversariantes,
-    required this.carregando,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Card(
-      elevation: 0,
-      color: cs.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: carregando
-            ? const Center(
-                heightFactor: 2,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : aniversariantes.isEmpty
-                ? Row(
-                    children: [
-                      Icon(Icons.cake_outlined,
-                          size: 18, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Nenhum aniversariante hoje',
-                        style: tt.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final a in aniversariantes)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              Icon(Icons.cake_rounded,
-                                  size: 16, color: cs.primary),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  a['nome'] ?? '',
-                                  style: tt.bodyMedium,
-                                ),
-                              ),
-                              Text(
-                                'Loc. ${a['localizador'] ?? ''}',
-                                style: tt.labelSmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
       ),
     );
   }
