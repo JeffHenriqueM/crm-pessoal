@@ -534,8 +534,9 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: cs.primaryContainer,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -543,12 +544,12 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
           Text(label,
               style: TextStyle(
                   fontSize: 11,
-                  color: cs.onPrimaryContainer,
+                  color: cs.onSurface,
                   fontWeight: FontWeight.w500)),
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onRemover,
-            child: Icon(Icons.close, size: 13, color: cs.onPrimaryContainer),
+            child: Icon(Icons.close, size: 13, color: cs.onSurfaceVariant),
           ),
         ],
       ),

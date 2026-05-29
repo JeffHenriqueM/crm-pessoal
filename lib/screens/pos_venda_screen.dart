@@ -42,6 +42,9 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         _todos = lista;
         _carregando = false;
       }),
+      onError: (_) {
+        if (mounted) setState(() => _carregando = false);
+      },
     );
   }
 

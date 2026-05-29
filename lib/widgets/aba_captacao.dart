@@ -119,7 +119,7 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
             _kpiCard('Leads Captados', clientes.length,
                 Icons.people_outline, cs.primary, cs),
             _kpiCard('Captadores', ranking.length,
-                Icons.mic_outlined,
+                Icons.person_outlined,
                 Colors.teal.shade600, cs),
           ]),
           const SizedBox(height: 28),
@@ -386,7 +386,7 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.mic_outlined,
+            Icon(Icons.person_outlined,
                 size: 15,
                 color: ativo ? cs.onPrimaryContainer : cs.onSurfaceVariant),
             const SizedBox(width: 5),

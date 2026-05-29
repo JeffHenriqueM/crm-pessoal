@@ -477,7 +477,7 @@ class _TicketsScreenState extends State<TicketsScreen>
         title: const Text('Tickets'),
         automaticallyImplyLeading: false,
         actions: [
-          if (_isAdmin && _todos.isNotEmpty)
+          if (_isAdmin)
             IconButton(
               icon: const Icon(Icons.download_outlined),
               tooltip: 'Exportar CSV',
