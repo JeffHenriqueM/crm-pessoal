@@ -61,7 +61,7 @@ service cloud.firestore {
     match /usuarios/{docId} {
       allow read:   if isAuth();
       allow create: if isAuth() && (request.auth.uid == docId || isGestor());
-      allow update: if isAuth() && isSuperAdmin();
+      allow update: if isAuth() && isGestor();
       allow delete: if false;
     }
 

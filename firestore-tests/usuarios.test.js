@@ -8,8 +8,8 @@ import {
 } from './setup.js';
 
 // Escalonamento de privilégio: o campo `perfil` controla o escopo de acesso.
-// Comportamento desejado: SOMENTE super admin modifica documentos de usuários.
-// Ninguém promove a si mesmo; nem mesmo admin comum altera usuários.
+// Comportamento desejado: gestores (admin e acima) podem editar usuários.
+// Vendedor/captador não podem modificar nenhum doc de usuário (incluindo autopromover).
 
 let env;
 
@@ -43,9 +43,9 @@ test('vendedor NÃO promove a si mesmo a admin', async () => {
   );
 });
 
-test('admin comum NÃO altera usuários', async () => {
+test('admin altera perfil de outro usuário', async () => {
   const db = contextoAutenticado(env, 'admin');
-  await assertFails(
+  await assertSucceeds(
     updateDoc(doc(db, 'usuarios/vendedor_a'), { perfil: 'pós-venda' }),
   );
 });
