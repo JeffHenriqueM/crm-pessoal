@@ -260,12 +260,16 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
                 Wrap(
                   spacing: 8,
                   children: ['Presencial', 'WhatsApp', 'Instagram']
-                      .map((o) => FilterChip(
-                            label: Text(o),
-                            selected: origemTemp == o,
-                            onSelected: (v) =>
-                                setSheet(() => origemTemp = v ? o : null),
-                          ))
+                      .map((o) {
+                        final sel = origemTemp == o;
+                        return FilterChip(
+                          label: Text(o),
+                          selected: sel,
+                          labelStyle: TextStyle(color: cs.onSurface),
+                          onSelected: (v) =>
+                              setSheet(() => origemTemp = v ? o : null),
+                        );
+                      })
                       .toList(),
                 ),
 

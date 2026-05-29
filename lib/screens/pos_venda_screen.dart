@@ -25,7 +25,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   String _busca = '';
   String? _filtroStatusFin;
   String? _filtroAssinatura;
-  String? _filtroCidade;
+  String? _filtroProduto;
 
   String _perfil = '';
   List<Contrato> _todos = [];
@@ -67,14 +67,14 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       final assOk =
           _filtroAssinatura == null ||
           c.statusAssinatura.value == _filtroAssinatura;
-      final cidOk = _filtroCidade == null || c.cidade == _filtroCidade;
+      final prodOk = _filtroProduto == null || c.produto == _filtroProduto;
 
-      return buscaOk && finOk && assOk && cidOk;
+      return buscaOk && finOk && assOk && prodOk;
     }).toList();
   }
 
-  List<String> get _cidades {
-    return _todos.map((c) => c.cidade).toSet().toList()..sort();
+  List<String> get _produtos {
+    return _todos.map((c) => c.produto).where((p) => p.isNotEmpty).toSet().toList()..sort();
   }
 
   bool get _podeImportar =>
@@ -178,10 +178,10 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           ),
           const SizedBox(width: 8),
           _FilterChip(
-            label: 'Cidade',
-            valor: _filtroCidade,
-            opcoes: _cidades,
-            onSelecionado: (v) => setState(() => _filtroCidade = v),
+            label: 'Produto',
+            valor: _filtroProduto,
+            opcoes: _produtos,
+            onSelecionado: (v) => setState(() => _filtroProduto = v),
           ),
         ],
       ),

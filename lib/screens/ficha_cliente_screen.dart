@@ -653,17 +653,13 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         };
         await _service.atualizarClienteDetalhes(_clienteId!, dados);
         if (mounted) {
-          if (widget.userProfile == 'recepcao') {
-            // Volta para a lista da recepção com resultado "salvo"
-            Navigator.of(context).pop(true);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${_nomeCtrl.text.trim()} atualizado!'),
-                backgroundColor: Colors.green.shade700,
-              ),
-            );
-          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${_nomeCtrl.text.trim()} atualizado!'),
+              backgroundColor: Colors.green.shade700,
+            ),
+          );
+          Navigator.of(context).pop(true);
         }
       }
     } catch (e) {
@@ -676,10 +672,12 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
         );
       }
     } finally {
-      if (mounted) setState(() {
-        _salvandoDados = false;
-        _dadosAlterados = false; // reset após salvar (sucesso ou erro)
-      });
+      if (mounted) {
+        setState(() {
+          _salvandoDados = false;
+          _dadosAlterados = false;
+        });
+      }
     }
   }
 

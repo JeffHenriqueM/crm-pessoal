@@ -68,12 +68,20 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
-  // Pode editar se for admin, se for ticket novo, ou se for o criador
+  // Pode editar campos do ticket (título, descrição, tipo, prioridade)
   bool get _podeEditar {
     if (_isAdmin) return true;
-    if (_isNovo) return true; // qualquer perfil pode criar novo ticket
+    if (_isNovo) return true;
     final uid = widget.currentUserId ?? _authService.getCurrentUser()?.uid ?? '';
     return widget.ticket?.criadoPorId == uid;
+  }
+
+  // Pode alterar status: admin sempre; criador apenas para validar ticket já resolvido
+  bool get _podeAlterarStatus {
+    if (_isAdmin) return true;
+    if (_isNovo) return false;
+    final uid = widget.currentUserId ?? _authService.getCurrentUser()?.uid ?? '';
+    return widget.ticket?.criadoPorId == uid && _status == StatusTicket.resolvido;
   }
 
   @override
@@ -475,8 +483,13 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
               value: _status,
               items: StatusTicket.values,
               displayText: (s) => s.nomeDisplay,
-              onChanged: _podeEditar
-                  ? (v) => setState(() => _status = v!)
+              onChanged: _podeAlterarStatus
+                  ? (v) {
+                      setState(() => _status = v!);
+                      if (!_isNovo && v == StatusTicket.resolvido) {
+                        _salvar();
+                      }
+                    }
                   : null,
               itemColor: _corStatus,
             ),
@@ -719,7 +732,7 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
         title: Text(_isNovo ? 'Novo Ticket' : 'Ticket'),
         actions: [
           // Chip de status rápido (só em modo edição)
-          if (!_isNovo && _podeEditar)
+          if (!_isNovo && _podeAlterarStatus)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               child: InkWell(

@@ -201,7 +201,6 @@ class _MainShellState extends State<MainShell> {
 
   // ── FAB global de ticket (canto inferior esquerdo) ────────────────────────
   Widget _buildTicketFab(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return FloatingActionButton.small(
       heroTag: 'global_ticket_fab',
       onPressed: () => Navigator.push(
@@ -216,8 +215,8 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
       tooltip: 'Abrir ticket',
-      backgroundColor: cs.secondaryContainer,
-      foregroundColor: cs.onSecondaryContainer,
+      backgroundColor: Colors.amber.shade600,
+      foregroundColor: Colors.white,
       child: const Icon(Icons.confirmation_number_outlined, size: 20),
     );
   }

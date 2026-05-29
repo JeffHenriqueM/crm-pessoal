@@ -493,10 +493,14 @@ class _TicketsScreenState extends State<TicketsScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text('Todos'),
-                        if (_todos.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Badge.count(count: _todos.length),
-                        ],
+                        Builder(builder: (ctx) {
+                          final count = _aplicarFiltros(_todos).length;
+                          if (count == 0) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Badge.count(count: count),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -505,10 +509,14 @@ class _TicketsScreenState extends State<TicketsScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text('Meus tickets'),
-                        if (_meus.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Badge.count(count: _meus.length),
-                        ],
+                        Builder(builder: (ctx) {
+                          final count = _aplicarFiltros(_meus).length;
+                          if (count == 0) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Badge.count(count: count),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -532,11 +540,6 @@ class _TicketsScreenState extends State<TicketsScreen>
                 : _buildLista(_meus, 'Você ainda não abriu nenhum ticket'),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _abrirNovoTicket,
-        icon: const Icon(Icons.add),
-        label: const Text('Novo Ticket'),
       ),
     );
   }
