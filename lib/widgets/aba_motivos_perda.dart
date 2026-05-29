@@ -1,38 +1,36 @@
 // lib/widgets/aba_motivos_perda.dart
 //
-// Aba "Perdas" do Dashboard admin.
-// Mostra distribuição de motivos de perda com auto-classificação do texto livre,
-// KPIs e lista dos clientes perdidos recentes.
+// Aba "Perdas" do Dashboard.
+// Mostra distribuição de motivos de perda com PieChart donut,
+// KPIs e lista expandível dos clientes perdidos por categoria.
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 
-class AbaMotivosPerda extends StatelessWidget {
-  /// Todos os clientes (a aba filtra internamente por fase == perdido).
+class AbaMotivosPerda extends StatefulWidget {
   final List<Cliente> clientes;
-
   const AbaMotivosPerda({super.key, required this.clientes});
 
-  // ── Categorias ────────────────────────────────────────────────────────────
+  // ── Paleta de categorias ─────────────────────────────────────────────────
   static const _cores = {
-    'Sem interesse':         Color(0xFF6A1B9A),
-    'Sem retorno':           Color(0xFF1565C0),
-    'Financeiro':            Color(0xFFC62828),
-    'Brinde/voucher':        Color(0xFFE65100),
+    'Sem interesse':           Color(0xFF6A1B9A),
+    'Sem retorno':             Color(0xFF1565C0),
+    'Financeiro':              Color(0xFFC62828),
+    'Brinde/voucher':          Color(0xFFE65100),
     'Não conhecem a Villamor': Color(0xFF00695C),
-    'Perfil inadequado':     Color(0xFF283593),
-    'Quer decidir depois':   Color(0xFF2E7D32),
-    'Proposta não aprovada': Color(0xFF4E342E),
-    'Outro':                 Color(0xFF546E7A),
-    'Sem motivo informado':  Color(0xFF9E9E9E),
+    'Perfil inadequado':       Color(0xFF283593),
+    'Quer decidir depois':     Color(0xFF2E7D32),
+    'Proposta não aprovada':   Color(0xFF4E342E),
+    'Outro':                   Color(0xFF546E7A),
+    'Sem motivo informado':    Color(0xFF9E9E9E),
   };
 
-  // ── Auto-classificação ────────────────────────────────────────────────────
+  // ── Auto-classificação pelo texto livre ou dropdown ──────────────────────
   static String _categorizar(String? dropdown, String? texto) {
-    // 1. Dropdown preenchido — normalizar
     if (dropdown != null && dropdown.isNotEmpty) {
       final d = dropdown.toLowerCase();
       if (d.contains('brinde') || d.contains('voucher')) return 'Brinde/voucher';
@@ -44,70 +42,57 @@ class AbaMotivosPerda extends StatelessWidget {
       if (d.contains('decidir') || d.contains('depois')) return 'Quer decidir depois';
       if (d.contains('proposta') || d.contains('aprovad')) return 'Proposta não aprovada';
       if (d == 'outro') return 'Outro';
-      return dropdown; // retorna o valor original se não mapeado
+      return dropdown;
     }
-
-    // 2. Auto-classificar pelo texto livre
     if (texto == null || texto.trim().isEmpty) return 'Sem motivo informado';
     final t = texto.toLowerCase();
-
-    if (t.contains('brinde') || t.contains('voucher') || t.contains('day use')) {
-      return 'Brinde/voucher';
-    }
+    if (t.contains('brinde') || t.contains('voucher') || t.contains('day use')) return 'Brinde/voucher';
     if (t.contains('sem retorno') || t.contains('sem resposta') ||
         t.contains('não retorn') || t.contains('nao retorn') ||
         t.contains('não responde') || t.contains('nao responde') ||
-        t.contains('nunca mais respondeu')) {
-      return 'Sem retorno';
-    }
+        t.contains('nunca mais respondeu')) return 'Sem retorno';
     if (t.contains('financeiro') || t.contains('altos valores') ||
         t.contains('não tem condições') || t.contains('nao tem condi') ||
         t.contains('fora da realidade') || t.contains('construindo casa') ||
-        t.contains('compraram um carro')) {
-      return 'Financeiro';
-    }
+        t.contains('compraram um carro')) return 'Financeiro';
     if (t.contains('não conhece') || t.contains('nao conhece') ||
         t.contains('nunca veio') || t.contains('conhecer o hotel') ||
-        t.contains('conhecer a villamor') || t.contains('conhecer prime')) {
-      return 'Não conhecem a Villamor';
-    }
+        t.contains('conhecer a villamor') || t.contains('conhecer prime')) return 'Não conhecem a Villamor';
     if (t.contains('sem interesse') || t.contains('não quis') ||
         t.contains('nao quis') || t.contains('não quer') ||
         t.contains('nao quer') || t.contains('não quiseram') ||
         t.contains('não deseja') || t.contains('sem motivo') ||
-        t.contains('não quer comprar')) {
-      return 'Sem interesse';
-    }
+        t.contains('não quer comprar')) return 'Sem interesse';
     if (t.contains('decidir quando') || t.contains('retornar proposta') ||
         t.contains('não é o momento') || t.contains('nao é o momento') ||
-        t.contains('fevereiro') || t.contains('abril') || t.contains('março')) {
-      return 'Quer decidir depois';
-    }
+        t.contains('fevereiro') || t.contains('abril') || t.contains('março')) return 'Quer decidir depois';
     if (t.contains('não autorizou') || t.contains('nao autorizou') ||
-        t.contains('cancelamento') || t.contains('proposta')) {
-      return 'Proposta não aprovada';
-    }
+        t.contains('cancelamento') || t.contains('proposta')) return 'Proposta não aprovada';
     if (t.contains('solteiro') || t.contains('prestação de serviço') ||
-        t.contains('não acredita no retorno') || t.contains('upgrade')) {
-      return 'Perfil inadequado';
-    }
+        t.contains('não acredita no retorno') || t.contains('upgrade')) return 'Perfil inadequado';
     return 'Outro';
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  @override
+  State<AbaMotivosPerda> createState() => _AbaMotivosPerdaState();
+}
+
+class _AbaMotivosPerdaState extends State<AbaMotivosPerda> {
+  int _touchedIndex = -1;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final perdidos = clientes
+    final perdidos = widget.clientes
         .where((c) => c.fase == FaseCliente.perdido)
         .toList()
       ..sort((a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
 
-    // Agrupar por categoria
     final contagem = <String, int>{};
     final porCategoria = <String, List<Cliente>>{};
     for (final c in perdidos) {
-      final cat = _categorizar(c.motivoNaoVendaDropdown, c.motivoNaoVenda);
+      final cat = AbaMotivosPerda._categorizar(
+          c.motivoNaoVendaDropdown, c.motivoNaoVenda);
       contagem[cat] = (contagem[cat] ?? 0) + 1;
       porCategoria.putIfAbsent(cat, () => []).add(c);
     }
@@ -116,9 +101,11 @@ class AbaMotivosPerda extends StatelessWidget {
       ..sort((a, b) => b.value.compareTo(a.value));
 
     final total = perdidos.length;
-    final comMotivo =
-        perdidos.where((c) => (c.motivoNaoVendaDropdown?.isNotEmpty == true) ||
-            (c.motivoNaoVenda?.isNotEmpty == true)).length;
+    final comMotivo = perdidos
+        .where((c) =>
+            (c.motivoNaoVendaDropdown?.isNotEmpty == true) ||
+            (c.motivoNaoVenda?.isNotEmpty == true))
+        .length;
     final semMotivo = total - comMotivo;
 
     return SingleChildScrollView(
@@ -128,25 +115,22 @@ class AbaMotivosPerda extends StatelessWidget {
         children: [
           // ── KPIs ──────────────────────────────────────────────────────────
           Row(children: [
-            _kpi(cs, '$total', 'Perdidos\ntotal', Icons.person_off_outlined, cs.error),
+            _kpi(cs, '$total', 'Perdidos\ntotal',
+                Icons.person_off_outlined, cs.error),
             const SizedBox(width: 8),
-            _kpi(cs, '$comMotivo',
-                'Com\nregistro',
-                Icons.check_circle_outline,
-                Colors.green.shade700),
+            _kpi(cs, '$comMotivo', 'Com\nregistro',
+                Icons.check_circle_outline, Colors.green.shade700),
             const SizedBox(width: 8),
-            _kpi(cs, '$semMotivo',
-                'Sem\nmotivo',
-                Icons.help_outline,
-                Colors.orange.shade700),
+            _kpi(cs, '$semMotivo', 'Sem\nmotivo',
+                Icons.help_outline, Colors.orange.shade700),
           ]),
           const SizedBox(height: 24),
 
-          // ── Gráfico de barras horizontais ──────────────────────────────
+          // ── Gráfico de pizza (donut) ───────────────────────────────────
           _secTitle(context, 'Distribuição por motivo'),
           const SizedBox(height: 4),
           Text(
-            'Inclui classificação automática a partir das observações',
+            'Toque em um segmento para ver o percentual',
             style: TextStyle(fontSize: 12, color: cs.outline),
           ),
           const SizedBox(height: 12),
@@ -164,20 +148,121 @@ class AbaMotivosPerda extends StatelessWidget {
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+                side: BorderSide(
+                    color: cs.outlineVariant.withValues(alpha: 0.5)),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: ordenado.map((e) {
-                    return _barraMotivo(
-                      context,
-                      e.key,
-                      e.value,
-                      total,
-                      _cores[e.key] ?? Colors.grey,
-                    );
-                  }).toList(),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Donut
+                    SizedBox(
+                      width: 160,
+                      height: 160,
+                      child: PieChart(
+                        PieChartData(
+                          sections: ordenado.asMap().entries.map((e) {
+                            final i = e.key;
+                            final entry = e.value;
+                            final isTouched = i == _touchedIndex;
+                            final cor = AbaMotivosPerda._cores[entry.key] ??
+                                Colors.grey;
+                            final pct = total == 0
+                                ? 0.0
+                                : entry.value / total * 100;
+                            return PieChartSectionData(
+                              value: entry.value.toDouble(),
+                              color: cor,
+                              title: isTouched
+                                  ? '${pct.round()}%'
+                                  : '',
+                              radius: isTouched ? 68 : 58,
+                              titleStyle: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            );
+                          }).toList(),
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 32,
+                          pieTouchData: PieTouchData(
+                            touchCallback: (FlTouchEvent event,
+                                PieTouchResponse? resp) {
+                              setState(() {
+                                if (!event.isInterestedForInteractions ||
+                                    resp?.touchedSection == null) {
+                                  _touchedIndex = -1;
+                                } else {
+                                  _touchedIndex = resp!
+                                      .touchedSection!.touchedSectionIndex;
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Legenda
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: ordenado.asMap().entries.map((e) {
+                          final i = e.key;
+                          final entry = e.value;
+                          final cor =
+                              AbaMotivosPerda._cores[entry.key] ?? Colors.grey;
+                          final pct = total == 0
+                              ? 0
+                              : (entry.value / total * 100).round();
+                          final isTouched = i == _touchedIndex;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: cor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    entry.key,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: isTouched
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                      color: isTouched ? cor : cs.onSurface,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  '$pct%',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: isTouched
+                                        ? cor
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -191,7 +276,7 @@ class AbaMotivosPerda extends StatelessWidget {
                 context,
                 e.key,
                 porCategoria[e.key] ?? [],
-                _cores[e.key] ?? Colors.grey,
+                AbaMotivosPerda._cores[e.key] ?? Colors.grey,
                 cs,
               )),
           const SizedBox(height: 16),
@@ -200,7 +285,7 @@ class AbaMotivosPerda extends StatelessWidget {
     );
   }
 
-  // ── Widgets auxiliares ────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   Widget _secTitle(BuildContext context, String title) => Text(
         title,
         style: TextStyle(
@@ -210,7 +295,8 @@ class AbaMotivosPerda extends StatelessWidget {
         ),
       );
 
-  Widget _kpi(ColorScheme cs, String valor, String label, IconData icon, Color cor) {
+  Widget _kpi(ColorScheme cs, String valor, String label, IconData icon,
+      Color cor) {
     return Expanded(
       child: Card(
         elevation: 0,
@@ -247,54 +333,6 @@ class AbaMotivosPerda extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _barraMotivo(BuildContext context, String label, int count,
-      int total, Color cor) {
-    final pct = total == 0 ? 0.0 : count / total;
-    final cs = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 170,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: pct,
-                minHeight: 18,
-                backgroundColor: cor.withValues(alpha: 0.1),
-                valueColor: AlwaysStoppedAnimation<Color>(cor),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 52,
-            child: Text(
-              '$count (${(pct * 100).round()}%)',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.end,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -346,7 +384,6 @@ class AbaMotivosPerda extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar
           CircleAvatar(
             radius: 15,
             backgroundColor: cs.primaryContainer,
@@ -364,7 +401,6 @@ class AbaMotivosPerda extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Nome + data
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -382,8 +418,6 @@ class AbaMotivosPerda extends StatelessWidget {
                     ),
                   ],
                 ),
-
-                // Embaixador + chip de origem da classificação
                 const SizedBox(height: 3),
                 Row(
                   children: [
@@ -397,7 +431,6 @@ class AbaMotivosPerda extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                     ],
-                    // Chip: "preenchido" ou "auto-classificado"
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
@@ -420,22 +453,16 @@ class AbaMotivosPerda extends StatelessWidget {
                     ),
                   ],
                 ),
-
-                // Detalhe do motivo (texto completo)
                 if (detalhe.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest
-                          .withValues(alpha: 0.5),
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(8),
                       border: Border(
-                        left: BorderSide(
-                          color: cs.outlineVariant,
-                          width: 3,
-                        ),
+                        left: BorderSide(color: cs.outlineVariant, width: 3),
                       ),
                     ),
                     child: Text(

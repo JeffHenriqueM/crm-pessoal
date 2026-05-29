@@ -75,7 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 6 : 1,
+      length: isAdmin ? 6 : 3,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -145,8 +145,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         toolbarHeight: 50,
         bottom: const TabBar(
           indicatorWeight: 3,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: [
             Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
+            Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
+            Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
           ],
         ),
       ),
@@ -160,11 +164,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final clientes = snapshot.data ?? [];
           return TabBarView(
             children: [
-              // Meta mensal fica dentro da tab, rolando junto com as estatísticas
-              AbaEstatisticas(
-                clientes: clientes,
-                userId: _vendedorIdFiltro,
-              ),
+              AbaEstatisticas(clientes: clientes, userId: _vendedorIdFiltro),
+              AbaRelatorios(clientes: clientes),
+              AbaMotivosPerda(clientes: clientes),
             ],
           );
         },
