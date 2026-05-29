@@ -556,6 +556,13 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     setState(() => _tentouSalvar = true);
     if (!_formKey.currentState!.validate()) return;
     if (_dataCaptacao == null) return;
+    if (_fase == FaseCliente.perdido &&
+        (_motivoPerdaDropdown == null || _motivoPerdaDropdown!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione o motivo da perda antes de salvar.')),
+      );
+      return;
+    }
 
     setState(() => _salvandoDados = true);
     try {

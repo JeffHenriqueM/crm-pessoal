@@ -73,9 +73,12 @@ class _TicketsScreenState extends State<TicketsScreen>
       });
     }
 
-    _meusSub = _service.getMeusTicketsStream(uid).listen((lista) {
-      if (mounted) setState(() => _meus = lista);
-    });
+    _meusSub = _service.getMeusTicketsStream(uid).listen(
+      (lista) {
+        if (mounted) setState(() => _meus = lista);
+      },
+      onError: (e) => debugPrint('[Tickets] getMeusTicketsStream erro: $e'),
+    );
   }
 
   @override
