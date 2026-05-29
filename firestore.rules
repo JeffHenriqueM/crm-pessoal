@@ -54,6 +54,11 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // ── Contratos pós-venda ───────────────────────────────────────────────────
+    match /contratos/{docId} {
+      allow read, write: if isAuth();
+    }
+
     // ── Tickets de suporte ────────────────────────────────────────────────────
     match /tickets/{ticketId} {
       allow read, write: if isAuth();

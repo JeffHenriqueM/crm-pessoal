@@ -1,0 +1,7 @@
+{
+  "titulo": "Lista de aniversariantes faz dedupe por NOME e descarta clientes distintos homônimos",
+  "prioridade": "media",
+  "tipo": "bug",
+  "contexto": "lib/services/aniversariantes_pos_venda.dart (aniversariantesEm)",
+  "descricao": "A deduplicação usa um Set<String> de NOMES (vistos.add(nome)). Dois clientes diferentes (CPFs distintos) com o mesmo nome e aniversário no mesmo dia resultam em apenas UM na lista — o pós-venda deixa de parabenizar o outro. O dedupe por nome foi pensado para o caso 'mesma pessoa em vários contratos', mas atropela homônimos legítimos.\n\nCorreção sugerida: deduplicar por identidade estável (ex.: CPF do comprador) em vez do nome; quando o CPF estiver vazio, cair para uma chave composta (nome+dia+mês+localizador) em vez de só o nome. Vale alinhar a regra com o negócio (o que conta como 'mesma pessoa').\n\nTeste (já no repo, guarda de regressão tag 'bug-aberto'): test/services/aniversariantes_pos_venda_test.dart → 'dois clientes distintos com o mesmo nome devem ser greetáveis' (espera length 2, hoje retorna 1, VERMELHO). O caso legítimo 'mesma pessoa em vários contratos aparece uma vez' (mesmo CPF) deve continuar dedupando. Ao corrigir, remover a tag 'bug-aberto'."
+}

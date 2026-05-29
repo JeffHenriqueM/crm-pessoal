@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/contrato_model.dart';
+import '../services/aniversariantes_pos_venda.dart';
 import '../services/firestore_service.dart';
 
 final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
@@ -27,34 +29,6 @@ class AbaPosVenda extends StatelessWidget {
         return _buildConteudo(context, snap.data ?? []);
       },
     );
-  }
-
-  // Computa aniversariantes do dia direto da lista já carregada — sem query extra
-  List<({String nome, String localizador})> _aniversariantesHoje(
-      List<Contrato> contratos) {
-    final hoje = DateTime.now();
-    final dia = hoje.day;
-    final mes = hoje.month;
-    final vistos = <String>{};
-    final resultado = <({String nome, String localizador})>[];
-
-    for (final c in contratos) {
-      if (c.diaNascimentoComprador == dia &&
-          c.mesNascimentoComprador == mes &&
-          c.nomeComprador.isNotEmpty &&
-          vistos.add(c.nomeComprador)) {
-        resultado.add((nome: c.nomeComprador, localizador: c.localizador));
-      }
-      final nome2 = c.nomeComprador2;
-      if (nome2 != null &&
-          nome2.isNotEmpty &&
-          c.diaNascimentoComprador2 == dia &&
-          c.mesNascimentoComprador2 == mes &&
-          vistos.add(nome2)) {
-        resultado.add((nome: nome2, localizador: c.localizador));
-      }
-    }
-    return resultado;
   }
 
   Widget _buildConteudo(BuildContext context, List<Contrato> contratos) {
@@ -84,7 +58,7 @@ class AbaPosVenda extends StatelessWidget {
         .where((c) => c.statusAssinatura == StatusAssinatura.naoAssinado)
         .length;
 
-    final aniversariantes = _aniversariantesHoje(contratos);
+    final aniversariantes = aniversariantesEm(contratos, DateTime.now());
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -98,6 +72,23 @@ class AbaPosVenda extends StatelessWidget {
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
+
+          // ── Botão aniversariantes ─────────────────────────────────────
+          _BotaoAniversariantes(aniversariantes: aniversariantes),
+
+          const SizedBox(height: 20),
+
+          // ── Assinatura ────────────────────────────────────────────────
+          _buildSecaoTitulo(context, 'Status de assinatura'),
+          const SizedBox(height: 8),
+          _AssinaturaCard(
+            assinados: assinados,
+            emAndamento: assinaturaEmAndamento,
+            naoAssinados: naoAssinados,
+            total: total,
+          ),
+
+          const SizedBox(height: 20),
 
           // ── Financeiro ────────────────────────────────────────────────
           _buildSecaoTitulo(context, 'Financeiro'),
@@ -154,23 +145,6 @@ class AbaPosVenda extends StatelessWidget {
           const SizedBox(height: 8),
           _IntegralizacaoCard(percentual: percMedioIntegralizado),
 
-          const SizedBox(height: 20),
-
-          // ── Assinatura ────────────────────────────────────────────────
-          _buildSecaoTitulo(context, 'Status de assinatura'),
-          const SizedBox(height: 8),
-          _AssinaturaCard(
-            assinados: assinados,
-            emAndamento: assinaturaEmAndamento,
-            naoAssinados: naoAssinados,
-            total: total,
-          ),
-
-          const SizedBox(height: 20),
-
-          // ── Botão aniversariantes ─────────────────────────────────────
-          _BotaoAniversariantes(aniversariantes: aniversariantes),
-
           const SizedBox(height: 24),
         ],
       ),
@@ -190,9 +164,15 @@ class AbaPosVenda extends StatelessWidget {
 
 // ── Botão de aniversariantes — abre bottom sheet com a lista ─────────────────
 class _BotaoAniversariantes extends StatelessWidget {
-  final List<({String nome, String localizador})> aniversariantes;
+  final List<Aniversariante> aniversariantes;
 
   const _BotaoAniversariantes({required this.aniversariantes});
+
+  static String _urlWhatsApp(String telefone) {
+    final digitos = telefone.replaceAll(RegExp(r'\D'), '');
+    final numero = digitos.startsWith('55') ? digitos : '55$digitos';
+    return 'https://wa.me/$numero';
+  }
 
   void _abrirBottomSheet(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -234,13 +214,28 @@ class _BotaoAniversariantes extends StatelessWidget {
                       Icon(Icons.cake_outlined, size: 16, color: cs.primary),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(a.nome, style: tt.bodyMedium),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(a.nome, style: tt.bodyMedium),
+                            Text(
+                              'Loc. ${a.localizador}',
+                              style: tt.labelSmall
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
                       ),
-                      Text(
-                        'Loc. ${a.localizador}',
-                        style: tt.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
+                      if (a.telefone.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.chat_rounded),
+                          color: const Color(0xFF25D366),
+                          tooltip: 'Abrir no WhatsApp',
+                          onPressed: () => launchUrl(
+                            Uri.parse(_urlWhatsApp(a.telefone)),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                        ),
                     ],
                   ),
                 ),
