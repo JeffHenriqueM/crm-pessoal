@@ -1,0 +1,7 @@
+{
+  "titulo": "Reimportar contrato sobrescreve a data de criação (pós-venda)",
+  "prioridade": "media",
+  "tipo": "bug",
+  "contexto": "lib/services/firestore_service.dart (salvarContrato, salvarContratosLote) + lib/models/contrato_model.dart (toFirestore)",
+  "descricao": "salvarContrato e salvarContratosLote gravam 'criadoEm': FieldValue.serverTimestamp() em TODO save com set(merge:true). Como a importação de CSV faz upsert por localizador (merge), reimportar um contrato existente RESOBRESCREVE criadoEm com a data atual — perde-se a data real do primeiro cadastro. O dialog de importação inclusive avisa que 'contratos com o mesmo localizador serão atualizados (merge)', então a reimportação é fluxo esperado, não exceção.\n\nCorreção sugerida: gravar criadoEm apenas na criação (ex.: ler o doc antes e só setar se não existir, ou usar uma escrita condicional/transação), mantendo atualizadoEm: serverTimestamp() em todo save. Alternativamente mover criadoEm para toFirestore só quando o documento é novo.\n\nTeste (já no repo, guarda de regressão tag 'bug-aberto'): test/services/contrato_pos_venda_test.dart → 'reimportar um contrato NÃO pode sobrescrever a data de criação'. Pré-semeia criadoEm=2020-01-01 e espera que permaneça após novo salvarContrato; hoje fica VERMELHO (2020 vira timestamp recente). Ao corrigir, remover a tag 'bug-aberto'."
+}

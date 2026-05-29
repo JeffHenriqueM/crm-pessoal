@@ -1,125 +1,151 @@
-// lib/models/interacao_model.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-// ── Tipo de interação ─────────────────────────────────────────────────────────
-enum TipoInteracao { ligacao, whatsapp, visita, email, reuniao }
+// ── Canal de contato ──────────────────────────────────────────────────────────
+enum Canal { whatsapp, ligacao, email, visita, outro, sistema }
 
-extension TipoInteracaoExt on TipoInteracao {
-  String get nome {
+extension CanalExt on Canal {
+  String get valor {
     switch (this) {
-      case TipoInteracao.ligacao:  return 'Ligação';
-      case TipoInteracao.whatsapp: return 'WhatsApp';
-      case TipoInteracao.visita:   return 'Visita';
-      case TipoInteracao.email:    return 'E-mail';
-      case TipoInteracao.reuniao:  return 'Reunião';
+      case Canal.whatsapp: return 'whatsapp';
+      case Canal.ligacao:  return 'ligacao';
+      case Canal.email:    return 'email';
+      case Canal.visita:   return 'visita';
+      case Canal.outro:    return 'outro';
+      case Canal.sistema:  return 'sistema';
     }
   }
 
-  String get firestoreValue {
+  String get nome {
     switch (this) {
-      case TipoInteracao.ligacao:  return 'ligacao';
-      case TipoInteracao.whatsapp: return 'whatsapp';
-      case TipoInteracao.visita:   return 'visita';
-      case TipoInteracao.email:    return 'email';
-      case TipoInteracao.reuniao:  return 'reuniao';
+      case Canal.whatsapp: return 'WhatsApp';
+      case Canal.ligacao:  return 'Ligação';
+      case Canal.email:    return 'E-mail';
+      case Canal.visita:   return 'Visita';
+      case Canal.outro:    return 'Outro';
+      case Canal.sistema:  return 'Sistema';
     }
   }
 
   IconData get icone {
     switch (this) {
-      case TipoInteracao.ligacao:  return Icons.phone_outlined;
-      case TipoInteracao.whatsapp: return FontAwesomeIcons.whatsapp;
-      case TipoInteracao.visita:   return Icons.location_on_outlined;
-      case TipoInteracao.email:    return Icons.email_outlined;
-      case TipoInteracao.reuniao:  return Icons.groups_outlined;
+      case Canal.whatsapp: return FontAwesomeIcons.whatsapp;
+      case Canal.ligacao:  return Icons.phone_outlined;
+      case Canal.email:    return Icons.email_outlined;
+      case Canal.visita:   return Icons.location_on_outlined;
+      case Canal.outro:    return Icons.chat_bubble_outline;
+      case Canal.sistema:  return Icons.settings_outlined;
     }
   }
 
   Color get cor {
     switch (this) {
-      case TipoInteracao.ligacao:  return const Color(0xFF1565C0);
-      case TipoInteracao.whatsapp: return const Color(0xFF25D366);
-      case TipoInteracao.visita:   return const Color(0xFF00695C);
-      case TipoInteracao.email:    return const Color(0xFF6A1B9A);
-      case TipoInteracao.reuniao:  return const Color(0xFFE65100);
+      case Canal.whatsapp: return const Color(0xFF25D366);
+      case Canal.ligacao:  return const Color(0xFF1565C0);
+      case Canal.email:    return const Color(0xFF6A1B9A);
+      case Canal.visita:   return const Color(0xFF00695C);
+      case Canal.outro:    return const Color(0xFF546E7A);
+      case Canal.sistema:  return const Color(0xFF90A4AE);
     }
   }
 
-  static TipoInteracao fromString(String? value) {
-    switch (value) {
-      case 'ligacao':  return TipoInteracao.ligacao;
-      case 'whatsapp': return TipoInteracao.whatsapp;
-      case 'visita':   return TipoInteracao.visita;
-      case 'email':    return TipoInteracao.email;
-      case 'reuniao':  return TipoInteracao.reuniao;
-      default:         return TipoInteracao.ligacao;
+  static Canal fromString(String? v) {
+    switch (v) {
+      case 'whatsapp': return Canal.whatsapp;
+      case 'ligacao':  return Canal.ligacao;
+      case 'email':    return Canal.email;
+      case 'visita':   return Canal.visita;
+      case 'sistema':  return Canal.sistema;
+      default:         return Canal.outro;
     }
   }
+}
+
+// ── Modalidade ────────────────────────────────────────────────────────────────
+enum Modalidade { online, presencial }
+
+extension ModalidadeExt on Modalidade {
+  String get valor => this == Modalidade.online ? 'online' : 'presencial';
+  String get nome  => this == Modalidade.online ? 'Online' : 'Presencial';
+
+  static Modalidade fromString(String? v) =>
+      v == 'presencial' ? Modalidade.presencial : Modalidade.online;
 }
 
 // ── Modelo ────────────────────────────────────────────────────────────────────
 class Interacao {
   final String? id;
-  final String titulo;
+  final String? titulo;
   final String nota;
   final DateTime dataInteracao;
-  final TipoInteracao tipo;
-
-  /// "O que combinamos?" — próximo passo combinado na interação.
-  final String? proximoPasso;
-
-  /// Nome do autor (usuário ou 'Sistema' para eventos automáticos).
+  final Canal canal;
+  final Modalidade modalidade;
+  final bool houveResposta;
+  final String? oQueCombinamos;
+  final String? autorId;
   final String? autorNome;
 
-  /// Valor raw do campo 'tipo' no Firestore — usado para identificar eventos
-  /// de sistema ('sistema', 'mensagem') que não são TipoInteracao válidos.
-  final String? tipoRaw;
-
-  Interacao({
+  const Interacao({
     this.id,
-    required this.titulo,
+    this.titulo,
     required this.nota,
     required this.dataInteracao,
-    this.tipo = TipoInteracao.ligacao,
-    this.proximoPasso,
+    this.canal = Canal.whatsapp,
+    this.modalidade = Modalidade.online,
+    this.houveResposta = false,
+    this.oQueCombinamos,
+    this.autorId,
     this.autorNome,
-    this.tipoRaw,
   });
 
-  /// Verdadeiro se for um evento gerado automaticamente pelo sistema.
-  bool get isSistema =>
-      tipoRaw == 'sistema' ||
-      tipoRaw == 'mensagem' ||
-      autorNome == 'Sistema';
+  bool get isSistema => canal == Canal.sistema;
 
-  /// Ícone específico para eventos de rastreamento de mensagem.
-  bool get isMensagem => tipoRaw == 'mensagem';
-
-  Map<String, dynamic> toFirestore() {
-    return {
-      'titulo': titulo,
-      'nota': nota,
-      'dataInteracao': Timestamp.fromDate(dataInteracao),
-      'tipo': tipo.firestoreValue,
-      'proximoPasso': proximoPasso,
-    };
-  }
+  Map<String, dynamic> toFirestore() => {
+    if (titulo != null && titulo!.isNotEmpty) 'titulo': titulo,
+    'nota':          nota,
+    'canal':         canal.valor,
+    'modalidade':    modalidade.valor,
+    'houveResposta': houveResposta,
+    if (oQueCombinamos != null && oQueCombinamos!.isNotEmpty)
+      'oQueCombinamos': oQueCombinamos,
+  };
 
   factory Interacao.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    final rawTipo = data['tipo'] as String?;
+
+    // 'canal' é o campo unificado; 'tipo' é legado do Villamor CRM
+    final canalRaw = (data['canal'] as String?) ?? (data['tipo'] as String?);
+
+    // 'nota' é o campo unificado; 'summary' é legado do NeuroCRM
+    final nota = (data['nota'] as String?)?.isNotEmpty == true
+        ? data['nota'] as String
+        : (data['summary'] as String? ?? '');
+
+    final rawData = data['dataInteracao'];
+    final dataInteracao = rawData is Timestamp
+        ? rawData.toDate()
+        : rawData is String
+            ? DateTime.tryParse(rawData) ?? DateTime.now()
+            : DateTime.now();
+
     return Interacao(
       id: doc.id,
-      titulo: data['titulo'] ?? '',
-      nota: data['nota'] ?? '',
-      dataInteracao: (data['dataInteracao'] as Timestamp).toDate(),
-      tipo: TipoInteracaoExt.fromString(rawTipo),
-      proximoPasso: data['proximoPasso'] as String?,
-      autorNome: data['autorNome'] as String?,
-      tipoRaw: rawTipo,
+      titulo: data['titulo'] as String?,
+      nota: nota,
+      dataInteracao: dataInteracao,
+      canal: CanalExt.fromString(canalRaw),
+      modalidade: ModalidadeExt.fromString(data['modalidade'] as String?),
+      // 'houveResposta' é o campo unificado; 'got_response' é legado do NeuroCRM
+      houveResposta: data['houveResposta'] as bool?
+          ?? data['got_response'] as bool?
+          ?? canalRaw == 'sistema',
+      // 'oQueCombinamos' é o campo unificado; 'proximoPasso' é legado
+      oQueCombinamos: (data['oQueCombinamos'] as String?)?.isNotEmpty == true
+          ? data['oQueCombinamos'] as String
+          : data['proximoPasso'] as String?,
+      autorId: data['autorId'] as String?,
+      autorNome: data['autorNome'] as String? ?? data['user_name'] as String?,
     );
   }
 }

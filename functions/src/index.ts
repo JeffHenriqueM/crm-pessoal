@@ -187,3 +187,4 @@ export const onCampanhaPublicada = functions
     functions.logger.info(`Campanha "${nome}" publicada — ${tokens.length} notificações enviadas`);
     return null;
   });
+

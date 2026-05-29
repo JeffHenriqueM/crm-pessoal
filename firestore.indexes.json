@@ -57,13 +57,6 @@
         { "fieldPath": "criadoPorId",     "order": "ASCENDING" },
         { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "comentarios",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "data", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []

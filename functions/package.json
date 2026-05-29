@@ -3,6 +3,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "npm run build && node --test",
     "deploy": "npm run build && firebase deploy --only functions",
     "shell": "npm run build && firebase functions:shell",
     "serve": "npm run build && firebase emulators:start --only functions",
@@ -18,7 +19,8 @@
   },
   "devDependencies": {
     "typescript": "^5.3.3",
-    "@types/node": "^20.11.5"
+    "@types/node": "^20.11.5",
+    "firebase-functions-test": "^3.4.0"
   },
   "private": true
 }

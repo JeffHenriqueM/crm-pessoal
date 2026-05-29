@@ -38,10 +38,15 @@ dependencies:
   pdf: ^3.10.7
   printing: ^5.13.1
   web: ^1.1.1
+  csv: ^6.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # Fakes/mocks para testes de unidade do FirestoreService (sem Firebase real).
+  fake_cloud_firestore: ^4.0.0
+  firebase_auth_mocks: ^0.15.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

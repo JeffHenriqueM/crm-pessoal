@@ -803,11 +803,13 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   // ── Dialogs de interação ──────────────────────────────────────────────────────
   void _mostrarDialogoInteracao(Interacao? interacao) {
     final isEditing = interacao != null;
-    final tituloCtrl = TextEditingController(text: interacao?.titulo);
-    final notaCtrl = TextEditingController(text: interacao?.nota);
-    final proximoPassoCtrl =
-        TextEditingController(text: interacao?.proximoPasso ?? '');
-    var tipoSelecionado = interacao?.tipo ?? TipoInteracao.ligacao;
+    final tituloCtrl = TextEditingController(text: interacao?.titulo ?? '');
+    final notaCtrl = TextEditingController(text: interacao?.nota ?? '');
+    final oQueCombinamos =
+        TextEditingController(text: interacao?.oQueCombinamos ?? '');
+    var canalSelecionado = interacao?.canal ?? Canal.whatsapp;
+    var modalidadeSelecionada = interacao?.modalidade ?? Modalidade.online;
+    var houveResposta = interacao?.houveResposta ?? false;
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -824,7 +826,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Tipo',
+                    // ── Canal ──────────────────────────────────────────────
+                    Text('Canal',
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -833,57 +836,135 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                     Wrap(
                       spacing: 8,
                       runSpacing: 4,
-                      children: TipoInteracao.values.map((t) {
-                        final selecionado = tipoSelecionado == t;
-                        final chipCs = Theme.of(ctx).colorScheme;
+                      children: Canal.values
+                          .where((c) => c != Canal.sistema)
+                          .map((c) {
+                        final sel = canalSelecionado == c;
+                        final cs = Theme.of(ctx).colorScheme;
                         return ChoiceChip(
-                          avatar: Icon(
-                            t.icone,
-                            size: 14,
-                            color: t.cor,
-                          ),
-                          label: Text(
-                            t.nome,
-                            style: TextStyle(
-                              fontSize: 12,
-                              // sempre usa cor do tema para adaptar ao dark mode
-                              color: selecionado
-                                  ? t.cor
-                                  : chipCs.onSurfaceVariant,
-                            ),
-                          ),
-                          selected: selecionado,
+                          avatar: Icon(c.icone, size: 14, color: c.cor),
+                          label: Text(c.nome,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: sel ? c.cor : cs.onSurfaceVariant)),
+                          selected: sel,
                           onSelected: (_) =>
-                              setStateDialog(() => tipoSelecionado = t),
-                          selectedColor: t.cor.withValues(alpha: 0.18),
-                          // fundo não selecionado explicitamente adaptado ao tema
-                          backgroundColor:
-                              chipCs.surfaceContainerHighest,
+                              setStateDialog(() => canalSelecionado = c),
+                          selectedColor: c.cor.withValues(alpha: 0.18),
+                          backgroundColor: cs.surfaceContainerHighest,
                           side: BorderSide(
-                            color: selecionado
-                                ? t.cor.withValues(alpha: 0.5)
-                                : chipCs.outlineVariant,
-                          ),
+                              color: sel
+                                  ? c.cor.withValues(alpha: 0.5)
+                                  : cs.outlineVariant),
                           visualDensity: VisualDensity.compact,
                         );
                       }).toList(),
                     ),
                     const SizedBox(height: 14),
+
+                    // ── Modalidade + Houve resposta ────────────────────────
+                    Row(
+                      children: [
+                        // Modalidade toggle
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Modalidade',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          Theme.of(ctx).colorScheme.primary)),
+                              const SizedBox(height: 6),
+                              SegmentedButton<Modalidade>(
+                                segments: const [
+                                  ButtonSegment(
+                                      value: Modalidade.online,
+                                      label: Text('Online'),
+                                      icon: Icon(Icons.public_outlined,
+                                          size: 14)),
+                                  ButtonSegment(
+                                      value: Modalidade.presencial,
+                                      label: Text('Presencial'),
+                                      icon: Icon(Icons.store_outlined,
+                                          size: 14)),
+                                ],
+                                selected: {modalidadeSelecionada},
+                                onSelectionChanged: (s) => setStateDialog(
+                                    () => modalidadeSelecionada = s.first),
+                                style: const ButtonStyle(
+                                    visualDensity: VisualDensity.compact),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Houve resposta toggle
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Houve resposta?',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        Theme.of(ctx).colorScheme.primary)),
+                            const SizedBox(height: 10),
+                            GestureDetector(
+                              onTap: () => setStateDialog(
+                                  () => houveResposta = !houveResposta),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 44,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: houveResposta
+                                      ? Colors.green.shade600
+                                      : Theme.of(ctx)
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                ),
+                                child: AnimatedAlign(
+                                  duration: const Duration(milliseconds: 200),
+                                  alignment: houveResposta
+                                      ? Alignment.centerRight
+                                      : Alignment.centerLeft,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(3),
+                                    child: Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Título (opcional) ──────────────────────────────────
                     TextFormField(
                       controller: tituloCtrl,
                       decoration: const InputDecoration(
-                          labelText: 'Título',
+                          labelText: 'Título (opcional)',
                           prefixIcon: Icon(Icons.title)),
                       textCapitalization: TextCapitalization.sentences,
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Insira um título.'
-                          : null,
                     ),
                     const SizedBox(height: 12),
+
+                    // ── Nota ──────────────────────────────────────────────
                     TextFormField(
                       controller: notaCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Nota',
+                        labelText: 'Nota *',
                         prefixIcon: Icon(Icons.notes),
                         alignLabelWithHint: true,
                       ),
@@ -895,8 +976,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                           : null,
                     ),
                     const SizedBox(height: 12),
+
+                    // ── O que combinamos ──────────────────────────────────
                     TextFormField(
-                      controller: proximoPassoCtrl,
+                      controller: oQueCombinamos,
                       decoration: const InputDecoration(
                         labelText: 'O que combinamos? (opcional)',
                         prefixIcon: Icon(Icons.check_circle_outline),
@@ -919,15 +1002,19 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             FilledButton(
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
-                final passo = proximoPassoCtrl.text.trim();
+                final combinamos = oQueCombinamos.text.trim();
                 final nova = Interacao(
                   id: interacao?.id ??
                       'local_${DateTime.now().millisecondsSinceEpoch}',
-                  titulo: tituloCtrl.text.trim(),
+                  titulo: tituloCtrl.text.trim().isEmpty
+                      ? null
+                      : tituloCtrl.text.trim(),
                   nota: notaCtrl.text.trim(),
                   dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
-                  tipo: tipoSelecionado,
-                  proximoPasso: passo.isEmpty ? null : passo,
+                  canal: canalSelecionado,
+                  modalidade: modalidadeSelecionada,
+                  houveResposta: houveResposta,
+                  oQueCombinamos: combinamos.isEmpty ? null : combinamos,
                 );
                 if (_isNovo) {
                   setState(() {

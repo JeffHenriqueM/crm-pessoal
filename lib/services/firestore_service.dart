@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
+import '../models/contrato_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
 import '../models/negociacao_model.dart';
@@ -11,9 +12,16 @@ import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db;
+  final FirebaseAuth _auth;
   static const _colClientes = 'clientes';
+  static const _colContratos = 'contratos';
+
+  /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
+  /// instâncias reais do Firebase (comportamento de produção inalterado).
+  FirestoreService({FirebaseFirestore? db, FirebaseAuth? auth})
+    : _db = db ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
 
   String get _currentUserId => _auth.currentUser?.uid ?? 'sistema';
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário';
@@ -258,14 +266,22 @@ class FirestoreService {
 
   Future<void> adicionarInteracao(String clienteId, Interacao interacao) async {
     final dados = interacao.toFirestore();
-    dados['autorId'] = _currentUserId;
-    dados['autorNome'] = _currentUserName;
+    dados['autorId']       = _currentUserId;
+    dados['autorNome']     = _currentUserName;
     dados['dataInteracao'] = FieldValue.serverTimestamp();
-    await _db
-        .collection(_colClientes)
-        .doc(clienteId)
-        .collection('interacoes')
-        .add(_flagTeste(dados));
+    dados['criadoEm']      = FieldValue.serverTimestamp();
+
+    final clienteRef = _db.collection(_colClientes).doc(clienteId);
+    await Future.wait([
+      clienteRef.collection('interacoes').add(_flagTeste(dados)),
+      clienteRef.update({
+        'interaction_count': FieldValue.increment(1),
+        if (!interacao.houveResposta)
+          'no_response_count': FieldValue.increment(1),
+        if (interacao.houveResposta)
+          'no_response_count': 0,
+      }),
+    ]);
   }
 
   Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
@@ -278,30 +294,37 @@ class FirestoreService {
   }
 
   Future<void> excluirInteracao(String clienteId, String interacaoId) async {
-    await _db
+    final ref = _db
         .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
-        .doc(interacaoId)
-        .delete();
+        .doc(interacaoId);
+    await Future.wait([
+      ref.delete(),
+      _db.collection(_colClientes).doc(clienteId).update({
+        'interaction_count': FieldValue.increment(-1),
+      }),
+    ]);
   }
 
   Future<void> _adicionarInteracaoAutomatica(
     String clienteId,
     String texto, {
     String titulo = 'Evento do Sistema',
-    String tipo = 'sistema',
   }) async {
     await _db
         .collection(_colClientes)
         .doc(clienteId)
         .collection('interacoes')
         .add({
-      'titulo': titulo,
-      'nota': texto,
+      'titulo':        titulo,
+      'nota':          texto,
+      'canal':         'sistema',
+      'modalidade':    'online',
+      'houveResposta': true,
       'dataInteracao': FieldValue.serverTimestamp(),
-      'tipo': tipo,
-      'autorNome': 'Sistema',
+      'criadoEm':      FieldValue.serverTimestamp(),
+      'autorNome':     'Sistema',
     });
   }
 
@@ -362,7 +385,6 @@ class FirestoreService {
       clienteId,
       nota,
       titulo: titulo,
-      tipo: 'mensagem',
     );
   }
 
@@ -788,5 +810,93 @@ class FirestoreService {
   /// Deleta um ticket (apenas admin).
   Future<void> deletarTicket(String ticketId) async {
     await _db.collection(_colTickets).doc(ticketId).delete();
+  }
+
+  // ── CONTRATOS PÓS-VENDA ──────────────────────────────────────────────────
+
+  /// Stream de todos os contratos ativos, ordenados por nome do comprador.
+  Stream<List<Contrato>> getContratosStream() {
+    return _db
+        .collection(_colContratos)
+        .orderBy('nomeComprador')
+        .snapshots()
+        .map((snap) => snap.docs.map(Contrato.fromFirestore).toList());
+  }
+
+  /// Stream das interações de um contrato específico.
+  Stream<List<Interacao>> getInteracoesContrato(String contratoId) {
+    return _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .orderBy('dataInteracao', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(Interacao.fromFirestore).toList());
+  }
+
+  /// Salva (upsert) um contrato. Usa o localizador como ID do documento.
+  Future<void> salvarContrato(Contrato c) async {
+    final dados = _flagTeste({
+      ...c.toFirestore(),
+      'criadoEm': FieldValue.serverTimestamp(),
+    });
+    await _db
+        .collection(_colContratos)
+        .doc(c.localizador)
+        .set(dados, SetOptions(merge: true));
+  }
+
+  /// Salva uma lista de contratos em lotes (máx 500 por batch).
+  Future<void> salvarContratosLote(List<Contrato> contratos) async {
+    const batchSize = 400;
+    for (var i = 0; i < contratos.length; i += batchSize) {
+      final batch = _db.batch();
+      final fatia = contratos.skip(i).take(batchSize);
+      for (final c in fatia) {
+        final ref = _db.collection(_colContratos).doc(c.localizador);
+        final dados = _flagTeste({
+          ...c.toFirestore(),
+          'criadoEm': FieldValue.serverTimestamp(),
+        });
+        batch.set(ref, dados, SetOptions(merge: true));
+      }
+      await batch.commit();
+    }
+  }
+
+  /// Registra uma interação na subcoleção do contrato.
+  Future<void> adicionarInteracaoContrato(
+    String contratoId,
+    Interacao interacao,
+  ) async {
+    await _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .add(_flagTeste(interacao.toFirestore()));
+  }
+
+  /// Exclui uma interação da subcoleção de um contrato.
+  Future<void> deletarInteracaoContrato(
+    String contratoId,
+    String interacaoId,
+  ) async {
+    await _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .doc(interacaoId)
+        .delete();
+  }
+
+  /// Atualiza apenas o status de assinatura de um contrato.
+  Future<void> atualizarStatusAssinatura(
+    String contratoId,
+    StatusAssinatura status,
+  ) async {
+    await _db.collection(_colContratos).doc(contratoId).update({
+      'statusAssinatura': status.value,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
   }
 }

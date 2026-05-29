@@ -50,6 +50,9 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Testes de Rules (Node)
+firestore-tests/node_modules/
+
 # Symbolication related
 app.*.symbols
 

@@ -3,8 +3,6 @@ import 'package:intl/intl.dart';
 import '../../models/interacao_model.dart';
 
 /// Aba de interações com visual de timeline.
-/// Recebe a lista de interações e um callback para quando o usuário
-/// toca em um item manual (editar / excluir).
 class FichaTimelineTab extends StatelessWidget {
   final List<Interacao> interacoes;
   final bool isNovo;
@@ -61,7 +59,6 @@ class FichaTimelineTab extends StatelessWidget {
     );
   }
 
-  // ── Item de timeline ──────────────────────────────────────────────────────────
   Widget _buildTimelineItem(
     BuildContext context,
     Interacao item, {
@@ -70,16 +67,14 @@ class FichaTimelineTab extends StatelessWidget {
   }) {
     final cs = Theme.of(context).colorScheme;
     final isSistema = item.isSistema;
-    final dotColor = isSistema
-        ? (item.isMensagem ? Colors.deepPurple.shade400 : cs.outlineVariant)
-        : item.tipo.cor;
+    final dotColor = isSistema ? cs.outlineVariant : item.canal.cor;
     final lineColor = cs.outlineVariant.withValues(alpha: 0.6);
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Rail esquerdo ─────────────────────────────────────────────────────
+          // ── Rail esquerdo ───────────────────────────────────────────────────
           SizedBox(
             width: 32,
             child: Column(
@@ -91,8 +86,6 @@ class FichaTimelineTab extends StatelessWidget {
                   )
                 else
                   const SizedBox(height: 8),
-
-                // Dot
                 Container(
                   width: isSistema ? 10 : 14,
                   height: isSistema ? 10 : 14,
@@ -103,13 +96,7 @@ class FichaTimelineTab extends StatelessWidget {
                         : null,
                     shape: BoxShape.circle,
                   ),
-                  child: isSistema && item.isMensagem
-                      ? Center(
-                          child: Icon(Icons.message_outlined,
-                              size: 6, color: dotColor))
-                      : null,
                 ),
-
                 if (!isLast)
                   Expanded(
                     flex: 3,
@@ -122,7 +109,7 @@ class FichaTimelineTab extends StatelessWidget {
           ),
           const SizedBox(width: 10),
 
-          // ── Conteúdo ──────────────────────────────────────────────────────────
+          // ── Conteúdo ────────────────────────────────────────────────────────
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -136,11 +123,8 @@ class FichaTimelineTab extends StatelessWidget {
     );
   }
 
-  // ── Item de sistema (compacto, muted) ─────────────────────────────────────────
+  // ── Item de sistema (compacto, muted) ────────────────────────────────────────
   Widget _buildSistemaItem(Interacao item, ColorScheme cs) {
-    final isMsg = item.isMensagem;
-    final cor = isMsg ? Colors.deepPurple.shade400 : cs.outline;
-
     return Padding(
       padding: const EdgeInsets.only(top: 2),
       child: Column(
@@ -149,17 +133,16 @@ class FichaTimelineTab extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.10),
+                  color: cs.outline.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  isMsg ? 'Mensagem' : 'Sistema',
-                  style: TextStyle(
-                      fontSize: 9, fontWeight: FontWeight.w600, color: cor),
-                ),
+                child: Text('Sistema',
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: cs.outline)),
               ),
               const SizedBox(width: 6),
               Text(
@@ -169,14 +152,16 @@ class FichaTimelineTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 3),
-          Text(
-            item.titulo,
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurfaceVariant),
-          ),
-          if (item.nota.isNotEmpty && item.nota != item.titulo)
+          if (item.titulo != null && item.titulo!.isNotEmpty)
+            Text(
+              item.titulo!,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurfaceVariant),
+            ),
+          if (item.nota.isNotEmpty &&
+              item.nota != item.titulo)
             Text(
               item.nota,
               style: TextStyle(fontSize: 11, color: cs.outline),
@@ -188,10 +173,10 @@ class FichaTimelineTab extends StatelessWidget {
     );
   }
 
-  // ── Item manual (card completo, clicável) ─────────────────────────────────────
+  // ── Item manual (card completo, clicável) ────────────────────────────────────
   Widget _buildManualItem(Interacao item, ColorScheme cs) {
-    final temProximoPasso =
-        item.proximoPasso != null && item.proximoPasso!.isNotEmpty;
+    final temCombinamos =
+        item.oQueCombinamos != null && item.oQueCombinamos!.isNotEmpty;
 
     return GestureDetector(
       onTap: () => onItemTap(item),
@@ -214,30 +199,62 @@ class FichaTimelineTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Cabeçalho: chip de tipo + data ────────────────────────────────
+              // ── Cabeçalho: canal + badges + data ──────────────────────────
               Row(
                 children: [
+                  // Canal
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: item.tipo.cor.withValues(alpha: 0.10),
+                      color: item.canal.cor.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(item.tipo.icone, size: 11, color: item.tipo.cor),
+                        Icon(item.canal.icone,
+                            size: 11, color: item.canal.cor),
                         const SizedBox(width: 4),
-                        Text(
-                          item.tipo.nome,
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: item.tipo.cor),
-                        ),
+                        Text(item.canal.nome,
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: item.canal.cor)),
                       ],
                     ),
+                  ),
+                  const SizedBox(width: 5),
+                  // Modalidade
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: item.modalidade == Modalidade.presencial
+                          ? Colors.teal.withValues(alpha: 0.10)
+                          : Colors.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      item.modalidade.nome,
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                          color: item.modalidade == Modalidade.presencial
+                              ? Colors.teal.shade700
+                              : Colors.blue.shade700),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  // Houve resposta
+                  Icon(
+                    item.houveResposta
+                        ? Icons.check_circle
+                        : Icons.cancel_outlined,
+                    size: 13,
+                    color: item.houveResposta
+                        ? Colors.green.shade600
+                        : cs.outlineVariant,
                   ),
                   const Spacer(),
                   Text(
@@ -250,15 +267,17 @@ class FichaTimelineTab extends StatelessWidget {
               ),
               const SizedBox(height: 7),
 
-              // ── Título ────────────────────────────────────────────────────────
-              Text(
-                item.titulo,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              const SizedBox(height: 3),
+              // ── Título (opcional) ──────────────────────────────────────────
+              if (item.titulo != null && item.titulo!.isNotEmpty) ...[
+                Text(
+                  item.titulo!,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 3),
+              ],
 
-              // ── Nota ─────────────────────────────────────────────────────────
+              // ── Nota ──────────────────────────────────────────────────────
               Text(
                 item.nota,
                 maxLines: 3,
@@ -267,19 +286,18 @@ class FichaTimelineTab extends StatelessWidget {
                     fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
               ),
 
-              // ── Próximo passo ─────────────────────────────────────────────────
-              if (temProximoPasso) ...[
+              // ── O que combinamos ──────────────────────────────────────────
+              if (temCombinamos) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
-                    color:
-                        Colors.green.shade700.withValues(alpha: 0.08),
+                    color: Colors.green.shade700.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: Colors.green.shade700
-                            .withValues(alpha: 0.25)),
+                        color:
+                            Colors.green.shade700.withValues(alpha: 0.25)),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,7 +307,7 @@ class FichaTimelineTab extends StatelessWidget {
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
-                          item.proximoPasso!,
+                          item.oQueCombinamos!,
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.green.shade800,
@@ -304,7 +322,7 @@ class FichaTimelineTab extends StatelessWidget {
                 ),
               ],
 
-              // ── Autor ─────────────────────────────────────────────────────────
+              // ── Autor ──────────────────────────────────────────────────────
               if (item.autorNome != null && item.autorNome!.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(

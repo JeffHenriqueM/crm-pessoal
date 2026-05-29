@@ -8,6 +8,18 @@
 - Build Functions: `cd functions && npm run build`
 - Deploy Functions: `firebase deploy --only functions --project crm-pessoal-d993d`
 
+> ⚠️ **Antes de QUALQUER deploy (preview ou produção, hosting ou functions): rodar a suíte de testes e só prosseguir se estiver verde.** Gate obrigatório: `flutter test --exclude-tags bug-aberto` (exclui as guardas de bug ainda não corrigido — ver abaixo). Se o deploy tocar Rules ou Functions, rodar também a suíte correspondente (ver TESTING.md). Falha no gate = deploy bloqueado.
+
+## 🧪 Testes
+Estratégia, comandos e backlog de testes em **[TESTING.md](TESTING.md)**. Três runtimes:
+- Dart/Flutter: `flutter test`
+- Firestore Rules: emulador + `@firebase/rules-unit-testing` (requer Java)
+- Cloud Functions: emulador + `firebase-functions-test` (requer Java)
+
+Convenção: **testar comportamento, não implementação** (não congelar bugs); usar TDD; sempre rodar a suíte e mostrar o resultado antes de seguir.
+
+**Guardas de bug (`bug-aberto`):** testes que afirmam o comportamento correto de um bug ainda **não** corrigido ficam propositalmente VERMELHOS e levam a tag `tags: 'bug-aberto'` (declarada em `dart_test.yaml`), atrelados a um ticket. Eles documentam o esperado sem bloquear deploy. O gate roda `flutter test --exclude-tags bug-aberto`; ao corrigir o bug, **remover a tag** para o teste virar guarda viva. Backlog em TESTING.md.
+
 ## 📐 Diretrizes de Arquitetura e Código
 - Idioma: Código de negócio, variáveis, métodos, comentários e Firestore em **Português**. Widgets Flutter e padrões de framework em **Inglês**.
 - Camada de Dados: Widgets NUNCA chamam o Firestore diretamente. Toda comunicação deve passar obrigatoriamente por `lib/services/firestore_service.dart` ou `auth_service.dart`.
