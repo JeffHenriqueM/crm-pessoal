@@ -8,6 +8,14 @@
 - Build Functions: `cd functions && npm run build`
 - Deploy Functions: `firebase deploy --only functions --project crm-pessoal-d993d`
 
+## 🧪 Testes
+Estratégia, comandos e backlog de testes em **[TESTING.md](TESTING.md)**. Três runtimes:
+- Dart/Flutter: `flutter test`
+- Firestore Rules: emulador + `@firebase/rules-unit-testing` (requer Java)
+- Cloud Functions: emulador + `firebase-functions-test` (requer Java)
+
+Convenção: **testar comportamento, não implementação** (não congelar bugs); usar TDD; sempre rodar a suíte e mostrar o resultado antes de seguir.
+
 ## 📐 Diretrizes de Arquitetura e Código
 - Idioma: Código de negócio, variáveis, métodos, comentários e Firestore em **Português**. Widgets Flutter e padrões de framework em **Inglês**.
 - Camada de Dados: Widgets NUNCA chamam o Firestore diretamente. Toda comunicação deve passar obrigatoriamente por `lib/services/firestore_service.dart` ou `auth_service.dart`.
