@@ -25,6 +25,15 @@ List<Contrato> parsearCsvContratos(String conteudo) {
     return i; // -1 se não encontrado
   }
 
+  // Match exato (sem contains) — usado onde "contains" causaria ambiguidade,
+  // ex.: "STATUS" casando com "STATUS ASSINATURA" ou "STATUS FINANCEIRO".
+  int idxExato(String nome) {
+    final i = cabecalho.indexWhere(
+      (h) => h.toLowerCase() == nome.toLowerCase(),
+    );
+    return i;
+  }
+
   final iLoc = idx('LOCALIZADOR');
   if (iLoc < 0) throw Exception('Coluna LOCALIZADOR não encontrada');
 
@@ -120,10 +129,11 @@ List<Contrato> parsearCsvContratos(String conteudo) {
         imovel: cel(idx('IMÓVEL')),
         produto: cel(idx('PRODUTO')),
         cota: cel(idx('COTA')),
-        status: cel(idx('STATUS')).isEmpty ? 'Ativo' : cel(idx('STATUS')),
-        statusFinanceiro: cel(idx('STATUS FINANCEIRO')).isEmpty
+        // idxExato evita que "STATUS" case "STATUS ASSINATURA"/"STATUS FINANCEIRO"
+        status: cel(idxExato('STATUS')).isEmpty ? 'Ativo' : cel(idxExato('STATUS')),
+        statusFinanceiro: cel(idxExato('STATUS FINANCEIRO')).isEmpty
             ? 'Em andamento'
-            : cel(idx('STATUS FINANCEIRO')),
+            : cel(idxExato('STATUS FINANCEIRO')),
         dataQuitacao: parseData(idx('DATA QUITAÇÃO')),
         entrada: dbl(idx('ENTRADA')),
         saldoRestante: dbl(idx('SALDO RESTANTE')),
@@ -137,7 +147,7 @@ List<Contrato> parsearCsvContratos(String conteudo) {
         captador: cel(idx('CAPTADOR')),
         vendedorLiner: cel(idx('VENDEDOR LINER')),
         pontoCapatcao: cel(idx('PONTO DE CAPTAÇÃO')),
-        statusAssinatura: StatusAssinatura.naoAssinado,
+        statusAssinatura: StatusAssinatura.fromCsvLabel(cel(idx('STATUS ASSINATURA'))),
       ),
     );
   }

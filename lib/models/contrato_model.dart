@@ -27,6 +27,14 @@ enum StatusAssinatura {
     }
   }
 
+  // Converte o texto legível do CSV ("Assinado", "Em andamento", etc.)
+  static StatusAssinatura fromCsvLabel(String v) {
+    final s = v.toLowerCase().trim();
+    if (s == 'assinado') return StatusAssinatura.assinado;
+    if (s.contains('andamento')) return StatusAssinatura.emAndamento;
+    return StatusAssinatura.naoAssinado;
+  }
+
   String get value {
     switch (this) {
       case StatusAssinatura.naoAssinado:
