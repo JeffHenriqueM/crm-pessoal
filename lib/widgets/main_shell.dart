@@ -88,6 +88,7 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.handshake_outlined,       activeIcon: Icons.handshake_rounded,    label: 'Negociações'),
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
+        _NavItem(icon: Icons.article_outlined,         activeIcon: Icons.article_rounded,      label: 'Pós-Venda'),
         _apresentacaoItem,
         _ticketsItem,
         _recepcaoItem,
@@ -105,11 +106,10 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── pós-venda: Dashboard KPIs + Contratos ────────────────────
+    // ── pós-venda: item único (contratos embutidos dentro) ────────
     if (_isPosVenda) {
       return const [
-        _NavItem(icon: Icons.dashboard_outlined,    activeIcon: Icons.dashboard_rounded,    label: 'Pós-Venda'),
-        _NavItem(icon: Icons.article_outlined,       activeIcon: Icons.article_rounded,      label: 'Contratos'),
+        _NavItem(icon: Icons.article_outlined, activeIcon: Icons.article_rounded, label: 'Pós-Venda'),
       ];
     }
     // ── financeiro: Dashboard primeiro ────────────────────────────
@@ -131,6 +131,7 @@ class _MainShellState extends State<MainShell> {
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
       const CampanhasScreen(),
+      const _PosVendaHomeScreen(),
       const ApresentacaoScreen(),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
@@ -144,7 +145,6 @@ class _MainShellState extends State<MainShell> {
       const RecepcaoScreen(),
     ] else if (_isPosVenda) ...[
       const _PosVendaHomeScreen(),
-      const PosVendaScreen(),
     ] else ...[
       // financeiro: Dashboard primeiro
       const DashboardScreen(),
@@ -610,15 +610,33 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// ── Tela home do perfil pós-venda ─────────────────────────────────────────────
+// ── Tela de Pós-Venda: visão geral (KPIs) + lista de contratos ───────────────
 class _PosVendaHomeScreen extends StatelessWidget {
   const _PosVendaHomeScreen();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pós-Venda')),
-      body: const AbaPosVenda(),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Pós-Venda'),
+          toolbarHeight: 50,
+          bottom: const TabBar(
+            indicatorWeight: 3,
+            tabs: [
+              Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
+              Tab(text: 'Contratos',   icon: Icon(Icons.article_outlined)),
+            ],
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            AbaPosVenda(),
+            PosVendaScreen(),
+          ],
+        ),
+      ),
     );
   }
 }
