@@ -189,6 +189,7 @@ class _FichaTicketScreenState extends State<FichaTicketScreen> {
               backgroundColor: Colors.green,
             ),
           );
+          Navigator.pop(context);
         }
       }
     } catch (e) {

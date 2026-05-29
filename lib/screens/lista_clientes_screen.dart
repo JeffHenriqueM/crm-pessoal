@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../models/cliente_model.dart';
@@ -14,8 +15,9 @@ import 'ficha_cliente_screen.dart';
 class ListaClientesScreen extends StatefulWidget {
   final FaseCliente? faseInicial;
   final String? vendedorIdInicial;
+  final String userProfile;
   const ListaClientesScreen(
-      {super.key, this.faseInicial, this.vendedorIdInicial});
+      {super.key, this.faseInicial, this.vendedorIdInicial, this.userProfile = ''});
 
   @override
   State<ListaClientesScreen> createState() => _ListaClientesScreenState();
@@ -56,34 +58,53 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
   void initState() {
     super.initState();
     _inicializarEstado();
+    HardwareKeyboard.instance.addHandler(_onKeyEvent);
   }
 
   void _inicializarEstado() {
-    _vendedorIdFiltro = _authService.getCurrentUser()?.uid;
+    final perfilConhecido = widget.userProfile.isNotEmpty ? widget.userProfile : null;
+
+    if (perfilConhecido != null) {
+      _userProfile = perfilConhecido;
+    }
+
+    final isAdminInicial = perfilConhecido == 'admin' || perfilConhecido == 'super admin';
+
+    _vendedorIdFiltro = isAdminInicial
+        ? widget.vendedorIdInicial
+        : _authService.getCurrentUser()?.uid;
+
     _clientesStream = _firestoreService.getTodosClientesStream(
       vendedorId: _vendedorIdFiltro,
       ordenarPor: _ordenarPor,
       descendente: _descendente,
     );
 
-    _authService.getCurrentUserProfile().then((perfil) {
-      if (!mounted) return;
-      setState(() => _userProfile = perfil);
-      if (perfil == 'admin' || perfil == 'super admin') {
-        setState(() {
-          _vendedorIdFiltro = widget.vendedorIdInicial;
-          _clientesStream = _firestoreService.getTodosClientesStream(
-            vendedorId: _vendedorIdFiltro,
-            ordenarPor: _ordenarPor,
-            descendente: _descendente,
-          );
-        });
-        // Carrega lista de embaixadores para o filtro
+    if (perfilConhecido != null) {
+      if (isAdminInicial) {
         _firestoreService.getTodosUsuarios().then((lista) {
           if (mounted) setState(() => _vendedores = lista);
         });
       }
-    });
+    } else {
+      _authService.getCurrentUserProfile().then((perfil) {
+        if (!mounted) return;
+        setState(() => _userProfile = perfil);
+        if (perfil == 'admin' || perfil == 'super admin') {
+          setState(() {
+            _vendedorIdFiltro = widget.vendedorIdInicial;
+            _clientesStream = _firestoreService.getTodosClientesStream(
+              vendedorId: _vendedorIdFiltro,
+              ordenarPor: _ordenarPor,
+              descendente: _descendente,
+            );
+          });
+          _firestoreService.getTodosUsuarios().then((lista) {
+            if (mounted) setState(() => _vendedores = lista);
+          });
+        }
+      });
+    }
 
     // Exclui atendimento das abas do funil (só aparece na recepção)
     final fasesVisiveis = FaseCliente.values
@@ -105,9 +126,23 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKeyEvent);
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  bool _onKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyF &&
+        (HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed) &&
+        !_usarKanban &&
+        mounted) {
+      if (!_estaPesquisando) setState(() => _estaPesquisando = true);
+      return true;
+    }
+    return false;
   }
 
   void _handleSearchStateChange(bool isTyping) {

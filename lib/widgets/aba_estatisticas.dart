@@ -213,7 +213,7 @@ class AbaEstatisticas extends StatelessWidget {
           value: 1,
           title: 'Sem dados',
           radius: 55,
-          titleStyle: const TextStyle(fontSize: 11, color: Colors.black54),
+          titleStyle: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         )
       ];
     }

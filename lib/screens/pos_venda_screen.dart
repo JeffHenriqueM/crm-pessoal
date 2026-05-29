@@ -6,13 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/contrato_model.dart';
-import '../services/auth_service.dart';
 import '../services/contrato_csv_parser.dart';
 import '../services/firestore_service.dart';
 import 'ficha_contrato_screen.dart';
 
 class PosVendaScreen extends StatefulWidget {
-  const PosVendaScreen({super.key});
+  final String userProfile;
+  const PosVendaScreen({super.key, required this.userProfile});
 
   @override
   State<PosVendaScreen> createState() => _PosVendaScreenState();
@@ -20,14 +20,12 @@ class PosVendaScreen extends StatefulWidget {
 
 class _PosVendaScreenState extends State<PosVendaScreen> {
   final _fs = FirestoreService();
-  final _auth = AuthService();
 
   String _busca = '';
   String? _filtroStatusFin;
   String? _filtroAssinatura;
   String? _filtroProduto;
 
-  String _perfil = '';
   List<Contrato> _todos = [];
   bool _carregando = true;
 
@@ -36,7 +34,6 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   @override
   void initState() {
     super.initState();
-    _auth.getCurrentUserProfile().then((p) => setState(() => _perfil = p));
     _sub = _fs.getContratosStream().listen(
       (lista) => setState(() {
         _todos = lista;
@@ -81,81 +78,82 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   }
 
   bool get _podeImportar =>
-      _perfil == 'admin' || _perfil == 'super admin' || _perfil == 'pós-venda';
+      widget.userProfile == 'admin' ||
+      widget.userProfile == 'super admin' ||
+      widget.userProfile == 'pós-venda';
 
   @override
   Widget build(BuildContext context) {
     final filtrados = _filtrados;
+    final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Contratos Pós-Venda'),
-        actions: [
-          if (_podeImportar)
-            IconButton(
-              icon: const Icon(Icons.upload_file_outlined),
-              tooltip: 'Importar CSV',
-              onPressed: () => _abrirImportDialog(context),
-            ),
-          const SizedBox(width: 8),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Buscar por nome, CPF, localizador ou cidade…',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _busca.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => setState(() => _busca = ''),
-                      )
-                    : null,
-                filled: true,
-                fillColor: Theme.of(context).colorScheme.surface,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
+    return Column(
+      children: [
+        // ── Barra de busca + botão de importar ─────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por nome, CPF, localizador ou cidade…',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _busca.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => setState(() => _busca = ''),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: cs.surfaceContainerHighest,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (v) => setState(() => _busca = v),
                 ),
               ),
-              onChanged: (v) => setState(() => _busca = v),
-            ),
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          _buildFiltros(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                Text(
-                  '${filtrados.length} contrato${filtrados.length == 1 ? '' : 's'}',
-                  style: Theme.of(context).textTheme.bodySmall,
+              if (_podeImportar) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.upload_file_outlined),
+                  tooltip: 'Importar CSV',
+                  onPressed: () => _abrirImportDialog(context),
                 ),
               ],
-            ),
+            ],
           ),
-          Expanded(
-            child: _carregando
-                ? const Center(child: CircularProgressIndicator())
-                : filtrados.isEmpty
-                ? const Center(
-                    child: Text('Nenhum contrato encontrado.'),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
-                    itemCount: filtrados.length,
-                    itemBuilder: (ctx, i) =>
-                        _ContratoCard(contrato: filtrados[i]),
-                  ),
+        ),
+        // ── Chips de filtro ────────────────────────────────────────────────
+        _buildFiltros(),
+        // ── Contagem ───────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              Text(
+                '${filtrados.length} contrato${filtrados.length == 1 ? '' : 's'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        // ── Lista ──────────────────────────────────────────────────────────
+        Expanded(
+          child: _carregando
+              ? const Center(child: CircularProgressIndicator())
+              : filtrados.isEmpty
+              ? const Center(child: Text('Nenhum contrato encontrado.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
+                  itemCount: filtrados.length,
+                  itemBuilder: (ctx, i) => _ContratoCard(contrato: filtrados[i]),
+                ),
+        ),
+      ],
     );
   }
 
@@ -433,6 +431,7 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ativo = valor != null;
+    final cs = Theme.of(context).colorScheme;
     return FilterChip(
       label: Text(
         ativo
@@ -440,13 +439,14 @@ class _FilterChip extends StatelessWidget {
                   ? labels![opcoes.indexOf(valor!)]
                   : valor!)
             : label,
-        style: TextStyle(fontSize: 12, color: ativo ? Colors.white : null),
+        style: TextStyle(fontSize: 12, color: ativo ? cs.onPrimary : cs.onSurface),
       ),
       selected: ativo,
       onSelected: (_) => _mostrarMenu(context),
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      selectedColor: Theme.of(context).colorScheme.primary,
-      checkmarkColor: Colors.white,
+      backgroundColor: cs.surfaceContainerHighest,
+      selectedColor: cs.primary,
+      checkmarkColor: cs.onPrimary,
+      side: BorderSide(color: ativo ? Colors.transparent : cs.outlineVariant),
     );
   }
 

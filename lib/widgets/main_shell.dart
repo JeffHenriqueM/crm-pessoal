@@ -88,7 +88,7 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.handshake_outlined,       activeIcon: Icons.handshake_rounded,    label: 'Negociações'),
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
-        _NavItem(icon: Icons.article_outlined,         activeIcon: Icons.article_rounded,      label: 'Pós-Venda'),
+        _NavItem(icon: Icons.description_outlined,      activeIcon: Icons.description,           label: 'Pós-Venda'),
         _apresentacaoItem,
         _ticketsItem,
         _recepcaoItem,
@@ -109,7 +109,7 @@ class _MainShellState extends State<MainShell> {
     // ── pós-venda: Pós-Venda primeiro + mesmos itens do vendedor ─
     if (_isPosVenda) {
       return const [
-        _NavItem(icon: Icons.article_outlined,        activeIcon: Icons.article_rounded,    label: 'Pós-Venda'),
+        _NavItem(icon: Icons.description_outlined,     activeIcon: Icons.description,          label: 'Pós-Venda'),
         _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,     label: 'Agenda'),
         _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
         _NavItem(icon: Icons.handshake_outlined,      activeIcon: Icons.handshake_rounded,  label: 'Negociações'),
@@ -133,36 +133,36 @@ class _MainShellState extends State<MainShell> {
   // ── Páginas (IndexedStack preserva o estado) ──────────────────────────────
   late final List<Widget> _pages = [
     if (_isAdmin) ...[
-      const DashboardScreen(),
-      const ListaClientesScreen(),
+      DashboardScreen(userProfile: widget.userProfile),
+      ListaClientesScreen(userProfile: widget.userProfile),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
       const CampanhasScreen(),
-      const _PosVendaHomeScreen(),
+      _PosVendaHomeScreen(userProfile: widget.userProfile),
       const ApresentacaoScreen(),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
-      const ListaClientesScreen(),
+      ListaClientesScreen(userProfile: widget.userProfile),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const ApresentacaoScreen(),
-      const DashboardScreen(),
+      DashboardScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
     ] else if (_isPosVenda) ...[
-      const _PosVendaHomeScreen(),
+      _PosVendaHomeScreen(userProfile: widget.userProfile),
       VendedorHomeScreen(currentUserId: widget.currentUserId),
-      const ListaClientesScreen(),
+      ListaClientesScreen(userProfile: widget.userProfile),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const ApresentacaoScreen(),
-      const DashboardScreen(),
+      DashboardScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
     ] else ...[
       // financeiro: Dashboard primeiro
-      const DashboardScreen(),
-      const ListaClientesScreen(),
+      DashboardScreen(userProfile: widget.userProfile),
+      ListaClientesScreen(userProfile: widget.userProfile),
       NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const ApresentacaoScreen(),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
@@ -444,7 +444,7 @@ class _MainShellState extends State<MainShell> {
                       child: Center(
                         child: Icon(
                           selected ? item.activeIcon : item.icon,
-                          color: selected ? cs.primary : cs.onSurfaceVariant,
+                          color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
                           size: 20,
                         ),
                       ),
@@ -460,14 +460,14 @@ class _MainShellState extends State<MainShell> {
               child: ListTile(
                 leading: Icon(
                   selected ? item.activeIcon : item.icon,
-                  color: selected ? cs.primary : cs.onSurfaceVariant,
+                  color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
                   size: 20,
                 ),
                 title: Text(
                   item.label,
                   style: TextStyle(
                     fontSize: 14,
-                    color: selected ? cs.primary : cs.onSurface,
+                    color: selected ? cs.onPrimaryContainer : cs.onSurface,
                     fontWeight:
                         selected ? FontWeight.w600 : FontWeight.normal,
                   ),
@@ -625,7 +625,8 @@ class _MainShellState extends State<MainShell> {
 
 // ── Tela de Pós-Venda: visão geral (KPIs) + lista de contratos ───────────────
 class _PosVendaHomeScreen extends StatelessWidget {
-  const _PosVendaHomeScreen();
+  final String userProfile;
+  const _PosVendaHomeScreen({required this.userProfile});
 
   @override
   Widget build(BuildContext context) {
@@ -639,14 +640,14 @@ class _PosVendaHomeScreen extends StatelessWidget {
             indicatorWeight: 3,
             tabs: [
               Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
-              Tab(text: 'Contratos',   icon: Icon(Icons.article_outlined)),
+              Tab(text: 'Contratos',   icon: Icon(Icons.description_outlined)),
             ],
           ),
         ),
-        body: const TabBarView(
+        body: TabBarView(
           children: [
-            AbaPosVenda(),
-            PosVendaScreen(),
+            const AbaPosVenda(),
+            PosVendaScreen(userProfile: userProfile),
           ],
         ),
       ),

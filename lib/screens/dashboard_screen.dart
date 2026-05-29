@@ -11,7 +11,8 @@ import '../widgets/aba_motivos_perda.dart';
 import '../widgets/aba_relatorios.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final String userProfile;
+  const DashboardScreen({super.key, this.userProfile = ''});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -28,12 +29,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.userProfile.isNotEmpty) {
+      _userProfile = widget.userProfile;
+    }
     _carregarDadosIniciais();
   }
 
   void _carregarDadosIniciais() {
     final currentUser = _authService.getCurrentUser();
-    _authService.getCurrentUserProfile().then((perfil) {
+
+    void aplicar(String perfil) {
       if (!mounted) return;
       setState(() {
         _userProfile = perfil;
@@ -47,7 +52,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
           setState(() => _todosVendedores = vendedores);
         });
       }
-    });
+    }
+
+    if (widget.userProfile.isNotEmpty) {
+      // Profile já conhecido — só carrega dados admin se necessário
+      final perfil = widget.userProfile;
+      if (perfil != 'admin' && perfil != 'super admin') {
+        _vendedorIdFiltro = currentUser?.uid;
+      } else {
+        _firestoreService.getTodosUsuarios().then((vendedores) {
+          if (!mounted) return;
+          setState(() => _todosVendedores = vendedores);
+        });
+      }
+    } else {
+      _authService.getCurrentUserProfile().then(aplicar);
+    }
   }
 
   @override

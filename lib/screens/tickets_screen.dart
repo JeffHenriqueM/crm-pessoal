@@ -253,7 +253,8 @@ class _TicketsScreenState extends State<TicketsScreen>
           if (temFiltro) ...[
             const SizedBox(width: 6),
             ActionChip(
-              label: const Text('Limpar', style: TextStyle(fontSize: 12)),
+              label: Text('Limpar',
+                  style: TextStyle(fontSize: 12, color: cs.onSurface)),
               onPressed: () => setState(() {
                 _filtroStatus = null;
                 _filtroPrioridade = null;
@@ -261,6 +262,7 @@ class _TicketsScreenState extends State<TicketsScreen>
               }),
               avatar: Icon(Icons.clear, size: 14, color: cs.error),
               side: BorderSide(color: cs.outlineVariant),
+              backgroundColor: cs.surfaceContainerHighest,
               visualDensity: VisualDensity.compact,
             ),
           ],
