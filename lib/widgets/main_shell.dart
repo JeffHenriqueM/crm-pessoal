@@ -170,6 +170,8 @@ class _MainShellState extends State<MainShell> {
     ],
   ];
 
+  final _mobileScaffoldKey = GlobalKey<ScaffoldState>();
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
   void initState() {
@@ -234,10 +236,12 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
 
-    // ── Mobile: bottom navigation bar ─────────────────────────────────────
+    // ── Mobile: drawer navigation ──────────────────────────────────────────
     if (isMobile) {
       return Scaffold(
+        key: _mobileScaffoldKey,
         appBar: _buildMobileAppBar(context),
+        drawer: _buildMobileDrawer(context),
         body: Column(
           children: [
             if (kIsStaging) _buildStagingBanner(),
@@ -248,17 +252,6 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
           ],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-          destinations: _navItems
-              .map((item) => NavigationDestination(
-                    icon: Icon(item.icon),
-                    selectedIcon: Icon(item.activeIcon),
-                    label: item.label,
-                  ))
-              .toList(),
         ),
         floatingActionButton: _buildTicketFab(context),
         floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
@@ -327,6 +320,11 @@ class _MainShellState extends State<MainShell> {
   PreferredSizeWidget _buildMobileAppBar(BuildContext context) {
     return AppBar(
       automaticallyImplyLeading: false,
+      leading: IconButton(
+        icon: const Icon(Icons.menu_rounded),
+        onPressed: () => _mobileScaffoldKey.currentState?.openDrawer(),
+        tooltip: 'Menu',
+      ),
       title: Row(
         children: [
           Image.asset(
@@ -343,6 +341,162 @@ class _MainShellState extends State<MainShell> {
           vendedorId: _isAdmin ? null : widget.currentUserId,
         ),
       ],
+    );
+  }
+
+  // ── Drawer de navegação para mobile ───────────────────────────────────────
+  Widget _buildMobileDrawer(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final items = _navItems;
+
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Cabeçalho
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: Row(
+                children: [
+                  Image.asset('assets/images/logo.png',
+                      height: 28, filterQuality: FilterQuality.medium),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Villamor CRM',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: cs.outlineVariant),
+            const SizedBox(height: 8),
+
+            // Itens de navegação
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemCount: items.length,
+                itemBuilder: (_, i) {
+                  final item = items[i];
+                  final selected = _selectedIndex == i;
+                  return ListTile(
+                    leading: Icon(
+                      selected ? item.activeIcon : item.icon,
+                      color: selected
+                          ? cs.onPrimaryContainer
+                          : cs.onSurfaceVariant,
+                      size: 22,
+                    ),
+                    title: Text(
+                      item.label,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: selected ? cs.onPrimaryContainer : cs.onSurface,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                    selected: selected,
+                    selectedTileColor:
+                        cs.primaryContainer.withValues(alpha: 0.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    horizontalTitleGap: 8,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    dense: true,
+                    onTap: () {
+                      setState(() => _selectedIndex = i);
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+
+            Divider(height: 1, color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Notificações
+            NotificacaoBell(
+              vendedorId: _isAdmin ? null : widget.currentUserId,
+              showAsListTile: true,
+            ),
+
+            // Usuários (admin only)
+            if (_isAdmin)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: ListTile(
+                  leading: Icon(Icons.manage_accounts_outlined,
+                      color: cs.onSurfaceVariant, size: 22),
+                  title: Text('Usuários',
+                      style: TextStyle(fontSize: 15, color: cs.onSurface)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  horizontalTitleGap: 8,
+                  dense: true,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GerenciarUsuariosScreen(
+                            currentUserPerfil: widget.userProfile),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+            // Configurações
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+              child: ListTile(
+                leading: Icon(Icons.settings_outlined,
+                    color: cs.onSurfaceVariant, size: 22),
+                title: Text('Configurações',
+                    style: TextStyle(fontSize: 15, color: cs.onSurface)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                horizontalTitleGap: 8,
+                dense: true,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _abrirConfiguracoes(context);
+                },
+              ),
+            ),
+
+            // Sair
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 1, 8, 12),
+              child: ListTile(
+                leading: Icon(Icons.logout_outlined,
+                    color: cs.onSurfaceVariant, size: 22),
+                title: Text('Sair',
+                    style: TextStyle(fontSize: 15, color: cs.onSurface)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                horizontalTitleGap: 8,
+                dense: true,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onTap: () => AuthService().signOut(),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
