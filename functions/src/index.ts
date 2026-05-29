@@ -9,7 +9,7 @@
  *    Gere uma VAPID key e substitua 'SUBSTITUA_PELA_SUA_VAPID_KEY' em push_notification_service.dart
  *
  * Funções implementadas:
- * - onNegociacaoAprovada: notifica o embaixador quando o admin aprova/nega/pede atualização
+ * - onNegociacaoAtualizada: notifica o embaixador quando o admin aprova/nega/pede atualização
  * - onCampanhaPublicada: notifica todos os usuários quando uma campanha é publicada
  */
 
@@ -21,13 +21,19 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// Códigos FCM que indicam token permanentemente inválido — sem retry, só limpeza
+const FCM_ERROS_PERMANENTES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+]);
+
 // ── Helper: busca token FCM de um usuário ─────────────────────────────────────
 async function getToken(userId: string): Promise<string | null> {
   const doc = await db.collection('usuarios').doc(userId).get();
   return doc.exists ? (doc.data()?.fcmToken ?? null) : null;
 }
 
-// ── Helper: busca todos os tokens FCM ativos ──────────────────────────────────
+// ── Helper: busca todos os tokens FCM de usuários ativos ─────────────────────
 async function getAllTokens(): Promise<string[]> {
   const snap = await db.collection('usuarios')
     .where('ativo', '==', true)
@@ -40,8 +46,31 @@ async function getAllTokens(): Promise<string[]> {
   return tokens;
 }
 
-// ── Helper: envia notificação para um token ───────────────────────────────────
+// ── Helper: apaga fcmToken de um usuário pelo userId ─────────────────────────
+async function limparTokenDoUsuario(userId: string): Promise<void> {
+  await db.collection('usuarios').doc(userId).update({
+    fcmToken: admin.firestore.FieldValue.delete(),
+  });
+  functions.logger.info(`fcmToken limpo para usuário ${userId}`);
+}
+
+// ── Helper: apaga fcmToken inválido buscando pelo valor do token ──────────────
+async function limparTokenPorValor(token: string): Promise<void> {
+  const snap = await db.collection('usuarios')
+    .where('fcmToken', '==', token)
+    .limit(1)
+    .get();
+  if (!snap.empty) {
+    await snap.docs[0].ref.update({ fcmToken: admin.firestore.FieldValue.delete() });
+    functions.logger.info(`fcmToken inválido removido: ${token.substring(0, 16)}…`);
+  }
+}
+
+// ── Helper: envia notificação para um único token ────────────────────────────
+// Erro permanente (token inválido/expirado): limpa fcmToken e absorve.
+// Erro transitório (rede, FCM fora): re-lança para o runtime reprocessar o trigger.
 async function enviarParaToken(
+  userId: string,
   token: string,
   titulo: string,
   corpo: string,
@@ -63,12 +92,23 @@ async function enviarParaToken(
       },
       data: dados ?? {},
     });
-  } catch (e) {
-    functions.logger.warn(`Erro ao enviar para token: ${e}`);
+  } catch (e: any) {
+    const codigo: string = e?.errorInfo?.code ?? '';
+    if (FCM_ERROS_PERMANENTES.has(codigo)) {
+      functions.logger.warn(`Token FCM inválido para ${userId} (${codigo}) — limpando.`);
+      await limparTokenDoUsuario(userId);
+    } else {
+      functions.logger.error(`Falha transitória ao enviar FCM para ${userId} — reprocessando.`, { erro: String(e) });
+      throw e;
+    }
   }
 }
 
-// ── Helper: envia para múltiplos tokens ──────────────────────────────────────
+// ── Helper: envia para múltiplos tokens (broadcast) ─────────────────────────
+// Tokens permanentemente inválidos: limpos do Firestore via limpezas em paralelo.
+// Falhas transitórias por token individual: logadas (não relança — evita duplicatas
+// em retry, pois tokens já entregues seriam renotificados).
+// Falha catastrófica no batch inteiro: logada com severidade error, sem rethrow.
 async function enviarParaTokens(
   tokens: string[],
   titulo: string,
@@ -76,14 +116,15 @@ async function enviarParaTokens(
   dados?: Record<string, string>
 ): Promise<void> {
   if (tokens.length === 0) return;
-  // FCM aceita no máximo 500 tokens por batch
-  const batches = [];
+
+  const batches: string[][] = [];
   for (let i = 0; i < tokens.length; i += 500) {
     batches.push(tokens.slice(i, i + 500));
   }
+
   for (const batch of batches) {
     try {
-      await messaging.sendEachForMulticast({
+      const resultado = await messaging.sendEachForMulticast({
         tokens: batch,
         notification: { title: titulo, body: corpo },
         webpush: {
@@ -97,8 +138,25 @@ async function enviarParaTokens(
         },
         data: dados ?? {},
       });
+
+      functions.logger.info(`Batch FCM: ${resultado.successCount} entregues, ${resultado.failureCount} falhas de ${batch.length}`);
+
+      if (resultado.failureCount > 0) {
+        const limpezas: Promise<void>[] = [];
+        resultado.responses.forEach((resp, j) => {
+          if (!resp.success) {
+            const codigo = resp.error?.code ?? '';
+            if (FCM_ERROS_PERMANENTES.has(codigo)) {
+              limpezas.push(limparTokenPorValor(batch[j]));
+            } else {
+              functions.logger.warn(`Falha transitória no batch FCM [token ${j}]: ${codigo}`);
+            }
+          }
+        });
+        await Promise.all(limpezas);
+      }
     } catch (e) {
-      functions.logger.warn(`Erro no batch FCM: ${e}`);
+      functions.logger.error(`Falha catastrófica no batch FCM — entregas podem ter falhado.`, { erro: String(e) });
     }
   }
 }
@@ -142,6 +200,7 @@ export const onNegociacaoAtualizada = functions
     if (!token) return null;
 
     await enviarParaToken(
+      embaixadorId,
       token,
       'Villamor CRM — Negociação',
       mensagem,
@@ -184,7 +243,6 @@ export const onCampanhaPublicada = functions
       { campanhaId: context.params.campanhaId, tipo: 'campanha' }
     );
 
-    functions.logger.info(`Campanha "${nome}" publicada — ${tokens.length} notificações enviadas`);
+    functions.logger.info(`Campanha "${nome}" publicada — ${tokens.length} notificações disparadas`);
     return null;
   });
-
