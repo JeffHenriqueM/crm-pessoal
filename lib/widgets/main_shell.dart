@@ -106,10 +106,17 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── pós-venda: item único (contratos embutidos dentro) ────────
+    // ── pós-venda: Pós-Venda primeiro + mesmos itens do vendedor ─
     if (_isPosVenda) {
       return const [
-        _NavItem(icon: Icons.article_outlined, activeIcon: Icons.article_rounded, label: 'Pós-Venda'),
+        _NavItem(icon: Icons.article_outlined,        activeIcon: Icons.article_rounded,    label: 'Pós-Venda'),
+        _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,     label: 'Agenda'),
+        _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
+        _NavItem(icon: Icons.handshake_outlined,      activeIcon: Icons.handshake_rounded,  label: 'Negociações'),
+        _apresentacaoItem,
+        _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
+        _ticketsItem,
+        _recepcaoItem,
       ];
     }
     // ── financeiro: Dashboard primeiro ────────────────────────────
@@ -145,6 +152,13 @@ class _MainShellState extends State<MainShell> {
       const RecepcaoScreen(),
     ] else if (_isPosVenda) ...[
       const _PosVendaHomeScreen(),
+      VendedorHomeScreen(currentUserId: widget.currentUserId),
+      const ListaClientesScreen(),
+      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      const ApresentacaoScreen(),
+      const DashboardScreen(),
+      TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      const RecepcaoScreen(),
     ] else ...[
       // financeiro: Dashboard primeiro
       const DashboardScreen(),
