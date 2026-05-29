@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/negociacao_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/proposta_pdf.dart';
 import '../widgets/aba_negociacoes.dart';
 
 final _moeda =
@@ -312,6 +313,7 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
                                     neg.tipo == TipoNegociacao.especial
                                 ? () => widget.onAprovar!(neg)
                                 : null,
+                            onExportarPdf: () => PropostaPdf.gerar(neg),
                           ),
                         );
                       },
@@ -483,6 +485,7 @@ class _ListaPendentes extends StatelessWidget {
                 onDelete: null,
                 onAbrirCliente: null,
                 onAprovar: () => onAprovar(neg),
+                onExportarPdf: () => PropostaPdf.gerar(neg),
                 highlightAprovacao: true,
               ),
             );
@@ -501,6 +504,7 @@ class _NegociacaoGlobalCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onAbrirCliente;
   final VoidCallback? onAprovar;
+  final VoidCallback? onExportarPdf;
   final bool highlightAprovacao;
 
   const _NegociacaoGlobalCard({
@@ -510,6 +514,7 @@ class _NegociacaoGlobalCard extends StatelessWidget {
     this.onDelete,
     this.onAbrirCliente,
     this.onAprovar,
+    this.onExportarPdf,
     this.highlightAprovacao = false,
   });
 
@@ -725,6 +730,14 @@ class _NegociacaoGlobalCard extends StatelessWidget {
                       side: BorderSide(color: Colors.amber.shade700),
                       foregroundColor: Colors.amber.shade700,
                     ),
+                  ),
+                if (onExportarPdf != null)
+                  IconButton(
+                    icon: const Icon(Icons.picture_as_pdf_outlined,
+                        size: 18, color: Color(0xFFC62828)),
+                    tooltip: 'Exportar PDF',
+                    onPressed: onExportarPdf,
+                    visualDensity: VisualDensity.compact,
                   ),
                 if (onAbrirCliente != null)
                   IconButton(
