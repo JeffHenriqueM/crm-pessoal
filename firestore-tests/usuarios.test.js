@@ -5,7 +5,6 @@ import {
   criarAmbienteTeste,
   contextoAutenticado,
   semRegras,
-  PULAR_BUG_ABERTO,
 } from './setup.js';
 
 // Escalonamento de privilégio: o campo `perfil` controla o escopo de acesso.
@@ -37,14 +36,14 @@ beforeEach(async () => {
   });
 });
 
-test('vendedor NÃO promove a si mesmo a admin', { skip: PULAR_BUG_ABERTO }, async () => {
+test('vendedor NÃO promove a si mesmo a admin', async () => {
   const db = contextoAutenticado(env, 'vendedor_a');
   await assertFails(
     updateDoc(doc(db, 'usuarios/vendedor_a'), { perfil: 'admin' }),
   );
 });
 
-test('admin comum NÃO altera usuários', { skip: PULAR_BUG_ABERTO }, async () => {
+test('admin comum NÃO altera usuários', async () => {
   const db = contextoAutenticado(env, 'admin');
   await assertFails(
     updateDoc(doc(db, 'usuarios/vendedor_a'), { perfil: 'pós-venda' }),

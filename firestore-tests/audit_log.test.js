@@ -5,7 +5,6 @@ import {
   criarAmbienteTeste,
   contextoAutenticado,
   semRegras,
-  PULAR_BUG_ABERTO,
 } from './setup.js';
 
 // audit_log é trilha de auditoria de ações sensíveis (ex.: exclusão de cliente).
@@ -36,7 +35,7 @@ beforeEach(async () => {
   });
 });
 
-test('vendedor NÃO lê a trilha de auditoria', { skip: PULAR_BUG_ABERTO }, async () => {
+test('vendedor NÃO lê a trilha de auditoria', async () => {
   const db = contextoAutenticado(env, 'vendedor_a');
   await assertFails(getDoc(doc(db, 'audit_log/log_existente')));
 });
@@ -56,14 +55,14 @@ test('usuário cria registro de auditoria', async () => {
   );
 });
 
-test('usuário NÃO reescreve registro existente do audit_log', { skip: PULAR_BUG_ABERTO }, async () => {
+test('usuário NÃO reescreve registro existente do audit_log', async () => {
   const db = contextoAutenticado(env, 'vendedor_a');
   await assertFails(
     updateDoc(doc(db, 'audit_log/log_existente'), { autorId: 'outro' }),
   );
 });
 
-test('usuário NÃO apaga registro do audit_log', { skip: PULAR_BUG_ABERTO }, async () => {
+test('usuário NÃO apaga registro do audit_log', async () => {
   const db = contextoAutenticado(env, 'vendedor_a');
   await assertFails(deleteDoc(doc(db, 'audit_log/log_existente')));
 });

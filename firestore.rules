@@ -2,14 +2,41 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Utilitário ──────────────────────────────────────────────────────────
+    // ── Utilitários ─────────────────────────────────────────────────────────
+
     function isAuth() {
       return request.auth != null;
     }
 
+    function perfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.perfil;
+    }
+
+    // Perfis com acesso amplo: veem e operam sobre todos os registros.
+    function isGestor() {
+      let p = perfil();
+      return p == 'admin' || p == 'pós-venda' || p == 'financeiro' || p == 'super admin';
+    }
+
+    function isSuperAdmin() {
+      return perfil() == 'super admin';
+    }
+
+    // Dono de um lead: uid aparece em qualquer campo de atribuição.
+    function isDono(data) {
+      return data.vendedorId == request.auth.uid
+          || data.linerId == request.auth.uid
+          || data.criadoPorId == request.auth.uid
+          || data.captadorId == request.auth.uid;
+    }
+
     // ── Clientes / Leads ────────────────────────────────────────────────────
+    // Gestores veem todos; vendedor/captador veem apenas os próprios leads.
     match /clientes/{docId} {
-      allow read, write: if isAuth();
+      allow read:   if isAuth() && (isGestor() || isDono(resource.data));
+      allow create: if isAuth() && (isGestor() || isDono(request.resource.data));
+      allow update: if isAuth() && (isGestor() || isDono(resource.data));
+      allow delete: if false;
     }
 
     // ── Negociações ─────────────────────────────────────────────────────────
@@ -28,13 +55,17 @@ service cloud.firestore {
     }
 
     // ── Usuários ────────────────────────────────────────────────────────────
+    // Leitura: qualquer autenticado (necessário para verificar perfis na app).
+    // Criação: o próprio usuário cria seu doc, ou gestor cria para outros.
+    // Atualização: exclusivo de super admin (evita escalonamento de privilégio).
     match /usuarios/{docId} {
-      allow read, write: if isAuth();
+      allow read:   if isAuth();
+      allow create: if isAuth() && (request.auth.uid == docId || isGestor());
+      allow update: if isAuth() && isSuperAdmin();
+      allow delete: if false;
     }
 
     // ── Config (contadores, configurações do sistema) ────────────────────────
-    // Qualquer usuário autenticado pode ler e escrever — necessário para
-    // gerar o número sequencial de atendimento da recepção.
     match /config/{docId} {
       allow read, write: if isAuth();
     }
@@ -44,9 +75,14 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
-    // ── Auditoria (exclusões e ações sensíveis) ──────────────────────────────
+    // ── Auditoria ────────────────────────────────────────────────────────────
+    // Trilha imutável: apenas criação é permitida (pela app); leitura restrita
+    // a gestores; update e delete bloqueados para garantir integridade.
     match /audit_log/{docId} {
-      allow read, write: if isAuth();
+      allow read:   if isAuth() && isGestor();
+      allow create: if isAuth();
+      allow update: if false;
+      allow delete: if false;
     }
 
     // ── Notificações push (tokens FCM por usuário) ────────────────────────────

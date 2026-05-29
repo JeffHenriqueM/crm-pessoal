@@ -5,7 +5,6 @@ import {
   criarAmbienteTeste,
   contextoAutenticado,
   semRegras,
-  PULAR_BUG_ABERTO,
 } from './setup.js';
 
 // Escopo de acesso a clientes (CLAUDE.md):
@@ -41,12 +40,12 @@ test('vendedor lê o próprio lead', async () => {
   await assertSucceeds(getDoc(doc(db, 'clientes/lead_de_a')));
 });
 
-test('vendedor NÃO lê lead de outro vendedor', { skip: PULAR_BUG_ABERTO }, async () => {
+test('vendedor NÃO lê lead de outro vendedor', async () => {
   const db = contextoAutenticado(env, 'vendedor_b');
   await assertFails(getDoc(doc(db, 'clientes/lead_de_a')));
 });
 
-test('vendedor NÃO altera lead de outro vendedor', { skip: PULAR_BUG_ABERTO }, async () => {
+test('vendedor NÃO altera lead de outro vendedor', async () => {
   const db = contextoAutenticado(env, 'vendedor_b');
   await assertFails(
     updateDoc(doc(db, 'clientes/lead_de_a'), { nome: 'sequestrado' }),
