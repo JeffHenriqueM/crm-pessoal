@@ -207,10 +207,11 @@ class FichaDadosTab extends StatelessWidget {
               value: motivoPerdaDropdown,
               isExpanded: true,
               decoration: const InputDecoration(
-                labelText: 'Motivo da Perda',
+                labelText: 'Motivo da Perda *',
                 prefixIcon: Icon(Icons.mood_bad_outlined),
               ),
               hint: const Text('Selecione o motivo'),
+              validator: (v) => v == null ? 'Selecione o motivo da perda.' : null,
               items: _motivos
                   .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                   .toList(),
