@@ -653,7 +653,7 @@ class _RegistrarAtendimentoScreenState
     }
   }
 
-  Future<void> _salvar() async {
+  Future<void> _salvar({bool imprimir = true}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _salvando = true);
 
@@ -720,7 +720,7 @@ class _RegistrarAtendimentoScreenState
         dataEntrada: agora,
       );
 
-      await FichaAtendimentoPdf.gerar(fichaData);
+      if (imprimir) await FichaAtendimentoPdf.gerar(fichaData);
 
       if (mounted) {
         // Volta para a lista passando fichaData para o snackbar de reimprimir
@@ -1023,12 +1023,12 @@ class _RegistrarAtendimentoScreenState
                       ]),
                   const SizedBox(height: 28),
 
-                  // ── Botão salvar ─────────────────────────────────────────
+                  // ── Botões salvar ────────────────────────────────────────
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: FilledButton.icon(
-                      onPressed: _salvando ? null : _salvar,
+                      onPressed: _salvando ? null : () => _salvar(imprimir: true),
                       icon: _salvando
                           ? SizedBox(
                               width: 18,
@@ -1042,6 +1042,19 @@ class _RegistrarAtendimentoScreenState
                             ? 'Registrando...'
                             : 'Registrar e Imprimir Ficha',
                         style: const TextStyle(fontSize: 15),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: _salvando ? null : () => _salvar(imprimir: false),
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text(
+                        'Salvar sem Imprimir',
+                        style: TextStyle(fontSize: 15),
                       ),
                     ),
                   ),
