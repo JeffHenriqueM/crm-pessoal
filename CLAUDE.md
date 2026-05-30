@@ -6,7 +6,17 @@
 - Deploy Preview: `firebase hosting:channel:deploy preview_nome --project crm-pessoal-d993d`
 - Deploy Produção: `firebase deploy --only hosting --project crm-pessoal-d993d`
 - Build Functions: `cd functions && npm run build`
-- Deploy Functions: `firebase deploy --only functions --project crm-pessoal-d993d`
+- Deploy Functions: **nunca usar `--only functions` genérico** — especificar as funções pelo nome (ver aviso abaixo)
+
+> ⚠️ **NUNCA deletar as funções `api`, `wppAutoLabel`, `wppReengage` do projeto `crm-pessoal-d993d`.**
+> Essas 3 são do NeuroCRM (também deployado em `crm-pessoal-d993d`) e não existem no código local deste repositório.
+> Se o CLI perguntar se pode deletá-las, a resposta é **NÃO**.
+> O deploy de functions deve sempre nomear explicitamente apenas as funções deste repo:
+> ```
+> firebase deploy \
+>   --only functions:onNegociacaoAtualizada,functions:onCampanhaPublicada,functions:onTicketAtualizado,functions:onComentarioAdicionado,functions:lembreteProximoContato \
+>   --project crm-pessoal-d993d
+> ```
 
 > ⚠️ **Antes de QUALQUER deploy (preview ou produção, hosting ou functions): rodar a suíte de testes e só prosseguir se estiver verde.** Gate obrigatório: `flutter test --exclude-tags bug-aberto` (exclui as guardas de bug ainda não corrigido — ver abaixo). Se o deploy tocar Rules ou Functions, rodar também a suíte correspondente (ver TESTING.md). Falha no gate = deploy bloqueado.
 
