@@ -184,6 +184,7 @@ class FirestoreService {
   /// Outros perfis: apenas leads criados pelo usuário logado.
   Stream<List<Cliente>> getFunilRecepcaoStream() {
     return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
+      debugPrint('[FunilRecepcao] perfil=$perfil');
       if (perfil == 'recepcao') {
         return _db
             .collection(_colClientes)

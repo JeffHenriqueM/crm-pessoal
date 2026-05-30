@@ -129,6 +129,17 @@ class _FunilRecepcaoTab extends StatelessWidget {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (snap.hasError) {
+          debugPrint('[FunilRecepcao] erro: ${snap.error}');
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('Erro ao carregar leads: ${snap.error}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: cs.error, fontSize: 13)),
+            ),
+          );
+        }
         final leads = snap.data ?? [];
 
         if (leads.isEmpty) {
@@ -139,10 +150,6 @@ class _FunilRecepcaoTab extends StatelessWidget {
               const SizedBox(height: 14),
               Text('Nenhum lead no funil ainda.',
                   style: TextStyle(color: cs.outline, fontSize: 14)),
-              const SizedBox(height: 6),
-              Text('Leads criados por você aparecerão aqui após avançar de fase.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
             ]),
           );
         }
