@@ -15,7 +15,7 @@ service cloud.firestore {
     // Perfis com acesso amplo: veem e operam sobre todos os registros.
     function isGestor() {
       let p = perfil();
-      return p == 'admin' || p == 'pós-venda' || p == 'financeiro' || p == 'super admin';
+      return p == 'admin' || p == 'pós-venda' || p == 'financeiro' || p == 'super admin' || p == 'recepcao';
     }
 
     function isSuperAdmin() {

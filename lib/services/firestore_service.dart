@@ -108,70 +108,104 @@ class FirestoreService {
         .switchMap((stream) => stream);
   }
 
-  /// Stream de atendimentos para a tela de recepção:
-  /// registros com fase=atendimento onde o usuário criou, é captador ou liner.
+  /// Stream de atendimentos para a tela de recepção.
+  /// Perfil 'recepcao': todos os atendimentos de todos os embaixadores.
+  /// Outros perfis: apenas os atendimentos vinculados ao usuário logado.
   Stream<List<Cliente>> getClientesRecepcaoStream() {
-    final uid = _currentUserId;
+    return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
+      if (perfil == 'recepcao') {
+        return _db
+            .collection(_colClientes)
+            .where('fase', isEqualTo: 'atendimento')
+            .snapshots()
+            .map((s) {
+              final result = s.docs
+                  .map<Cliente>(Cliente.fromFirestore)
+                  .where((c) => !c.deletado)
+                  .toList();
+              result.sort((a, b) {
+                final da = a.dataEntradaSala ?? a.dataCadastro;
+                final db = b.dataEntradaSala ?? b.dataCadastro;
+                return db.compareTo(da);
+              });
+              return result;
+            });
+      }
 
-    List<Cliente> _fromSnap(s) =>
-        s.docs.map<Cliente>((d) => Cliente.fromFirestore(d)).toList();
+      final uid = _currentUserId;
 
-    final streamCriados = _db
-        .collection(_colClientes)
-        .where('criadoPorId', isEqualTo: uid)
-        .snapshots()
-        .map(_fromSnap);
+      List<Cliente> fromSnap(s) =>
+          s.docs.map<Cliente>((d) => Cliente.fromFirestore(d)).toList();
 
-    final streamCaptador = _db
-        .collection(_colClientes)
-        .where('captadorId', isEqualTo: uid)
-        .snapshots()
-        .map(_fromSnap);
+      final streamCriados = _db
+          .collection(_colClientes)
+          .where('criadoPorId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
 
-    final streamLiner = _db
-        .collection(_colClientes)
-        .where('linerId', isEqualTo: uid)
-        .snapshots()
-        .map(_fromSnap);
+      final streamCaptador = _db
+          .collection(_colClientes)
+          .where('captadorId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
 
-    return Rx.combineLatest3<List<Cliente>, List<Cliente>, List<Cliente>,
-        List<Cliente>>(
-      streamCriados,
-      streamCaptador,
-      streamLiner,
-      (criados, captados, liners) {
-        final vistos = <String>{};
-        final result = <Cliente>[];
-        for (final c in [...criados, ...captados, ...liners]) {
-          if (c.id != null && vistos.add(c.id!)) result.add(c);
-        }
-        // Só mostra atendimentos (fase pré-lead)
-        result.retainWhere((c) => c.fase == FaseCliente.atendimento);
-        // Exclui soft-deleted
-        result.removeWhere((c) => c.deletado);
-        result.sort((a, b) {
-          final da = a.dataEntradaSala ?? a.dataCadastro;
-          final db = b.dataEntradaSala ?? b.dataCadastro;
-          return db.compareTo(da);
-        });
-        return result;
-      },
-    );
+      final streamLiner = _db
+          .collection(_colClientes)
+          .where('linerId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
+
+      return Rx.combineLatest3<List<Cliente>, List<Cliente>, List<Cliente>,
+          List<Cliente>>(
+        streamCriados,
+        streamCaptador,
+        streamLiner,
+        (criados, captados, liners) {
+          final vistos = <String>{};
+          final result = <Cliente>[];
+          for (final c in [...criados, ...captados, ...liners]) {
+            if (c.id != null && vistos.add(c.id!)) result.add(c);
+          }
+          result.retainWhere((c) => c.fase == FaseCliente.atendimento);
+          result.removeWhere((c) => c.deletado);
+          result.sort((a, b) {
+            final da = a.dataEntradaSala ?? a.dataCadastro;
+            final db = b.dataEntradaSala ?? b.dataCadastro;
+            return db.compareTo(da);
+          });
+          return result;
+        },
+      );
+    }).switchMap((stream) => stream);
   }
 
-  /// Stream de leads da recepcionista que já avançaram no funil
-  /// (criados por ela, mas fase != atendimento).
+  /// Stream de leads que já avançaram no funil.
+  /// Perfil 'recepcao': todos os leads de todos os embaixadores.
+  /// Outros perfis: apenas leads criados pelo usuário logado.
   Stream<List<Cliente>> getFunilRecepcaoStream() {
-    final uid = _currentUserId;
-    return _db
-        .collection(_colClientes)
-        .where('criadoPorId', isEqualTo: uid)
-        .orderBy('dataAtualizacao', descending: true)
-        .snapshots()
-        .map((s) => s.docs
-            .map<Cliente>(Cliente.fromFirestore)
-            .where((c) => c.fase != FaseCliente.atendimento && !c.deletado)
-            .toList());
+    return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
+      if (perfil == 'recepcao') {
+        return _db
+            .collection(_colClientes)
+            .orderBy('dataAtualizacao', descending: true)
+            .snapshots()
+            .map((s) => s.docs
+                .map<Cliente>(Cliente.fromFirestore)
+                .where((c) => c.fase != FaseCliente.atendimento && !c.deletado)
+                .toList());
+      }
+
+      final uid = _currentUserId;
+      return _db
+          .collection(_colClientes)
+          .where('criadoPorId', isEqualTo: uid)
+          .orderBy('dataAtualizacao', descending: true)
+          .snapshots()
+          .map((s) => s.docs
+              .map<Cliente>(Cliente.fromFirestore)
+              .where((c) => c.fase != FaseCliente.atendimento && !c.deletado)
+              .toList());
+    }).switchMap((stream) => stream);
   }
 
   Future<String> adicionarCliente(Cliente cliente) async {
