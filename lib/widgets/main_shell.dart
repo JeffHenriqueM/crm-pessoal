@@ -6,7 +6,6 @@ import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
-import '../screens/negociacoes_screen.dart';
 import '../screens/pos_venda_screen.dart';
 import '../screens/recepcao_screen.dart';
 import 'aba_pos_venda.dart';
@@ -85,7 +84,6 @@ class _MainShellState extends State<MainShell> {
       return const [
         _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,    label: 'Dashboard'),
         _NavItem(icon: Icons.view_kanban_outlined,     activeIcon: Icons.view_kanban,          label: 'Funil de Vendas'),
-        _NavItem(icon: Icons.handshake_outlined,       activeIcon: Icons.handshake_rounded,    label: 'Negociações'),
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
         _NavItem(icon: Icons.description_outlined,      activeIcon: Icons.description,           label: 'Pós-Venda'),
@@ -99,7 +97,6 @@ class _MainShellState extends State<MainShell> {
       return const [
         _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,    label: 'Agenda'),
         _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
-        _NavItem(icon: Icons.handshake_outlined,      activeIcon: Icons.handshake_rounded,  label: 'Negociações'),
         _apresentacaoItem,
         _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
         _ticketsItem,
@@ -112,7 +109,6 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.description_outlined,     activeIcon: Icons.description,          label: 'Pós-Venda'),
         _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,     label: 'Agenda'),
         _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
-        _NavItem(icon: Icons.handshake_outlined,      activeIcon: Icons.handshake_rounded,  label: 'Negociações'),
         _apresentacaoItem,
         _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
         _ticketsItem,
@@ -123,7 +119,6 @@ class _MainShellState extends State<MainShell> {
     return const [
       _NavItem(icon: Icons.bar_chart_outlined,   activeIcon: Icons.bar_chart_rounded, label: 'Dashboard'),
       _NavItem(icon: Icons.view_kanban_outlined,  activeIcon: Icons.view_kanban,       label: 'Funil de Vendas'),
-      _NavItem(icon: Icons.handshake_outlined,   activeIcon: Icons.handshake_rounded, label: 'Negociações'),
       _apresentacaoItem,
       _ticketsItem,
       _recepcaoItem,
@@ -135,18 +130,16 @@ class _MainShellState extends State<MainShell> {
     if (_isAdmin) ...[
       DashboardScreen(userProfile: widget.userProfile),
       ListaClientesScreen(userProfile: widget.userProfile),
-      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
       const CampanhasScreen(),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
-      const ApresentacaoScreen(),
+      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
-      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const ApresentacaoScreen(),
+      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       DashboardScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
@@ -154,8 +147,7 @@ class _MainShellState extends State<MainShell> {
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
-      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const ApresentacaoScreen(),
+      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       DashboardScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
@@ -163,8 +155,7 @@ class _MainShellState extends State<MainShell> {
       // financeiro: Dashboard primeiro
       DashboardScreen(userProfile: widget.userProfile),
       ListaClientesScreen(userProfile: widget.userProfile),
-      NegociacoesScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const ApresentacaoScreen(),
+      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoScreen(),
     ],

@@ -1,9 +1,8 @@
 // lib/screens/apresentacao_screen.dart
-// Calculadora de Rentabilidade usada durante as apresentações.
-// Independente de qualquer negociação ou lead.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'negociacoes_screen.dart';
 
 // ── Produtos (mesma tabela de aba_negociacoes) ────────────────────────────────
 class _Produto {
@@ -25,7 +24,16 @@ const _produtos = [
 
 // ── Tela principal ────────────────────────────────────────────────────────────
 class ApresentacaoScreen extends StatefulWidget {
-  const ApresentacaoScreen({super.key});
+  final String userProfile;
+  final String? currentUserId;
+  final String? currentUserName;
+
+  const ApresentacaoScreen({
+    super.key,
+    required this.userProfile,
+    this.currentUserId,
+    this.currentUserName,
+  });
 
   @override
   State<ApresentacaoScreen> createState() => _ApresentacaoScreenState();
@@ -207,6 +215,42 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Row(
+            children: [
+              Icon(Icons.co_present, size: 20),
+              SizedBox(width: 8),
+              Text('Apresentação'),
+            ],
+          ),
+          automaticallyImplyLeading: false,
+          toolbarHeight: 50,
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Negociação'),
+              Tab(text: 'Economia'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            NegociacoesBody(
+              userProfile: widget.userProfile,
+              currentUserId: widget.currentUserId,
+              currentUserName: widget.currentUserName,
+            ),
+            _buildEconomia(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Aba Economia (calculadora de rentabilidade) ───────────────────────────
+  Widget _buildEconomia() {
     final cs          = Theme.of(context).colorScheme;
     final diasPlano   = _diasPlano;
     final qtdDiarias  = _qtdDiarias;
@@ -214,192 +258,178 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
     final retornoAnual = _retornoAnual;
     final isMobile    = MediaQuery.of(context).size.width < 700;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.co_present, size: 20),
-            SizedBox(width: 8),
-            Text('Apresentação — Rentabilidade'),
-          ],
-        ),
-        automaticallyImplyLeading: false,
-        toolbarHeight: 50,
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(isMobile ? 16 : 32),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 700),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(isMobile ? 16 : 32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
 
-                // ── Selecionar produto ──────────────────────────────────
-                OutlinedButton.icon(
-                  onPressed: _escolherProduto,
-                  icon: const Icon(Icons.villa_outlined, size: 18),
-                  label: Text(
-                    _produto != null
-                        ? 'Produto: ${_produto!.nome} — ${_moeda.format(_produto!.valor)}'
-                        : 'Escolher produto (opcional)',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    minimumSize: const Size(double.infinity, 48),
-                    textStyle: const TextStyle(fontSize: 14),
-                  ),
+              // ── Selecionar produto ──────────────────────────────────
+              OutlinedButton.icon(
+                onPressed: _escolherProduto,
+                icon: const Icon(Icons.villa_outlined, size: 18),
+                label: Text(
+                  _produto != null
+                      ? 'Produto: ${_produto!.nome} — ${_moeda.format(_produto!.valor)}'
+                      : 'Escolher produto (opcional)',
                 ),
-                const SizedBox(height: 20),
+                style: OutlinedButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  minimumSize: const Size(double.infinity, 48),
+                  textStyle: const TextStyle(fontSize: 14),
+                ),
+              ),
+              const SizedBox(height: 20),
 
-                // ── Campos: Valor da cota + Diária ──────────────────────
-                isMobile
-                    ? Column(
-                        children: [
-                          _campoValor(),
-                          const SizedBox(height: 12),
-                          _campoDiaria(),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Expanded(child: _campoValor()),
-                          const SizedBox(width: 16),
-                          Expanded(child: _campoDiaria()),
-                        ],
+              // ── Campos: Valor da cota + Diária ──────────────────────
+              isMobile
+                  ? Column(
+                      children: [
+                        _campoValor(),
+                        const SizedBox(height: 12),
+                        _campoDiaria(),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: _campoValor()),
+                        const SizedBox(width: 16),
+                        Expanded(child: _campoDiaria()),
+                      ],
+                    ),
+
+              const SizedBox(height: 24),
+
+              // ── Taxa de ocupação ────────────────────────────────────
+              Row(
+                children: [
+                  Text('Taxa de ocupação',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface)),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: diasPlano != null
+                        ? () => setState(() => _modoDias = !_modoDias)
+                        : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: diasPlano != null
+                            ? (_modoDias
+                                ? cs.primaryContainer
+                                : cs.surfaceContainerHighest)
+                            : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: cs.outlineVariant),
                       ),
-
-                const SizedBox(height: 24),
-
-                // ── Taxa de ocupação ────────────────────────────────────
-                Row(
-                  children: [
-                    Text('Taxa de ocupação',
+                      child: Text(
+                        _modoDias ? 'Dias' : '%',
                         style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface)),
-                    const SizedBox(width: 10),
-                    // Toggle % / Dias
-                    GestureDetector(
-                      onTap: diasPlano != null
-                          ? () => setState(() => _modoDias = !_modoDias)
-                          : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: diasPlano != null
-                              ? (_modoDias
-                                  ? cs.primaryContainer
-                                  : cs.surfaceContainerHighest)
-                              : cs.surfaceContainerHighest.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: cs.outlineVariant),
-                        ),
-                        child: Text(
-                          _modoDias ? 'Dias' : '%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: diasPlano != null ? cs.primary : cs.outline,
-                          ),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: diasPlano != null ? cs.primary : cs.outline,
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SegmentedButton<double>(
-                  segments: _taxas.map((t) {
-                    final String label;
-                    if (_modoDias && diasPlano != null) {
-                      label = '${(diasPlano * t).round()}d';
-                    } else {
-                      label = '${(t * 100).toInt()}%';
-                    }
-                    return ButtonSegment<double>(value: t, label: Text(label));
-                  }).toList(),
-                  selected: {_taxaOcupacao},
-                  onSelectionChanged: (s) =>
-                      setState(() => _taxaOcupacao = s.first),
-                  style: const ButtonStyle(
-                    textStyle:
-                        WidgetStatePropertyAll(TextStyle(fontSize: 13)),
                   ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SegmentedButton<double>(
+                segments: _taxas.map((t) {
+                  final String label;
+                  if (_modoDias && diasPlano != null) {
+                    label = '${(diasPlano * t).round()}d';
+                  } else {
+                    label = '${(t * 100).toInt()}%';
+                  }
+                  return ButtonSegment<double>(value: t, label: Text(label));
+                }).toList(),
+                selected: {_taxaOcupacao},
+                onSelectionChanged: (s) =>
+                    setState(() => _taxaOcupacao = s.first),
+                style: const ButtonStyle(
+                  textStyle:
+                      WidgetStatePropertyAll(TextStyle(fontSize: 13)),
                 ),
+              ),
 
-                const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-                // ── Taxas de referência (CDI / Poupança) ────────────────
-                Row(
-                  children: [
-                    Icon(Icons.compare_arrows,
-                        size: 15, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Text('Taxas de referência',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _cdiCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'CDI (% ao ano)',
-                          prefixIcon: Icon(Icons.percent, size: 18),
-                          isDense: true,
-                        ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-                        ],
+              // ── Taxas de referência (CDI / Poupança) ────────────────
+              Row(
+                children: [
+                  Icon(Icons.compare_arrows,
+                      size: 15, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text('Taxas de referência',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _cdiCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'CDI (% ao ano)',
+                        prefixIcon: Icon(Icons.percent, size: 18),
+                        isDense: true,
                       ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _poupancaCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Poupança (% ao ano)',
-                          prefixIcon: Icon(Icons.savings_outlined, size: 18),
-                          isDense: true,
-                        ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-                        ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _poupancaCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Poupança (% ao ano)',
+                        prefixIcon: Icon(Icons.savings_outlined, size: 18),
+                        isDense: true,
                       ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
 
-                const SizedBox(height: 28),
-                Divider(color: Colors.green.shade700.withValues(alpha: 0.3)),
-                const SizedBox(height: 20),
+              const SizedBox(height: 28),
+              Divider(color: Colors.green.shade700.withValues(alpha: 0.3)),
+              const SizedBox(height: 20),
 
-                // ── Resultados ───────────────────────────────────────────
-                if (qtdDiarias != null && diasPlano != null &&
-                    anosEquiv != null && retornoAnual != null)
-                  _buildResultados(
-                    cs,
-                    qtdDiarias: qtdDiarias,
-                    diasPlano: diasPlano,
-                    anosEquiv: anosEquiv,
-                    retornoAnual: retornoAnual,
-                  )
-                else
-                  _buildPlaceholder(cs),
-              ],
-            ),
+              // ── Resultados ───────────────────────────────────────────
+              if (qtdDiarias != null && diasPlano != null &&
+                  anosEquiv != null && retornoAnual != null)
+                _buildResultados(
+                  cs,
+                  qtdDiarias: qtdDiarias,
+                  diasPlano: diasPlano,
+                  anosEquiv: anosEquiv,
+                  retornoAnual: retornoAnual,
+                )
+              else
+                _buildPlaceholder(cs),
+            ],
           ),
         ),
       ),
@@ -522,40 +552,12 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
             text: TextSpan(
               style: TextStyle(fontSize: 14, color: cs.onSurface, height: 1.5),
               children: [
-                const TextSpan(text: 'Com uma cota de '),
-                TextSpan(
-                  text: _moedaCompact.format(valor),
-                  style: TextStyle(fontWeight: FontWeight.bold, color: verde),
-                ),
-                const TextSpan(text: ' e diária de '),
-                TextSpan(
-                  text: _moedaCompact.format(diaria),
-                  style: TextStyle(fontWeight: FontWeight.bold, color: verde),
-                ),
-                const TextSpan(text: ', você teria '),
+                const TextSpan(text: 'Com o valor da sua cota, você conseguiria pagar um total de '),
                 TextSpan(
                   text: '${qtdDiarias.round()} diárias',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: verde),
                 ),
-                const TextSpan(text: ' no resort.'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          RichText(
-            text: TextSpan(
-              style: TextStyle(fontSize: 14, color: cs.onSurface, height: 1.5),
-              children: [
-                const TextSpan(text: 'Usando '),
-                TextSpan(
-                  text: '$diasPlano diárias/ano',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                TextSpan(
-                  text:
-                      ' (${(_taxaOcupacao * 100).toInt()}% de ocupação), isso equivale a ',
-                  style: TextStyle(color: cs.onSurfaceVariant),
-                ),
+                const TextSpan(text: ', equivalente a '),
                 TextSpan(
                   text: '${anosEquiv.toStringAsFixed(1)} anos',
                   style: TextStyle(
@@ -563,7 +565,7 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
                       fontSize: 17,
                       color: verde),
                 ),
-                const TextSpan(text: ' de uso.'),
+                const TextSpan(text: ' de utilização.'),
               ],
             ),
           ),

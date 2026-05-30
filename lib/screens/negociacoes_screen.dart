@@ -9,13 +9,13 @@ import '../widgets/aba_negociacoes.dart';
 final _moeda =
     NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
 
-// ── Tela global de negociações ────────────────────────────────────────────────
-class NegociacoesScreen extends StatefulWidget {
+// ── Widget de negociações (sem Scaffold — usado como aba em ApresentacaoScreen) ─
+class NegociacoesBody extends StatefulWidget {
   final String userProfile;
   final String? currentUserId;
   final String? currentUserName;
 
-  const NegociacoesScreen({
+  const NegociacoesBody({
     super.key,
     required this.userProfile,
     this.currentUserId,
@@ -23,10 +23,10 @@ class NegociacoesScreen extends StatefulWidget {
   });
 
   @override
-  State<NegociacoesScreen> createState() => _NegociacoesScreenState();
+  State<NegociacoesBody> createState() => _NegociacoesBodyState();
 }
 
-class _NegociacoesScreenState extends State<NegociacoesScreen>
+class _NegociacoesBodyState extends State<NegociacoesBody>
     with SingleTickerProviderStateMixin {
   final _service = FirestoreService();
   final _authService = AuthService();
@@ -42,7 +42,6 @@ class _NegociacoesScreenState extends State<NegociacoesScreen>
   @override
   void initState() {
     super.initState();
-    // Admins: aba Todas + aba Pendentes; outros: apenas lista própria
     _tabController = TabController(length: _isAdmin ? 2 : 1, vsync: this);
   }
 
@@ -56,62 +55,67 @@ class _NegociacoesScreenState extends State<NegociacoesScreen>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Row(
+    return Stack(
+      children: [
+        Column(
           children: [
-            Icon(Icons.handshake_outlined, color: cs.primary, size: 22),
-            const SizedBox(width: 10),
-            const Text('Negociações'),
+            if (_isAdmin)
+              Material(
+                color: cs.surface,
+                child: TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(text: 'Todas'),
+                    Tab(
+                      icon: Icon(Icons.pending_outlined),
+                      child: _PendentesTabLabel(),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: _isAdmin
+                  ? TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _ListaNegociacoes(
+                          service: _service,
+                          embaixadorId: null,
+                          isAdmin: true,
+                          currentUserId: widget.currentUserId,
+                          currentUserName: widget.currentUserName,
+                          onAprovar: _abrirPainelAprovacao,
+                          userProfile: widget.userProfile,
+                        ),
+                        _ListaPendentes(
+                          service: _service,
+                          onAprovar: _abrirPainelAprovacao,
+                        ),
+                      ],
+                    )
+                  : _ListaNegociacoes(
+                      service: _service,
+                      embaixadorId: widget.currentUserId,
+                      isAdmin: false,
+                      currentUserId: widget.currentUserId,
+                      currentUserName: widget.currentUserName,
+                      onAprovar: null,
+                      userProfile: widget.userProfile,
+                    ),
+            ),
           ],
         ),
-        bottom: _isAdmin
-            ? TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: 'Todas'),
-                  Tab(
-                    icon: Icon(Icons.pending_outlined),
-                    child: _PendentesTabLabel(),
-                  ),
-                ],
-              )
-            : null,
-      ),
-      body: _isAdmin
-          ? TabBarView(
-              controller: _tabController,
-              children: [
-                _ListaNegociacoes(
-                  service: _service,
-                  embaixadorId: null, // admin vê todas
-                  isAdmin: true,
-                  currentUserId: widget.currentUserId,
-                  currentUserName: widget.currentUserName,
-                  onAprovar: _abrirPainelAprovacao,
-                  userProfile: widget.userProfile,
-                ),
-                _ListaPendentes(
-                  service: _service,
-                  onAprovar: _abrirPainelAprovacao,
-                ),
-              ],
-            )
-          : _ListaNegociacoes(
-              service: _service,
-              embaixadorId: widget.currentUserId,
-              isAdmin: false,
-              currentUserId: widget.currentUserId,
-              currentUserName: widget.currentUserName,
-              onAprovar: null,
-              userProfile: widget.userProfile,
-            ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _novaNegociacao,
-        icon: const Icon(Icons.add),
-        label: const Text('Nova Proposta'),
-      ),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: FloatingActionButton.extended(
+            heroTag: 'negociacoes_fab',
+            onPressed: _novaNegociacao,
+            icon: const Icon(Icons.add),
+            label: const Text('Nova Proposta'),
+          ),
+        ),
+      ],
     );
   }
 
