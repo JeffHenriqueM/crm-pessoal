@@ -135,14 +135,14 @@ class _MainShellState extends State<MainShell> {
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const RecepcaoScreen(),
+      const RecepcaoShell(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       DashboardScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const RecepcaoScreen(),
+      const RecepcaoShell(),
     ] else if (_isPosVenda) ...[
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       VendedorHomeScreen(currentUserId: widget.currentUserId),
@@ -150,14 +150,14 @@ class _MainShellState extends State<MainShell> {
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       DashboardScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const RecepcaoScreen(),
+      const RecepcaoShell(),
     ] else ...[
       // financeiro: Dashboard primeiro
       DashboardScreen(userProfile: widget.userProfile),
       ListaClientesScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const RecepcaoScreen(),
+      const RecepcaoShell(),
     ],
   ];
 

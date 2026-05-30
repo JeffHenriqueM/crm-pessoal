@@ -69,13 +69,15 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
     }
 
     final isAdminInicial = perfilConhecido == 'admin' || perfilConhecido == 'super admin';
+    final isVisaoTotal = isAdminInicial || perfilConhecido == 'recepcao';
 
-    _vendedorIdFiltro = isAdminInicial
+    _vendedorIdFiltro = isVisaoTotal
         ? widget.vendedorIdInicial
         : _authService.getCurrentUser()?.uid;
 
     _clientesStream = _firestoreService.getTodosClientesStream(
       vendedorId: _vendedorIdFiltro,
+      perfilOverride: perfilConhecido,
       ordenarPor: _ordenarPor,
       descendente: _descendente,
     );
@@ -168,6 +170,7 @@ class _ListaClientesScreenState extends State<ListaClientesScreen>
       }
       _clientesStream = _firestoreService.getTodosClientesStream(
         vendedorId: _vendedorIdFiltro,
+        perfilOverride: _userProfile.isNotEmpty ? _userProfile : null,
         ordenarPor: _ordenarPor,
         descendente: _descendente,
       );

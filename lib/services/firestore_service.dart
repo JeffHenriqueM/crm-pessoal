@@ -48,13 +48,17 @@ class FirestoreService {
 
   Stream<List<Cliente>> getTodosClientesStream({
     String? vendedorId,
+    String? perfilOverride,
     String ordenarPor = 'dataAtualizacao',
     bool descendente = true,
   }) {
-    return Stream.fromFuture(_getCurrentUserProfile())
+    final futurePerf = perfilOverride != null
+        ? Future<String>.value(perfilOverride)
+        : _getCurrentUserProfile();
+    return Stream.fromFuture(futurePerf)
         .asyncMap((perfil) {
           debugPrint('[Firestore] perfil=$perfil | filtro=$vendedorId | ordenar=$ordenarPor');
-          final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro', 'super admin'];
+          final perfisComVisaoTotal = ['admin', 'pós-venda', 'financeiro', 'super admin', 'recepcao'];
           final uid = _currentUserId;
 
           // Admins e perfis com visão total

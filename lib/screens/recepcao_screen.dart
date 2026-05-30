@@ -1,7 +1,7 @@
 // lib/screens/recepcao_screen.dart
 //
-// Fluxo: Recepção cria Atendimento (fase=atendimento) → aparece na lista.
-// Quando o vendedor completar e mudar a fase → vira lead nos streams normais.
+// Fluxo: Recepção registra atendimento (fase=atendimento) inline na aba "Registrar".
+// Aba "Meus Leads" mostra todos os atendimentos criados pela recepcionista.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
-import '../services/auth_service.dart';
 import '../services/ficha_pdf.dart';
 import '../services/firestore_service.dart';
 import 'ficha_cliente_screen.dart';
@@ -37,581 +36,79 @@ class _PhoneFormatter extends TextInputFormatter {
   }
 }
 
-// ── Shell da recepção (perfil recepcao — tem próprio AppBar + Sair) ──────────
-class RecepcaoShell extends StatefulWidget {
+// ── Shell da recepção (app bar + 2 abas) ────────────────────────────────────
+class RecepcaoShell extends StatelessWidget {
   final String? currentUserId;
   const RecepcaoShell({super.key, this.currentUserId});
 
   @override
-  State<RecepcaoShell> createState() => _RecepcaoShellState();
-}
-
-class _RecepcaoShellState extends State<RecepcaoShell> {
-  int _tab = 0;
-
-  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Row(children: [
-          Image.asset('assets/images/logo.png',
-              height: 28, filterQuality: FilterQuality.medium),
-          const SizedBox(width: 10),
-          const Text('Recepção — Villamor'),
-        ]),
-        actions: [
-          TextButton.icon(
-            icon: Icon(Icons.logout_outlined,
-                size: 18, color: cs.onSurfaceVariant),
-            label: Text('Sair',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-            onPressed: () => AuthService().signOut(),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Recepção'),
+          toolbarHeight: 50,
+          bottom: TabBar(
+            tabs: const [
+              Tab(icon: Icon(Icons.add_circle_outline), text: 'Registrar'),
+              Tab(icon: Icon(Icons.people_outline), text: 'Meus Leads'),
+            ],
+            indicatorColor: cs.primary,
+            labelColor: cs.primary,
+            unselectedLabelColor: cs.onSurfaceVariant,
           ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: IndexedStack(
-        index: _tab,
-        children: [
-          const RecepcaoScreen(),
-          _FunilRecepcaoTab(currentUserId: widget.currentUserId),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.badge_outlined),
-            selectedIcon: Icon(Icons.badge),
-            label: 'Atendimentos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.view_kanban_outlined),
-            selectedIcon: Icon(Icons.view_kanban),
-            label: 'Funil',
-          ),
-        ],
+        ),
+        body: const TabBarView(
+          children: [RecepcaoScreen(), _RecepcaoLeadsTab()],
+        ),
       ),
     );
   }
 }
 
-// ── Tab de funil para recepcionista ─────────────────────────────────────────
-class _FunilRecepcaoTab extends StatelessWidget {
-  final String? currentUserId;
-  const _FunilRecepcaoTab({this.currentUserId});
-
-  static final _dataFmt = DateFormat('dd/MM/yyyy');
-
-  Color _corFase(FaseCliente fase) {
-    switch (fase) {
-      case FaseCliente.prospeccao:  return const Color(0xFF6366F1);
-      case FaseCliente.contato:     return const Color(0xFF0EA5E9);
-      case FaseCliente.negociacao:  return const Color(0xFFF59E0B);
-      case FaseCliente.visita:      return const Color(0xFF8B5CF6);
-      case FaseCliente.fechado:     return const Color(0xFF10B981);
-      case FaseCliente.perdido:     return const Color(0xFFEF4444);
-      default:                      return const Color(0xFF9CA3AF);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final service = FirestoreService();
-    final cs = Theme.of(context).colorScheme;
-
-    return StreamBuilder<List<Cliente>>(
-      stream: service.getFunilRecepcaoStream(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          debugPrint('[FunilRecepcao] erro: ${snap.error}');
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('Erro ao carregar leads: ${snap.error}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: cs.error, fontSize: 13)),
-            ),
-          );
-        }
-        final leads = snap.data ?? [];
-
-        if (leads.isEmpty) {
-          return Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.view_kanban_outlined,
-                  size: 56, color: cs.outline.withValues(alpha: 0.35)),
-              const SizedBox(height: 14),
-              Text('Nenhum lead no funil ainda.',
-                  style: TextStyle(color: cs.outline, fontSize: 14)),
-            ]),
-          );
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-          itemCount: leads.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 6),
-          itemBuilder: (context, i) {
-            final c = leads[i];
-            final cor = _corFase(c.fase);
-            return Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: cs.outlineVariant),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        FichaClienteScreen(cliente: c, userProfile: 'recepcao'),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  child: Row(children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor: cor.withValues(alpha: 0.15),
-                      child: Text(
-                        c.nome.isNotEmpty ? c.nome[0].toUpperCase() : '?',
-                        style: TextStyle(
-                            color: cor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text(c.nome,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 14)),
-                        if (c.vendedorNome?.isNotEmpty == true)
-                          Text('Vendedor: ${c.vendedorNome}',
-                              style: TextStyle(
-                                  fontSize: 12, color: cs.onSurfaceVariant)),
-                      ]),
-                    ),
-                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: cor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(c.fase.nomeDisplay,
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: cor)),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(_dataFmt.format(c.dataAtualizacao),
-                          style: TextStyle(
-                              fontSize: 11, color: cs.onSurfaceVariant)),
-                    ]),
-                  ]),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ── Lista de atendimentos + FAB "Novo Atendimento" ───────────────────────────
-class RecepcaoScreen extends StatelessWidget {
+// ── Formulário de registro ───────────────────────────────────────────────────
+class RecepcaoScreen extends StatefulWidget {
   const RecepcaoScreen({super.key});
 
-  static final _horaFmt = DateFormat('HH:mm');
-  static final _dataFmt = DateFormat('dd/MM/yyyy');
-
-  String _cabecalhoData(DateTime dt) {
-    final hoje = DateTime.now();
-    final ontem = hoje.subtract(const Duration(days: 1));
-    if (_dataFmt.format(dt) == _dataFmt.format(hoje)) return 'HOJE';
-    if (_dataFmt.format(dt) == _dataFmt.format(ontem)) return 'ONTEM';
-    return _dataFmt.format(dt);
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final service = FirestoreService();
-    final cs = Theme.of(context).colorScheme;
-
-    return StreamBuilder<List<Cliente>>(
-      stream: service.getClientesRecepcaoStream(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final atendimentos = snap.data ?? [];
-        final hoje = atendimentos
-            .where((c) => _dataFmt.format(c.dataEntradaSala ?? c.dataCadastro) ==
-                _dataFmt.format(DateTime.now()))
-            .length;
-
-        return Scaffold(
-          body: Column(children: [
-            // ── Cabeçalho com contagem do dia ─────────────────────────────
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-              child: Row(children: [
-                Icon(Icons.calendar_today_outlined,
-                    size: 15, color: cs.onSurfaceVariant),
-                const SizedBox(width: 6),
-                Text(
-                  'Hoje: $hoje atendimento${hoje != 1 ? 's' : ''}',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w500),
-                ),
-                const Spacer(),
-                Text(
-                  'Total: ${atendimentos.length}',
-                  style:
-                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-              ]),
-            ),
-
-            // ── Lista ──────────────────────────────────────────────────────
-            Expanded(
-              child: atendimentos.isEmpty
-                  ? Center(
-                      child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                        Icon(Icons.badge_outlined,
-                            size: 56,
-                            color: cs.outline.withValues(alpha: 0.35)),
-                        const SizedBox(height: 14),
-                        Text('Nenhum atendimento registrado.',
-                            style: TextStyle(
-                                color: cs.outline, fontSize: 14)),
-                        const SizedBox(height: 6),
-                        Text('Toque em "Novo Atendimento" para começar.',
-                            style: TextStyle(
-                                color: cs.onSurfaceVariant, fontSize: 12)),
-                      ]))
-                  : _buildLista(context, atendimentos, cs),
-            ),
-          ]),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _abrirNovoAtendimento(context, service),
-            icon: const Icon(Icons.add),
-            label: const Text('Novo Atendimento'),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildLista(
-      BuildContext context, List<Cliente> atendimentos, ColorScheme cs) {
-    // Agrupa por data
-    String? ultimaData;
-    final itens = <Widget>[];
-
-    for (final c in atendimentos) {
-      final dt = c.dataEntradaSala ?? c.dataCadastro;
-      final dataStr = _cabecalhoData(dt);
-      if (dataStr != ultimaData) {
-        ultimaData = dataStr;
-        itens.add(_DateHeader(label: dataStr));
-      }
-      itens.add(_AtendimentoCard(
-        cliente: c,
-        horaFmt: _horaFmt,
-        onTap: () async {
-          final salvo = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(
-                builder: (_) =>
-                    FichaClienteScreen(cliente: c, userProfile: 'recepcao')),
-          );
-          if (salvo == true && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Atendimento atualizado!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        },
-        onReimprimir: () => _reimprimir(c),
-      ));
-    }
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-      children: itens,
-    );
-  }
-
-  void _abrirNovoAtendimento(
-      BuildContext context, FirestoreService service) async {
-    final resultado = await Navigator.push<FichaAtendimentoData>(
-      context,
-      MaterialPageRoute(
-          builder: (_) => const _RegistrarAtendimentoScreen()),
-    );
-    if (resultado != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Atendimento Nº ${resultado.numeroAtendimento.toString().padLeft(6, '0')} registrado!'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'Reimprimir',
-          textColor: Colors.white,
-          onPressed: () => FichaAtendimentoPdf.gerar(resultado),
-        ),
-      ));
-    }
-  }
-
-  void _reimprimir(Cliente c) {
-    FichaAtendimentoPdf.gerar(FichaAtendimentoData(
-      nome: c.nome,
-      idade: c.idade,
-      profissao: c.profissao,
-      telefone: c.telefoneContato,
-      conjuge: c.nomeEsposa,
-      idadeConjuge: c.idadeConjuge,
-      profissaoConjuge: c.profissaoConjuge,
-      telefoneConjuge: c.telefone2,
-      brinde: c.brinde,
-      captadorNome: c.captadorNome,
-      linerNome: c.linerNome,
-      vendedorNome: c.vendedorNome,
-      sala: c.sala ?? 'Villa',
-      pontoCapatcao: c.origem,
-      numeroAtendimento: c.numeroAtendimento ?? 0,
-      dataEntrada: c.dataEntradaSala ?? c.dataCadastro,
-    ));
-  }
+  State<RecepcaoScreen> createState() => _RecepcaoScreenState();
 }
 
-// ── Cabeçalho de data na lista ───────────────────────────────────────────────
-class _DateHeader extends StatelessWidget {
-  final String label;
-  const _DateHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
-      child: Row(children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: cs.onPrimaryContainer)),
-        ),
-        const SizedBox(width: 8),
-        Expanded(child: Divider(color: cs.outlineVariant, height: 1)),
-      ]),
-    );
-  }
-}
-
-// ── Card de atendimento ───────────────────────────────────────────────────────
-class _AtendimentoCard extends StatelessWidget {
-  final Cliente cliente;
-  final DateFormat horaFmt;
-  final VoidCallback onTap;
-  final VoidCallback onReimprimir;
-
-  const _AtendimentoCard({
-    required this.cliente,
-    required this.horaFmt,
-    required this.onTap,
-    required this.onReimprimir,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final c = cliente;
-    final dt = c.dataEntradaSala ?? c.dataCadastro;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: cs.outlineVariant),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(children: [
-            // Avatar com inicial
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: cs.primaryContainer,
-              child: Text(
-                c.nome.isNotEmpty ? c.nome[0].toUpperCase() : '?',
-                style: TextStyle(
-                    color: cs.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18),
-              ),
-            ),
-            const SizedBox(width: 12),
-
-            // Dados principais
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(c.nome,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14)),
-                if (c.nomeEsposa?.isNotEmpty == true)
-                  Text('+ ${c.nomeEsposa}',
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
-                const SizedBox(height: 4),
-                Wrap(spacing: 8, runSpacing: 4, children: [
-                  if (c.sala?.isNotEmpty == true)
-                    _chip(cs, Icons.villa_outlined, c.sala!),
-                  if (c.brinde?.isNotEmpty == true)
-                    _chip(cs, Icons.card_giftcard_outlined, c.brinde!),
-                  if (c.linerNome?.isNotEmpty == true)
-                    _chip(cs, Icons.record_voice_over_outlined,
-                        c.linerNome!),
-                ]),
-              ]),
-            ),
-
-            // Número + hora + botão reimprimir
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              if (c.numeroAtendimento != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '#${c.numeroAtendimento!.toString().padLeft(6, '0')}',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onPrimaryContainer),
-                  ),
-                ),
-              const SizedBox(height: 4),
-              Text(horaFmt.format(dt),
-                  style:
-                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              const SizedBox(height: 2),
-              InkWell(
-                onTap: onReimprimir,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.print_outlined,
-                      size: 18, color: cs.onSurfaceVariant),
-                ),
-              ),
-            ]),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _chip(ColorScheme cs, IconData icon, String label) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: cs.onSurfaceVariant),
-          const SizedBox(width: 3),
-          Text(label,
-              style:
-                  TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-        ],
-      );
-}
-
-// ── Tela de registro (pushed via Navigator) ───────────────────────────────────
-class _RegistrarAtendimentoScreen extends StatefulWidget {
-  const _RegistrarAtendimentoScreen();
-
-  @override
-  State<_RegistrarAtendimentoScreen> createState() =>
-      _RegistrarAtendimentoScreenState();
-}
-
-class _RegistrarAtendimentoScreenState
-    extends State<_RegistrarAtendimentoScreen> {
+class _RecepcaoScreenState extends State<RecepcaoScreen> {
   final _formKey = GlobalKey<FormState>();
   final _service = FirestoreService();
 
   // Titular
-  final _nomeCtrl = TextEditingController();
-  final _idadeCtrl = TextEditingController();
-  final _profissaoCtrl = TextEditingController();
-  final _telefoneCtrl = TextEditingController();
+  final _nomeCtrl        = TextEditingController();
+  final _idadeCtrl       = TextEditingController();
+  final _profissaoCtrl   = TextEditingController();
+  final _telefoneCtrl    = TextEditingController();
 
   // Cônjuge
-  final _conjugeCtrl = TextEditingController();
-  final _idadeConjugeCtrl = TextEditingController();
+  final _conjugeCtrl          = TextEditingController();
+  final _idadeConjugeCtrl     = TextEditingController();
   final _profissaoConjugeCtrl = TextEditingController();
-  final _telefoneConjugeCtrl = TextEditingController();
+  final _telefoneConjugeCtrl  = TextEditingController();
 
   // Geral
-  String _pontoCap = 'Presencial';
-  static const _origens = ['Presencial', 'WhatsApp', 'Instagram'];
-
-  String _sala = 'Villa';
-  String? _brinde;
+  String   _pontoCap = 'Presencial';
+  String   _sala     = 'Villa';
+  String?  _brinde;
   Usuario? _captador;
-  Usuario? _liner; // Vendedor atribuído na recepção
+  Usuario? _liner;
 
-  List<Usuario> _usuarios = [];
-  bool _carregandoUsuarios = true;
-  bool _salvando = false;
+  List<Usuario> _usuarios          = [];
+  bool          _carregandoUsuarios = true;
+  bool          _salvando           = false;
 
-  static const _salas = ['Villa', 'Online'];
-  static const _brindes = [
-    'Dream Vacation',
-    'Day Use',
-    'Drinks',
-    'Calcinha'
-  ];
+  FichaAtendimentoData? _ultimaFicha;
+
+  static const _salas   = ['Villa', 'Online'];
+  static const _origens = ['Presencial', 'WhatsApp', 'Instagram'];
+  static const _brindes = ['Dream Vacation', 'Day Use', 'Drinks', 'Calcinha'];
 
   @override
   void initState() {
@@ -636,19 +133,16 @@ class _RegistrarAtendimentoScreenState
       final lista = await _service.getTodosUsuarios();
       if (mounted) {
         setState(() {
-          const perfisValidos = [
-            'captador', 'vendedor', 'admin', 'super admin'
-          ];
           _usuarios = lista
-              .where(
-                  (u) => u.ativo && perfisValidos.contains(u.perfil))
+              .where((u) => u.ativo &&
+                  ['captador', 'vendedor', 'admin', 'super admin']
+                      .contains(u.perfil))
               .toList()
             ..sort((a, b) => a.nome.compareTo(b.nome));
           _carregandoUsuarios = false;
         });
       }
-    } catch (e) {
-      debugPrint('[Recepção] Erro ao carregar usuários: $e');
+    } catch (_) {
       if (mounted) setState(() => _carregandoUsuarios = false);
     }
   }
@@ -659,12 +153,12 @@ class _RegistrarAtendimentoScreenState
 
     try {
       final agora = DateTime.now();
-      final numero = await _service.proximoNumeroAtendimento();
+      final numeroAtendimento = await _service.proximoNumeroAtendimento();
 
       final cliente = Cliente(
         nome: _nomeCtrl.text.trim(),
         tipo: 'Casal',
-        fase: FaseCliente.atendimento, // ← pré-lead, só aparece na recepção
+        fase: FaseCliente.atendimento,
         idade: _idadeCtrl.text.trim().isEmpty ? null : _idadeCtrl.text.trim(),
         profissao: _profissaoCtrl.text.trim().isEmpty
             ? null
@@ -691,9 +185,9 @@ class _RegistrarAtendimentoScreenState
         captadorNome: _captador?.nome,
         linerId: _liner?.id,
         linerNome: _liner?.nome,
-        vendedorId: _liner?.id,   // pré-associa o vendedor para aparecer no funil
+        vendedorId: _liner?.id,
         vendedorNome: _liner?.nome,
-        numeroAtendimento: numero,
+        numeroAtendimento: numeroAtendimento,
         dataEntradaSala: agora,
         dataCadastro: agora,
         dataAtualizacao: agora,
@@ -716,15 +210,31 @@ class _RegistrarAtendimentoScreenState
         vendedorNome: cliente.vendedorNome,
         sala: _sala,
         pontoCapatcao: cliente.origem,
-        numeroAtendimento: numero,
+        numeroAtendimento: numeroAtendimento,
         dataEntrada: agora,
       );
 
       if (imprimir) await FichaAtendimentoPdf.gerar(fichaData);
 
       if (mounted) {
-        // Volta para a lista passando fichaData para o snackbar de reimprimir
-        Navigator.of(context).pop(fichaData);
+        setState(() {
+          _ultimaFicha = fichaData;
+          _salvando = false;
+          _limparForm();
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            'Atendimento Nº ${numeroAtendimento.toString().padLeft(6, '0')} registrado!',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Imprimir',
+            textColor: Colors.white,
+            onPressed: () => FichaAtendimentoPdf.gerar(fichaData),
+          ),
+        ));
       }
     } catch (e) {
       if (mounted) {
@@ -737,330 +247,325 @@ class _RegistrarAtendimentoScreenState
     }
   }
 
+  void _limparForm() {
+    for (final c in [
+      _nomeCtrl, _idadeCtrl, _profissaoCtrl, _telefoneCtrl,
+      _conjugeCtrl, _idadeConjugeCtrl, _profissaoConjugeCtrl,
+      _telefoneConjugeCtrl,
+    ]) {
+      c.clear();
+    }
+    _captador = null;
+    _liner = null;
+    _brinde = null;
+    _sala = 'Villa';
+    _pontoCap = 'Presencial';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isWide = MediaQuery.of(context).size.width > 700;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Novo Atendimento'),
-        leading: const BackButton(),
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
-            horizontal: isWide ? 80 : 16, vertical: 24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Entrada ─────────────────────────────────────────────
-                  _card(cs,
-                      icon: Icons.meeting_room_outlined,
-                      title: 'Entrada',
-                      children: [
-                        Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                          SizedBox(
-                            width: 150,
-                            child: DropdownButtonFormField<String>(
-                              value: _sala,
-                              decoration: const InputDecoration(
-                                labelText: 'Sala',
-                                prefixIcon:
-                                    Icon(Icons.villa_outlined),
-                              ),
-                              items: _salas
-                                  .map((s) => DropdownMenuItem(
-                                      value: s, child: Text(s)))
-                                  .toList(),
-                              onChanged: (v) {
-                                final novaSala = v ?? _sala;
-                                setState(() {
-                                  final autoAtual = _sala == 'Villa'
-                                      ? 'Presencial'
-                                      : 'WhatsApp';
-                                  final autoNovo = novaSala == 'Villa'
-                                      ? 'Presencial'
-                                      : 'WhatsApp';
-                                  if (_pontoCap == autoAtual) {
-                                    _pontoCap = autoNovo;
-                                  }
-                                  _sala = novaSala;
-                                });
-                              },
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+          horizontal: isWide ? 80 : 16, vertical: 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Entrada ───────────────────────────────────────────────
+                _card(cs,
+                    icon: Icons.meeting_room_outlined,
+                    title: 'Entrada',
+                    children: [
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        SizedBox(
+                          width: 150,
+                          child: DropdownButtonFormField<String>(
+                            value: _sala,
+                            decoration: const InputDecoration(
+                              labelText: 'Sala',
+                              prefixIcon: Icon(Icons.villa_outlined),
                             ),
+                            items: _salas
+                                .map((s) => DropdownMenuItem(
+                                    value: s, child: Text(s)))
+                                .toList(),
+                            onChanged: (v) {
+                              final novaSala = v ?? _sala;
+                              setState(() {
+                                final autoAtual =
+                                    _sala == 'Villa' ? 'Presencial' : 'WhatsApp';
+                                final autoNovo =
+                                    novaSala == 'Villa' ? 'Presencial' : 'WhatsApp';
+                                if (_pontoCap == autoAtual) _pontoCap = autoNovo;
+                                _sala = novaSala;
+                              });
+                            },
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _pontoCap,
-                              decoration: const InputDecoration(
-                                labelText: 'Ponto de Captação',
-                                prefixIcon:
-                                    Icon(Icons.location_on_outlined),
-                              ),
-                              items: _origens
-                                  .map((o) => DropdownMenuItem(
-                                      value: o, child: Text(o)))
-                                  .toList(),
-                              onChanged: (v) {
-                                if (v != null) {
-                                  setState(() => _pontoCap = v);
-                                }
-                              },
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _pontoCap,
+                            decoration: const InputDecoration(
+                              labelText: 'Ponto de Captação',
+                              prefixIcon: Icon(Icons.location_on_outlined),
                             ),
+                            items: _origens
+                                .map((o) => DropdownMenuItem(
+                                    value: o, child: Text(o)))
+                                .toList(),
+                            onChanged: (v) {
+                              if (v != null) setState(() => _pontoCap = v);
+                            },
                           ),
-                        ]),
+                        ),
                       ]),
-                  const SizedBox(height: 16),
+                    ]),
+                const SizedBox(height: 16),
 
-                  // ── Titular ──────────────────────────────────────────────
-                  _card(cs,
-                      icon: Icons.person_outlined,
-                      title: 'Titular',
-                      children: [
-                        TextFormField(
-                          controller: _nomeCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Nome *',
-                            prefixIcon: Icon(Icons.badge_outlined),
+                // ── Titular ───────────────────────────────────────────────
+                _card(cs,
+                    icon: Icons.person_outlined,
+                    title: 'Titular',
+                    children: [
+                      TextFormField(
+                        controller: _nomeCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Nome *',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                        ),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty)
+                                ? 'Informe o nome'
+                                : null,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _idadeCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Idade',
+                              hintText: 'anos',
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 14),
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
                           ),
-                          textCapitalization: TextCapitalization.words,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 5,
+                          child: TextFormField(
+                            controller: _profissaoCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Profissão',
+                              prefixIcon: Icon(Icons.work_outline),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _telefoneCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefone',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                          hintText: '(XX) XXXXX-XXXX',
+                        ),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [_PhoneFormatter()],
+                      ),
+                    ]),
+                const SizedBox(height: 16),
+
+                // ── Cônjuge ───────────────────────────────────────────────
+                _card(cs,
+                    icon: Icons.favorite_outline,
+                    title: 'Cônjuge',
+                    children: [
+                      TextFormField(
+                        controller: _conjugeCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Nome',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                        ),
+                        textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _idadeConjugeCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Idade',
+                              hintText: 'anos',
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 14),
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 5,
+                          child: TextFormField(
+                            controller: _profissaoConjugeCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Profissão',
+                              prefixIcon: Icon(Icons.work_outline),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _telefoneConjugeCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefone',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                          hintText: '(XX) XXXXX-XXXX',
+                        ),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [_PhoneFormatter()],
+                      ),
+                    ]),
+                const SizedBox(height: 16),
+
+                // ── Equipe ────────────────────────────────────────────────
+                _card(cs,
+                    icon: Icons.groups_outlined,
+                    title: 'Equipe',
+                    children: [
+                      if (_carregandoUsuarios)
+                        const LinearProgressIndicator()
+                      else ...[
+                        DropdownButtonFormField<Usuario>(
+                          value: _captador,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Captador *',
+                            prefixIcon: Icon(Icons.person_pin_outlined),
+                          ),
+                          hint: const Text('Selecione'),
+                          items: _usuarios
+                              .map((u) => DropdownMenuItem(
+                                  value: u, child: Text(u.nome)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _captador = v),
                           validator: (v) =>
-                              (v == null || v.trim().isEmpty)
-                                  ? 'Informe o nome'
-                                  : null,
+                              v == null ? 'Selecione o captador' : null,
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              controller: _idadeCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Idade',
-                                hintText: 'anos',
-                                contentPadding:
-                                    EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 14),
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 5,
-                            child: TextFormField(
-                              controller: _profissaoCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Profissão',
-                                prefixIcon:
-                                    Icon(Icons.work_outline),
-                              ),
-                              textCapitalization:
-                                  TextCapitalization.words,
-                            ),
-                          ),
-                        ]),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _telefoneCtrl,
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<Usuario>(
+                          value: _liner,
+                          isExpanded: true,
                           decoration: const InputDecoration(
-                            labelText: 'Telefone',
-                            prefixIcon: Icon(Icons.phone_outlined),
-                            hintText: '(XX) XXXXX-XXXX',
+                            labelText: 'Vendedor *',
+                            prefixIcon: Icon(Icons.record_voice_over_outlined),
                           ),
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [_PhoneFormatter()],
+                          hint: const Text('Selecione'),
+                          items: _usuarios
+                              .map((u) => DropdownMenuItem(
+                                  value: u, child: Text(u.nome)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _liner = v),
+                          validator: (v) =>
+                              v == null ? 'Selecione o vendedor' : null,
                         ),
-                      ]),
-                  const SizedBox(height: 16),
-
-                  // ── Cônjuge ──────────────────────────────────────────────
-                  _card(cs,
-                      icon: Icons.favorite_outline,
-                      title: 'Cônjuge',
-                      children: [
-                        TextFormField(
-                          controller: _conjugeCtrl,
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          value: _brinde,
+                          isExpanded: true,
                           decoration: const InputDecoration(
-                            labelText: 'Nome',
-                            prefixIcon: Icon(Icons.badge_outlined),
+                            labelText: 'Brinde',
+                            prefixIcon: Icon(Icons.card_giftcard_outlined),
                           ),
-                          textCapitalization: TextCapitalization.words,
+                          hint: const Text('Selecione o brinde'),
+                          items: _brindes
+                              .map((b) => DropdownMenuItem(
+                                  value: b, child: Text(b)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _brinde = v),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              controller: _idadeConjugeCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Idade',
-                                hintText: 'anos',
-                                contentPadding:
-                                    EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 14),
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 5,
-                            child: TextFormField(
-                              controller: _profissaoConjugeCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Profissão',
-                                prefixIcon:
-                                    Icon(Icons.work_outline),
-                              ),
-                              textCapitalization:
-                                  TextCapitalization.words,
-                            ),
-                          ),
-                        ]),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _telefoneConjugeCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefone',
-                            prefixIcon: Icon(Icons.phone_outlined),
-                            hintText: '(XX) XXXXX-XXXX',
-                          ),
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [_PhoneFormatter()],
-                        ),
-                      ]),
-                  const SizedBox(height: 16),
+                      ],
+                    ]),
+                const SizedBox(height: 28),
 
-                  // ── Equipe ───────────────────────────────────────────────
-                  _card(cs,
-                      icon: Icons.groups_outlined,
-                      title: 'Equipe',
-                      children: [
-                        if (_carregandoUsuarios)
-                          const LinearProgressIndicator()
-                        else ...[
-                          DropdownButtonFormField<Usuario>(
-                            value: _captador,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Captador *',
-                              prefixIcon:
-                                  Icon(Icons.person_pin_outlined),
-                            ),
-                            hint: const Text('Selecione'),
-                            items: _usuarios
-                                .map((u) => DropdownMenuItem(
-                                    value: u, child: Text(u.nome)))
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _captador = v),
-                            validator: (v) => v == null
-                                ? 'Selecione o captador'
-                                : null,
-                          ),
-                          const SizedBox(height: 14),
-                          DropdownButtonFormField<Usuario>(
-                            value: _liner,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Vendedor *',
-                              prefixIcon: Icon(
-                                  Icons.record_voice_over_outlined),
-                            ),
-                            hint: const Text('Selecione'),
-                            items: _usuarios
-                                .map((u) => DropdownMenuItem(
-                                    value: u, child: Text(u.nome)))
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _liner = v),
-                            validator: (v) => v == null
-                                ? 'Selecione o vendedor'
-                                : null,
-                          ),
-                          const SizedBox(height: 14),
-                          DropdownButtonFormField<String>(
-                            value: _brinde,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Brinde',
-                              prefixIcon:
-                                  Icon(Icons.card_giftcard_outlined),
-                            ),
-                            hint: const Text('Selecione o brinde'),
-                            items: _brindes
-                                .map((b) => DropdownMenuItem(
-                                    value: b, child: Text(b)))
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _brinde = v),
-                          ),
-                        ],
-                      ]),
-                  const SizedBox(height: 28),
-
-                  // ── Botões salvar ────────────────────────────────────────
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _salvando ? null : () => _salvar(imprimir: true),
-                      icon: _salvando
-                          ? SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: cs.onPrimary))
-                          : const Icon(Icons.print_outlined),
-                      label: Text(
-                        _salvando
-                            ? 'Registrando...'
-                            : 'Registrar e Imprimir Ficha',
-                        style: const TextStyle(fontSize: 15),
-                      ),
+                // ── Botões salvar ─────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: _salvando ? null : () => _salvar(imprimir: true),
+                    icon: _salvando
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: cs.onPrimary))
+                        : const Icon(Icons.print_outlined),
+                    label: Text(
+                      _salvando ? 'Registrando...' : 'Registrar e Imprimir Ficha',
+                      style: const TextStyle(fontSize: 15),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _salvando ? null : () => _salvar(imprimir: false),
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text(
+                      'Salvar sem Imprimir',
+                      style: TextStyle(fontSize: 15),
+                    ),
+                  ),
+                ),
+
+                if (_ultimaFicha != null) ...[
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    height: 48,
                     child: OutlinedButton.icon(
-                      onPressed: _salvando ? null : () => _salvar(imprimir: false),
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text(
-                        'Salvar sem Imprimir',
-                        style: TextStyle(fontSize: 15),
+                      onPressed: () => FichaAtendimentoPdf.gerar(_ultimaFicha!),
+                      icon: const Icon(Icons.replay_outlined, size: 18),
+                      label: Text(
+                        'Reimprimir última ficha '
+                        '(${_ultimaFicha!.nome.split(' ').first})',
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 40),
                 ],
-              ),
+                const SizedBox(height: 40),
+              ],
             ),
           ),
         ),
@@ -1068,10 +573,12 @@ class _RegistrarAtendimentoScreenState
     );
   }
 
-  Widget _card(ColorScheme cs,
-      {required IconData icon,
-      required String title,
-      required List<Widget> children}) {
+  Widget _card(
+    ColorScheme cs, {
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -1080,22 +587,217 @@ class _RegistrarAtendimentoScreenState
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(icon, color: cs.primary, size: 20),
-            const SizedBox(width: 10),
-            Text(title,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface)),
-          ]),
-          const SizedBox(height: 14),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
-          ...children,
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, color: cs.primary, size: 20),
+              const SizedBox(width: 10),
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface)),
+            ]),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
       ),
     );
+  }
+}
+
+// ── Aba "Meus Leads" ─────────────────────────────────────────────────────────
+class _RecepcaoLeadsTab extends StatefulWidget {
+  const _RecepcaoLeadsTab();
+
+  @override
+  State<_RecepcaoLeadsTab> createState() => _RecepcaoLeadsTabState();
+}
+
+class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
+  final _service    = FirestoreService();
+  final _searchCtrl = TextEditingController();
+  String _busca = '';
+
+  static final _dataFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() => setState(() => _busca = _searchCtrl.text));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: TextField(
+          controller: _searchCtrl,
+          decoration: InputDecoration(
+            hintText: 'Buscar por nome...',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            suffixIcon: _busca.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _searchCtrl.clear)
+                : null,
+          ),
+        ),
+      ),
+      Expanded(
+        child: StreamBuilder<List<Cliente>>(
+          stream: _service.getClientesRecepcaoStream(),
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            var leads = snap.data ?? [];
+            if (_busca.isNotEmpty) {
+              final q = _busca.toLowerCase();
+              leads = leads
+                  .where((c) =>
+                      c.nome.toLowerCase().contains(q) ||
+                      (c.nomeEsposa?.toLowerCase().contains(q) ?? false) ||
+                      (c.telefoneContato?.contains(q) ?? false))
+                  .toList();
+            }
+            if (leads.isEmpty) {
+              return Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.people_outline,
+                    size: 52,
+                    color: cs.outline.withValues(alpha: 0.4)),
+                const SizedBox(height: 14),
+                Text(
+                  _busca.isNotEmpty
+                      ? 'Nenhum resultado para "$_busca"'
+                      : 'Nenhum lead registrado ainda.',
+                  style: TextStyle(color: cs.outline, fontSize: 14),
+                ),
+              ]));
+            }
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+              itemCount: leads.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, i) {
+                final c = leads[i];
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: cs.outlineVariant),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FichaClienteScreen(
+                            cliente: c, userProfile: 'recepcao'),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      child: Row(children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor: cs.primaryContainer,
+                          child: Text(
+                            c.nome.isNotEmpty ? c.nome[0].toUpperCase() : '?',
+                            style: TextStyle(
+                                color: cs.onPrimaryContainer,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(c.nome,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 14)),
+                            if (c.nomeEsposa?.isNotEmpty == true)
+                              Text('+ ${c.nomeEsposa}',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.onSurfaceVariant)),
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              if (c.telefoneContato?.isNotEmpty == true) ...[
+                                Icon(Icons.phone_outlined,
+                                    size: 12, color: cs.onSurfaceVariant),
+                                const SizedBox(width: 3),
+                                Text(c.telefoneContato!,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant)),
+                                const SizedBox(width: 10),
+                              ],
+                              if (c.sala?.isNotEmpty == true) ...[
+                                Icon(Icons.meeting_room_outlined,
+                                    size: 12, color: cs.onSurfaceVariant),
+                                const SizedBox(width: 3),
+                                Text(c.sala!,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant)),
+                              ],
+                            ]),
+                          ]),
+                        ),
+                        Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                          if (c.numeroAtendimento != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '#${c.numeroAtendimento!.toString().padLeft(6, '0')}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onPrimaryContainer,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          const SizedBox(height: 4),
+                          if (c.dataEntradaSala != null)
+                            Text(_dataFmt.format(c.dataEntradaSala!),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant)),
+                        ]),
+                      ]),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ]);
   }
 }

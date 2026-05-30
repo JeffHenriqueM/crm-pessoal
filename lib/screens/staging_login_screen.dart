@@ -2,7 +2,6 @@
 // Tela de seleção de usuário para o ambiente de STAGING.
 // Não usa Firebase Authentication — qualquer clique entra direto no app.
 import 'package:flutter/material.dart';
-import 'recepcao_screen.dart';
 import '../widgets/main_shell.dart';
 
 // ── Usuários de teste ─────────────────────────────────────────────────────────
@@ -88,18 +87,13 @@ class StagingLoginScreen extends StatelessWidget {
   const StagingLoginScreen({super.key});
 
   void _entrar(BuildContext context, _MockUser user) {
-    Widget destino;
-    if (user.perfil == 'recepcao') {
-      destino = RecepcaoShell(currentUserId: user.id);
-    } else {
-      destino = MainShell(
-        userProfile: user.perfil,
-        currentUserId: user.id,
-      );
-    }
-
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => destino),
+      MaterialPageRoute(
+        builder: (_) => MainShell(
+          userProfile: user.perfil,
+          currentUserId: user.id,
+        ),
+      ),
       (_) => false,
     );
   }
