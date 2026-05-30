@@ -965,4 +965,10 @@ class FirestoreService {
     if (!doc.exists) return null;
     return Ticket.fromFirestore(doc);
   }
+
+  Future<Cliente?> getClienteById(String clienteId) async {
+    final doc = await _db.collection(_colClientes).doc(clienteId).get();
+    if (!doc.exists) return null;
+    return Cliente.fromFirestore(doc);
+  }
 }

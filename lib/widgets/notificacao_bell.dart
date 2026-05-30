@@ -436,18 +436,30 @@ class _PainelLateral extends StatelessWidget {
               Expanded(
                 child: total == 0
                     ? _buildVazia(cs)
-                    : ListView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        children: [
-                          if (ticketNotifs.isNotEmpty)
-                            _buildCategoriaTickets(context, cs),
-                          if (campanhas.isNotEmpty)
-                            _buildCategoriaCampanha(context, cs),
-                          ...categorias
-                              .map((cat) =>
-                                  _buildCategoria(context, cat, cs)),
-                        ],
-                      ),
+                    : Builder(builder: (context) {
+                        final ticketItems = ticketNotifs
+                            .where((n) => n.tipo.startsWith('ticket_'))
+                            .toList();
+                        final lembreteItems = ticketNotifs
+                            .where((n) =>
+                                n.tipo == 'lembrete_contato' ||
+                                n.tipo == 'mensagem_atrasada')
+                            .toList();
+                        return ListView(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          children: [
+                            if (lembreteItems.isNotEmpty)
+                              _buildCategoriaLembretes(context, lembreteItems, cs),
+                            if (ticketItems.isNotEmpty)
+                              _buildCategoriaTickets(context, ticketItems, cs),
+                            if (campanhas.isNotEmpty)
+                              _buildCategoriaCampanha(context, cs),
+                            ...categorias
+                                .map((cat) =>
+                                    _buildCategoria(context, cat, cs)),
+                          ],
+                        );
+                      }),
               ),
             ],
           ),
@@ -478,8 +490,134 @@ class _PainelLateral extends StatelessWidget {
     );
   }
 
+  // ── Categoria de lembretes de contato/mensagens atrasadas ─────────────────
+  Widget _buildCategoriaLembretes(
+      BuildContext context, List<NotificacaoInApp> itens, ColorScheme cs) {
+    final cor = Colors.orange.shade700;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(Icons.alarm_outlined, color: cor, size: 14),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Lembretes',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cor,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${itens.length}',
+                  style: TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.bold, color: cor),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...itens.map((n) => _buildItemLembrete(context, n, cor, cs)),
+        Divider(
+            height: 1, indent: 20, endIndent: 20, color: cs.outlineVariant),
+      ],
+    );
+  }
+
+  Widget _buildItemLembrete(
+      BuildContext context, NotificacaoInApp notif, Color cor, ColorScheme cs) {
+    final icone = notif.tipo == 'mensagem_atrasada'
+        ? Icons.hourglass_bottom_rounded
+        : Icons.today_outlined;
+
+    return InkWell(
+      onTap: () async {
+        final nav = Navigator.of(context);
+        nav.pop();
+        if (currentUserId != null) {
+          await FirestoreService()
+              .marcarNotificacaoLida(currentUserId!, notif.id);
+        }
+        if (notif.clienteId == null) return;
+        final cliente =
+            await FirestoreService().getClienteById(notif.clienteId!);
+        if (cliente == null) return;
+        nav.push(MaterialPageRoute(
+          builder: (_) => FichaClienteScreen(
+            cliente: cliente,
+            userProfile: userProfile,
+          ),
+        ));
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: cor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icone, size: 16, color: cor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    notif.titulo.replaceFirst('Villamor CRM — ', ''),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: cs.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    notif.corpo,
+                    style:
+                        TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (notif.clienteId != null)
+              Icon(Icons.chevron_right, size: 16, color: cs.outline),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Categoria de notificações de tickets ──────────────────────────────────
-  Widget _buildCategoriaTickets(BuildContext context, ColorScheme cs) {
+  Widget _buildCategoriaTickets(
+      BuildContext context, List<NotificacaoInApp> itens, ColorScheme cs) {
     final cor = Colors.indigo.shade600;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -516,7 +654,7 @@ class _PainelLateral extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${ticketNotifs.length}',
+                  '${itens.length}',
                   style: TextStyle(
                       fontSize: 10, fontWeight: FontWeight.bold, color: cor),
                 ),
@@ -524,7 +662,7 @@ class _PainelLateral extends StatelessWidget {
             ],
           ),
         ),
-        ...ticketNotifs.map((n) => _buildItemTicket(context, n, cor, cs)),
+        ...itens.map((n) => _buildItemTicket(context, n, cor, cs)),
         Divider(
             height: 1,
             indent: 20,

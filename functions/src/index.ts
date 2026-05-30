@@ -425,17 +425,18 @@ export const lembreteProximoContato = functions
         .get(),
     ]);
 
-    // Agrupa nomes por vendedorId, ignorando leads deletados
+    // Agrupa leads por vendedorId, ignorando leads deletados
     const agrupar = (snap: admin.firestore.QuerySnapshot) => {
-      const mapa = new Map<string, string[]>();
+      const mapa = new Map<string, { nomes: string[]; ids: string[] }>();
       snap.forEach((doc) => {
         if (doc.data().deletado === true) return;
         const vendedorId = doc.data().vendedorId as string | undefined;
         const nome = doc.data().nome as string ?? 'Lead';
         if (!vendedorId) return;
-        const lista = mapa.get(vendedorId) ?? [];
-        lista.push(nome);
-        mapa.set(vendedorId, lista);
+        const entry = mapa.get(vendedorId) ?? { nomes: [], ids: [] };
+        entry.nomes.push(nome);
+        entry.ids.push(doc.id);
+        mapa.set(vendedorId, entry);
       });
       return mapa;
     };
@@ -445,31 +446,35 @@ export const lembreteProximoContato = functions
 
     const envios: Promise<void>[] = [];
 
-    for (const [vendedorId, nomes] of hojeMap) {
+    for (const [vendedorId, { nomes, ids }] of hojeMap) {
       const token = await getToken(vendedorId);
       if (!token) continue;
       const corpo = nomes.length === 1
         ? `Hoje é o dia de contatar ${nomes[0]}.`
         : `Hoje você tem ${nomes.length} contatos agendados.`;
+      const notifTitulo = 'Villamor CRM — Lembrete de Contato';
+      const extra: Record<string, unknown> = nomes.length === 1 ? { clienteId: ids[0] } : {};
       envios.push(enviarParaToken(
-        vendedorId, token,
-        'Villamor CRM — Lembrete de Contato',
-        corpo,
-        { tipo: 'lembrete_contato' },
+        vendedorId, token, notifTitulo, corpo, { tipo: 'lembrete_contato' },
+      ));
+      envios.push(gravarNotificacaoInApp(
+        vendedorId, 'lembrete_contato', notifTitulo, corpo, extra,
       ));
     }
 
-    for (const [vendedorId, nomes] of atrasadosMap) {
+    for (const [vendedorId, { nomes, ids }] of atrasadosMap) {
       const token = await getToken(vendedorId);
       if (!token) continue;
       const corpo = nomes.length === 1
         ? `Mensagem atrasada para ${nomes[0]}.`
         : `Você tem ${nomes.length} mensagens atrasadas para enviar.`;
+      const notifTitulo = 'Villamor CRM — Mensagens Atrasadas';
+      const extra: Record<string, unknown> = nomes.length === 1 ? { clienteId: ids[0] } : {};
       envios.push(enviarParaToken(
-        vendedorId, token,
-        'Villamor CRM — Mensagens Atrasadas',
-        corpo,
-        { tipo: 'mensagem_atrasada' },
+        vendedorId, token, notifTitulo, corpo, { tipo: 'mensagem_atrasada' },
+      ));
+      envios.push(gravarNotificacaoInApp(
+        vendedorId, 'mensagem_atrasada', notifTitulo, corpo, extra,
       ));
     }
 

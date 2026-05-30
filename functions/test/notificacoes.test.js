@@ -82,6 +82,7 @@ function criarQueryFake(store, filtros) {
       const matched = Object.entries(store)
         .filter(([, d]) => filtros.every(([c, op, v]) => matchFiltro(d, c, op, v)))
         .map(([id, d]) => ({
+          id,
           data: () => d,
           ref: criarDocRefNamed(id, store),
         }));
@@ -636,5 +637,52 @@ test.describe('lembreteProximoContato', () => {
     await wrapped({});
 
     assert.equal(enviados.length, 0);
+  });
+
+  test('grava notificação in-app lembrete_contato para lead único do dia', async () => {
+    usuarios['v1'] = { fcmToken: 'tok-v1', ativo: true };
+    const agora = new Date();
+    const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 10, 0, 0);
+    clientes['c1'] = { nome: 'Ana', vendedorId: 'v1', proximoContato: tsFromDate(hoje) };
+
+    await wrapped({});
+
+    const itens = Object.values(subcollections['notificacoes/v1/itens'] ?? {});
+    const lembrete = itens.find(i => i.tipo === 'lembrete_contato');
+    assert.ok(lembrete, 'deve gravar notificação lembrete_contato');
+    assert.strictEqual(lembrete.lida, false);
+    assert.strictEqual(lembrete.clienteId, 'c1');
+    assert.match(lembrete.corpo, /Ana/);
+  });
+
+  test('grava notificação in-app lembrete_contato SEM clienteId para múltiplos leads', async () => {
+    usuarios['v1'] = { fcmToken: 'tok-v1', ativo: true };
+    const agora = new Date();
+    const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 10, 0, 0);
+    clientes['c1'] = { nome: 'Ana', vendedorId: 'v1', proximoContato: tsFromDate(hoje) };
+    clientes['c2'] = { nome: 'Bia', vendedorId: 'v1', proximoContato: tsFromDate(hoje) };
+
+    await wrapped({});
+
+    const itens = Object.values(subcollections['notificacoes/v1/itens'] ?? {});
+    const lembrete = itens.find(i => i.tipo === 'lembrete_contato');
+    assert.ok(lembrete);
+    assert.strictEqual(lembrete.clienteId, undefined);
+  });
+
+  test('grava notificação in-app mensagem_atrasada para lead único atrasado', async () => {
+    usuarios['v1'] = { fcmToken: 'tok-v1', ativo: true };
+    const ontem = new Date();
+    ontem.setDate(ontem.getDate() - 1);
+    clientes['c1'] = { nome: 'Bruno', vendedorId: 'v1', proximoContato: tsFromDate(ontem), statusMensagem: 'nao_enviada' };
+
+    await wrapped({});
+
+    const itens = Object.values(subcollections['notificacoes/v1/itens'] ?? {});
+    const atrasado = itens.find(i => i.tipo === 'mensagem_atrasada');
+    assert.ok(atrasado, 'deve gravar notificação mensagem_atrasada');
+    assert.strictEqual(atrasado.lida, false);
+    assert.strictEqual(atrasado.clienteId, 'c1');
+    assert.match(atrasado.corpo, /Bruno/);
   });
 });

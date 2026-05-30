@@ -10,6 +10,7 @@ class NotificacaoInApp {
   final String? ticketId;
   final int ticketNumero;
   final String ticketTitulo;
+  final String? clienteId;
 
   const NotificacaoInApp({
     required this.id,
@@ -21,6 +22,7 @@ class NotificacaoInApp {
     this.ticketId,
     this.ticketNumero = 0,
     this.ticketTitulo = '',
+    this.clienteId,
   });
 
   factory NotificacaoInApp.fromFirestore(DocumentSnapshot doc) {
@@ -35,6 +37,7 @@ class NotificacaoInApp {
       ticketId:      d['ticketId']     as String?,
       ticketNumero:  d['ticketNumero'] as int? ?? 0,
       ticketTitulo:  d['ticketTitulo'] as String? ?? '',
+      clienteId:     d['clienteId']    as String?,
     );
   }
 }
