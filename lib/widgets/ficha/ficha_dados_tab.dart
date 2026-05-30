@@ -15,6 +15,7 @@ class FichaDadosTab extends StatelessWidget {
   final TextEditingController telefone1Ctrl;
   final TextEditingController telefone2Ctrl;
   final TextEditingController motivoPerdaDescCtrl;
+  final TextEditingController brindeCtrl;
 
   // ── Valores controlados ────────────────────────────────────────────────────────
   final String tipo;
@@ -71,6 +72,7 @@ class FichaDadosTab extends StatelessWidget {
     required this.telefone1Ctrl,
     required this.telefone2Ctrl,
     required this.motivoPerdaDescCtrl,
+    required this.brindeCtrl,
     required this.tipo,
     required this.fase,
     required this.origem,
@@ -169,6 +171,15 @@ class FichaDadosTab extends StatelessWidget {
               prefixIcon: Icon(Icons.phone_outlined),
             ),
             keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: brindeCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Brinde (opcional)',
+              prefixIcon: Icon(Icons.card_giftcard_outlined),
+            ),
+            textCapitalization: TextCapitalization.sentences,
           ),
 
           // ── Origem e Fase ─────────────────────────────────────────────────────

@@ -59,6 +59,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   late final TextEditingController _telefone1Ctrl;
   late final TextEditingController _telefone2Ctrl;
   late final TextEditingController _motivoPerdaDescCtrl;
+  late final TextEditingController _brindeCtrl;
 
   String _tipo = 'Casal';
   FaseCliente _fase = FaseCliente.prospeccao;
@@ -92,6 +93,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _telefone1Ctrl = TextEditingController(text: c?.telefoneContato ?? '');
     _telefone2Ctrl = TextEditingController(text: c?.telefone2 ?? '');
     _motivoPerdaDescCtrl = TextEditingController(text: c?.motivoNaoVenda ?? '');
+    _brindeCtrl = TextEditingController(text: c?.brinde ?? '');
     _tipo = c?.tipo ?? 'Casal';
     _fase = c?.fase ?? FaseCliente.prospeccao;
     _origem =
@@ -107,7 +109,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
 
     // Detectar alterações não salvas na aba Dados
     for (final c in [_nomeCtrl, _nomeParceiroCtrl, _telefone1Ctrl,
-                     _telefone2Ctrl, _motivoPerdaDescCtrl]) {
+                     _telefone2Ctrl, _motivoPerdaDescCtrl, _brindeCtrl]) {
       c.addListener(_marcarAlterado);
     }
 
@@ -165,6 +167,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _telefone1Ctrl.dispose();
     _telefone2Ctrl.dispose();
     _motivoPerdaDescCtrl.dispose();
+    _brindeCtrl.dispose();
     _intSub?.cancel();
     _negSub?.cancel();
     super.dispose();
@@ -649,6 +652,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               ? Timestamp.fromDate(_dataFechamento!)
               : null,
           'valorVendido': _valorVendido,
+          'brinde': _brindeCtrl.text.trim().isEmpty ? null : _brindeCtrl.text.trim(),
           'atualizadoPorId': user?.uid,
         };
         await _service.atualizarClienteDetalhes(_clienteId!, dados);
@@ -1274,6 +1278,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             telefone1Ctrl: _telefone1Ctrl,
             telefone2Ctrl: _telefone2Ctrl,
             motivoPerdaDescCtrl: _motivoPerdaDescCtrl,
+            brindeCtrl: _brindeCtrl,
             tipo: _tipo,
             fase: _fase,
             origem: _origem,
