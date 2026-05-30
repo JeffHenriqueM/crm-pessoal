@@ -8,6 +8,7 @@ import '../models/contrato_model.dart';
 import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
 import '../models/negociacao_model.dart';
+import '../models/notificacao_inapp_model.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 
@@ -931,5 +932,37 @@ class FirestoreService {
       'statusAssinatura': status.value,
       'atualizadoEm': FieldValue.serverTimestamp(),
     });
+  }
+
+  // ── Notificações in-app ───────────────────────────────────────────────────
+
+  /// Stream de notificações não lidas do usuário (tickets e afins).
+  Stream<List<NotificacaoInApp>> getNotificacoesTicketStream(String uid) {
+    return _db
+        .collection('notificacoes')
+        .doc(uid)
+        .collection('itens')
+        .where('lida', isEqualTo: false)
+        .snapshots()
+        .map((s) => s.docs
+            .map(NotificacaoInApp.fromFirestore)
+            .toList()
+          ..sort((a, b) =>
+              (b.criadoEm ?? DateTime(0)).compareTo(a.criadoEm ?? DateTime(0))));
+  }
+
+  Future<void> marcarNotificacaoLida(String uid, String notifId) async {
+    await _db
+        .collection('notificacoes')
+        .doc(uid)
+        .collection('itens')
+        .doc(notifId)
+        .update({'lida': true});
+  }
+
+  Future<Ticket?> getTicketById(String ticketId) async {
+    final doc = await _db.collection(_colTickets).doc(ticketId).get();
+    if (!doc.exists) return null;
+    return Ticket.fromFirestore(doc);
   }
 }

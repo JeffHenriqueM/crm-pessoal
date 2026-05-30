@@ -339,6 +339,9 @@ class _MainShellState extends State<MainShell> {
       actions: [
         NotificacaoBell(
           vendedorId: _isAdmin ? null : widget.currentUserId,
+          currentUserId: widget.currentUserId,
+          userProfile: widget.userProfile,
+          currentUserName: widget.currentUserName,
         ),
       ],
     );
@@ -425,6 +428,9 @@ class _MainShellState extends State<MainShell> {
             // Notificações
             NotificacaoBell(
               vendedorId: _isAdmin ? null : widget.currentUserId,
+              currentUserId: widget.currentUserId,
+              userProfile: widget.userProfile,
+              currentUserName: widget.currentUserName,
               showAsListTile: true,
             ),
 
@@ -680,12 +686,18 @@ class _MainShellState extends State<MainShell> {
           if (_sidebarExpanded)
             NotificacaoBell(
               vendedorId: _isAdmin ? null : widget.currentUserId,
+              currentUserId: widget.currentUserId,
+              userProfile: widget.userProfile,
+              currentUserName: widget.currentUserName,
               showAsListTile: true,
             )
           else
             Center(
               child: NotificacaoBell(
                 vendedorId: _isAdmin ? null : widget.currentUserId,
+                currentUserId: widget.currentUserId,
+                userProfile: widget.userProfile,
+                currentUserName: widget.currentUserName,
               ),
             ),
 

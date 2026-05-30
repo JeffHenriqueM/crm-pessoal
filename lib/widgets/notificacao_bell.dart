@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/notificacao_inapp_model.dart';
 import '../screens/ficha_cliente_screen.dart';
+import '../screens/ficha_ticket_screen.dart';
 import '../services/firestore_service.dart';
 
 // ── Modelos internos ──────────────────────────────────────────────────────────
@@ -37,6 +39,9 @@ class _CampanhaNotifItem {
 // ── Widget: sino com badge ────────────────────────────────────────────────────
 class NotificacaoBell extends StatelessWidget {
   final String? vendedorId;
+  final String? currentUserId;
+  final String userProfile;
+  final String? currentUserName;
 
   /// Quando true, renderiza como ListTile completo (ícone + texto "Notificações")
   /// com o badge como trailing. Toda a linha é clicável.
@@ -46,6 +51,9 @@ class NotificacaoBell extends StatelessWidget {
   const NotificacaoBell({
     super.key,
     required this.vendedorId,
+    this.currentUserId,
+    this.userProfile = '',
+    this.currentUserName,
     this.showAsListTile = false,
   });
 
@@ -54,33 +62,42 @@ class NotificacaoBell extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final fmtPeriodo = DateFormat('dd/MM');
 
-    // Stream externo: campanhas vigentes (todas, sem filtro de vendedor)
-    return StreamBuilder<List<Campanha>>(
-      stream: FirestoreService().getCampanhasVigentesStream(),
-      builder: (context, campanhasSnap) {
-        final campanhas = campanhasSnap.data ?? [];
-        final campNotifs = campanhas
-            .map((c) => _CampanhaNotifItem(
-                  nome: c.nome,
-                  resumo: c.resumo,
-                  periodo:
-                      '${fmtPeriodo.format(c.dataInicio)} → ${fmtPeriodo.format(c.dataFim)}',
-                ))
-            .toList();
+    // Stream de notificações in-app de tickets (pessoal do usuário logado)
+    return StreamBuilder<List<NotificacaoInApp>>(
+      stream: currentUserId != null
+          ? FirestoreService().getNotificacoesTicketStream(currentUserId!)
+          : const Stream.empty(),
+      builder: (context, ticketNotifSnap) {
+        final ticketNotifs = ticketNotifSnap.data ?? [];
 
-        // Stream interno: clientes (filtrado por vendedor, se aplicável)
-        return StreamBuilder<List<Cliente>>(
-          stream: FirestoreService()
-              .getTodosClientesStream(vendedorId: vendedorId),
-          builder: (context, snapshot) {
-            final clientes = snapshot.data ?? [];
-            final categorias = _calcularCategorias(clientes);
-            final totalClientes =
-                categorias.fold<int>(0, (s, c) => s + c.itens.length);
-            final total = totalClientes + campNotifs.length;
+        // Stream externo: campanhas vigentes (todas, sem filtro de vendedor)
+        return StreamBuilder<List<Campanha>>(
+          stream: FirestoreService().getCampanhasVigentesStream(),
+          builder: (context, campanhasSnap) {
+            final campanhas = campanhasSnap.data ?? [];
+            final campNotifs = campanhas
+                .map((c) => _CampanhaNotifItem(
+                      nome: c.nome,
+                      resumo: c.resumo,
+                      periodo:
+                          '${fmtPeriodo.format(c.dataInicio)} → ${fmtPeriodo.format(c.dataFim)}',
+                    ))
+                .toList();
 
-            void abrirPainel() =>
-                _mostrarPainel(context, categorias, campNotifs, total);
+            // Stream interno: clientes (filtrado por vendedor, se aplicável)
+            return StreamBuilder<List<Cliente>>(
+              stream: FirestoreService()
+                  .getTodosClientesStream(vendedorId: vendedorId),
+              builder: (context, snapshot) {
+                final clientes = snapshot.data ?? [];
+                final categorias = _calcularCategorias(clientes);
+                final totalClientes =
+                    categorias.fold<int>(0, (s, c) => s + c.itens.length);
+                final total =
+                    totalClientes + campNotifs.length + ticketNotifs.length;
+
+                void abrirPainel() => _mostrarPainel(
+                    context, categorias, campNotifs, ticketNotifs, total);
 
             // ── Modo ListTile (sidebar expandida) ─────────────────────────
             if (showAsListTile) {
@@ -172,6 +189,8 @@ class NotificacaoBell extends StatelessWidget {
                     ),
                   ),
               ],
+            );
+              },
             );
           },
         );
@@ -289,6 +308,7 @@ class NotificacaoBell extends StatelessWidget {
     BuildContext context,
     List<_NotifCategoria> categorias,
     List<_CampanhaNotifItem> campanhas,
+    List<NotificacaoInApp> ticketNotifs,
     int total,
   ) {
     final larguraTela = MediaQuery.of(context).size.width;
@@ -306,7 +326,11 @@ class NotificacaoBell extends StatelessWidget {
           largura: larguraPainel,
           categorias: categorias,
           campanhas: campanhas,
+          ticketNotifs: ticketNotifs,
           total: total,
+          currentUserId: currentUserId,
+          userProfile: userProfile,
+          currentUserName: currentUserName,
         ),
       ),
       transitionBuilder: (ctx, anim, _, child) => SlideTransition(
@@ -325,13 +349,21 @@ class _PainelLateral extends StatelessWidget {
   final double largura;
   final List<_NotifCategoria> categorias;
   final List<_CampanhaNotifItem> campanhas;
+  final List<NotificacaoInApp> ticketNotifs;
   final int total;
+  final String? currentUserId;
+  final String userProfile;
+  final String? currentUserName;
 
   const _PainelLateral({
     required this.largura,
     required this.categorias,
     required this.campanhas,
+    required this.ticketNotifs,
     required this.total,
+    this.currentUserId,
+    this.userProfile = '',
+    this.currentUserName,
   });
 
   @override
@@ -407,6 +439,8 @@ class _PainelLateral extends StatelessWidget {
                     : ListView(
                         padding: const EdgeInsets.only(bottom: 24),
                         children: [
+                          if (ticketNotifs.isNotEmpty)
+                            _buildCategoriaTickets(context, cs),
                           if (campanhas.isNotEmpty)
                             _buildCategoriaCampanha(context, cs),
                           ...categorias
@@ -440,6 +474,139 @@ class _PainelLateral extends StatelessWidget {
               style:
                   TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
         ],
+      ),
+    );
+  }
+
+  // ── Categoria de notificações de tickets ──────────────────────────────────
+  Widget _buildCategoriaTickets(BuildContext context, ColorScheme cs) {
+    final cor = Colors.indigo.shade600;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(Icons.confirmation_number_outlined,
+                    color: cor, size: 14),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Tickets',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cor,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${ticketNotifs.length}',
+                  style: TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.bold, color: cor),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...ticketNotifs.map((n) => _buildItemTicket(context, n, cor, cs)),
+        Divider(
+            height: 1,
+            indent: 20,
+            endIndent: 20,
+            color: cs.outlineVariant),
+      ],
+    );
+  }
+
+  Widget _buildItemTicket(
+      BuildContext context, NotificacaoInApp notif, Color cor, ColorScheme cs) {
+    final icone = switch (notif.tipo) {
+      'ticket_atribuido'  => Icons.person_add_alt_1_outlined,
+      'ticket_comentario' => Icons.chat_bubble_outline_rounded,
+      _                   => Icons.info_outline_rounded,
+    };
+    final label = notif.ticketNumero > 0
+        ? '#${notif.ticketNumero}'
+        : '"${notif.ticketTitulo}"';
+
+    return InkWell(
+      onTap: () async {
+        final nav = Navigator.of(context);
+        nav.pop();
+        if (currentUserId != null) {
+          await FirestoreService().marcarNotificacaoLida(currentUserId!, notif.id);
+        }
+        if (notif.ticketId == null) return;
+        final ticket =
+            await FirestoreService().getTicketById(notif.ticketId!);
+        if (ticket == null) return;
+        nav.push(MaterialPageRoute(
+          builder: (_) => FichaTicketScreen(
+            ticket: ticket,
+            userProfile: userProfile,
+            currentUserId: currentUserId,
+            currentUserName: currentUserName,
+          ),
+        ));
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: cor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icone, size: 16, color: cor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: cs.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    notif.corpo,
+                    style:
+                        TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 16, color: cs.outline),
+          ],
+        ),
       ),
     );
   }

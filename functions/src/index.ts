@@ -110,6 +110,24 @@ async function enviarParaToken(
   }
 }
 
+// ── Helper: persiste notificação na subcoleção in-app do usuário ─────────────
+async function gravarNotificacaoInApp(
+  userId: string,
+  tipo: string,
+  titulo: string,
+  corpo: string,
+  extra?: Record<string, unknown>
+): Promise<void> {
+  await db.collection('notificacoes').doc(userId).collection('itens').add({
+    tipo,
+    titulo,
+    corpo,
+    lida: false,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    ...extra,
+  });
+}
+
 // ── Helper: envia para múltiplos tokens (broadcast) ─────────────────────────
 // Tokens permanentemente inválidos: limpos do Firestore via limpezas em paralelo.
 // Falhas transitórias por token individual: logadas (não relança — evita duplicatas
@@ -282,15 +300,19 @@ export const onTicketAtualizado = functions
         fechado:              'Fechado',
       };
       const statusNovo = displayStatus[depois.status as string] ?? depois.status;
+      const notifTitulo = 'Villamor CRM — Ticket';
+      const notifCorpo  = `Seu ticket ${label} agora está: ${statusNovo}.`;
       const token = await getToken(criadoPorId);
       if (token) {
         notificacoes.push(enviarParaToken(
-          criadoPorId, token,
-          'Villamor CRM — Ticket',
-          `Seu ticket ${label} agora está: ${statusNovo}.`,
+          criadoPorId, token, notifTitulo, notifCorpo,
           { ticketId: context.params.ticketId, tipo: 'ticket_status' },
         ));
       }
+      notificacoes.push(gravarNotificacaoInApp(
+        criadoPorId, 'ticket_status', notifTitulo, notifCorpo,
+        { ticketId: context.params.ticketId, ticketNumero: numero, ticketTitulo: titulo },
+      ));
     }
 
     // Atribuição mudou para alguém novo → notifica o novo atribuído
@@ -298,15 +320,19 @@ export const onTicketAtualizado = functions
       // Não re-notifica o criador se ele mesmo for o atribuído (já recebeu o status acima)
       const mesmoQueCriador = atribuidoDepois === criadoPorId && antes.status === depois.status;
       if (!mesmoQueCriador) {
+        const notifTitulo = 'Villamor CRM — Ticket Atribuído';
+        const notifCorpo  = `O ticket ${label} foi atribuído a você.`;
         const token = await getToken(atribuidoDepois);
         if (token) {
           notificacoes.push(enviarParaToken(
-            atribuidoDepois, token,
-            'Villamor CRM — Ticket Atribuído',
-            `O ticket ${label} foi atribuído a você.`,
+            atribuidoDepois, token, notifTitulo, notifCorpo,
             { ticketId: context.params.ticketId, tipo: 'ticket_atribuido' },
           ));
         }
+        notificacoes.push(gravarNotificacaoInApp(
+          atribuidoDepois, 'ticket_atribuido', notifTitulo, notifCorpo,
+          { ticketId: context.params.ticketId, ticketNumero: numero, ticketTitulo: titulo },
+        ));
       }
     }
 
@@ -340,27 +366,35 @@ export const onComentarioAdicionado = functions
 
     if (criadoPorId && criadoPorId !== autorId) {
       notificados.add(criadoPorId);
+      const notifTitulo = `Villamor CRM — Ticket ${label}`;
+      const notifCorpo  = `${autorNome}: ${texto}`;
       const token = await getToken(criadoPorId);
       if (token) {
         notificacoes.push(enviarParaToken(
-          criadoPorId, token,
-          `Villamor CRM — Ticket ${label}`,
-          `${autorNome}: ${texto}`,
+          criadoPorId, token, notifTitulo, notifCorpo,
           { ticketId: context.params.ticketId, tipo: 'ticket_comentario' },
         ));
       }
+      notificacoes.push(gravarNotificacaoInApp(
+        criadoPorId, 'ticket_comentario', notifTitulo, notifCorpo,
+        { ticketId: context.params.ticketId, ticketNumero: numero, ticketTitulo: titulo },
+      ));
     }
 
     if (atribuidoParaId && !notificados.has(atribuidoParaId) && atribuidoParaId !== autorId) {
+      const notifTitulo = `Villamor CRM — Ticket ${label}`;
+      const notifCorpo  = `${autorNome}: ${texto}`;
       const token = await getToken(atribuidoParaId);
       if (token) {
         notificacoes.push(enviarParaToken(
-          atribuidoParaId, token,
-          `Villamor CRM — Ticket ${label}`,
-          `${autorNome}: ${texto}`,
+          atribuidoParaId, token, notifTitulo, notifCorpo,
           { ticketId: context.params.ticketId, tipo: 'ticket_comentario' },
         ));
       }
+      notificacoes.push(gravarNotificacaoInApp(
+        atribuidoParaId, 'ticket_comentario', notifTitulo, notifCorpo,
+        { ticketId: context.params.ticketId, ticketNumero: numero, ticketTitulo: titulo },
+      ));
     }
 
     await Promise.all(notificacoes);

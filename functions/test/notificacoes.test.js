@@ -29,6 +29,7 @@ const admin = require('firebase-admin');
 const usuarios = {};
 const clientes = {};
 const tickets  = {};
+const subcollections = {};  // chave: 'colecao/docId/subcolecao' → { autoId: data }
 
 const STORES = { usuarios, clientes, tickets };
 
@@ -129,6 +130,21 @@ const firestoreFake = {
           async update(data) {
             return criarDocRefNamed(id, store).update(data);
           },
+          collection(subNome) {
+            const key = `${nome}/${id}/${subNome}`;
+            if (!subcollections[key]) subcollections[key] = {};
+            const ss = subcollections[key];
+            return {
+              async add(data) {
+                const autoId = `auto_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                ss[autoId] = data;
+                return { id: autoId };
+              },
+              where(campo, op, valor) {
+                return criarQueryFake(ss, [[campo, op, valor]]);
+              },
+            };
+          },
         };
       },
       where(campo, op, valor) {
@@ -169,9 +185,10 @@ messagingReal.send = messagingFake.send;
 messagingReal.sendEachForMulticast = messagingFake.sendEachForMulticast;
 
 function resetar() {
-  for (const k of Object.keys(usuarios)) delete usuarios[k];
-  for (const k of Object.keys(clientes)) delete clientes[k];
-  for (const k of Object.keys(tickets))  delete tickets[k];
+  for (const k of Object.keys(usuarios))       delete usuarios[k];
+  for (const k of Object.keys(clientes))       delete clientes[k];
+  for (const k of Object.keys(tickets))        delete tickets[k];
+  for (const k of Object.keys(subcollections)) delete subcollections[k];
   enviados = [];
   fcmSendError = null;
   fcmMulticastError = null;
@@ -412,6 +429,40 @@ test.describe('onTicketAtualizado', () => {
 
     assert.equal(enviados.length, 0);
   });
+
+  test('grava notificação in-app para o criador quando status muda', async () => {
+    usuarios['criador1'] = { fcmToken: 'tok-criador', ativo: true };
+    const change = fft.makeChange(
+      snapTicket({ titulo: 'Bug X', numero: 5, status: 'aberto', criadoPorId: 'criador1' }),
+      snapTicket({ titulo: 'Bug X', numero: 5, status: 'emAndamento', criadoPorId: 'criador1' }),
+    );
+
+    await wrapped(change, { params: { ticketId: 't1' } });
+
+    const itens = Object.values(subcollections['notificacoes/criador1/itens'] ?? {});
+    assert.equal(itens.length, 1);
+    assert.equal(itens[0].tipo, 'ticket_status');
+    assert.equal(itens[0].ticketId, 't1');
+    assert.equal(itens[0].ticketNumero, 5);
+    assert.strictEqual(itens[0].lida, false);
+  });
+
+  test('grava notificação in-app para o atribuído quando atribuição muda', async () => {
+    usuarios['criador1'] = { fcmToken: 'tok-criador', ativo: true };
+    usuarios['dev1']     = { fcmToken: 'tok-dev',     ativo: true };
+    const change = fft.makeChange(
+      snapTicket({ titulo: 'Bug X', numero: 2, status: 'aberto', criadoPorId: 'criador1' }),
+      snapTicket({ titulo: 'Bug X', numero: 2, status: 'aberto', criadoPorId: 'criador1', atribuidoParaId: 'dev1' }),
+    );
+
+    await wrapped(change, { params: { ticketId: 't1' } });
+
+    const itens = Object.values(subcollections['notificacoes/dev1/itens'] ?? {});
+    assert.equal(itens.length, 1);
+    assert.equal(itens[0].tipo, 'ticket_atribuido');
+    assert.equal(itens[0].ticketId, 't1');
+    assert.strictEqual(itens[0].lida, false);
+  });
 });
 
 // ── onComentarioAdicionado ──────────────────────────────────────────────────
@@ -464,6 +515,37 @@ test.describe('onComentarioAdicionado', () => {
     await wrapped(snap, { params: { ticketId: 'nao-existe', comentarioId: 'c1' } });
 
     assert.equal(enviados.length, 0);
+  });
+
+  test('grava notificação in-app para o criador quando outro usuário comenta', async () => {
+    usuarios['criador1'] = { fcmToken: 'tok-criador', ativo: true };
+    tickets['t1'] = { titulo: 'Falha Z', numero: 7, criadoPorId: 'criador1' };
+
+    const snap = snapComentario({ texto: 'Investigando...', autorId: 'dev1', autorNome: 'Dev' });
+    await wrapped(snap, { params: { ticketId: 't1', comentarioId: 'c1' } });
+
+    const itens = Object.values(subcollections['notificacoes/criador1/itens'] ?? {});
+    assert.equal(itens.length, 1);
+    assert.equal(itens[0].tipo, 'ticket_comentario');
+    assert.equal(itens[0].ticketId, 't1');
+    assert.equal(itens[0].ticketNumero, 7);
+    assert.strictEqual(itens[0].lida, false);
+  });
+
+  test('grava notificação in-app para criador e atribuído quando são pessoas diferentes', async () => {
+    usuarios['criador1'] = { fcmToken: 'tok-criador', ativo: true };
+    usuarios['dev1']     = { fcmToken: 'tok-dev',     ativo: true };
+    tickets['t1'] = { titulo: 'Bug Y', numero: 3, criadoPorId: 'criador1', atribuidoParaId: 'dev1' };
+
+    const snap = snapComentario({ texto: 'Novo update', autorId: 'outro', autorNome: 'Outro' });
+    await wrapped(snap, { params: { ticketId: 't1', comentarioId: 'c1' } });
+
+    const itensCriador = Object.values(subcollections['notificacoes/criador1/itens'] ?? {});
+    const itensDev     = Object.values(subcollections['notificacoes/dev1/itens']     ?? {});
+    assert.equal(itensCriador.length, 1);
+    assert.equal(itensDev.length, 1);
+    assert.equal(itensCriador[0].tipo, 'ticket_comentario');
+    assert.equal(itensDev[0].tipo, 'ticket_comentario');
   });
 });
 
