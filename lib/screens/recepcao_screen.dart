@@ -593,7 +593,8 @@ class _RegistrarAtendimentoScreenState
   final _telefoneConjugeCtrl = TextEditingController();
 
   // Geral
-  final _pontoCapCtrl = TextEditingController(text: 'Presencial');
+  String _pontoCap = 'Presencial';
+  static const _origens = ['Presencial', 'WhatsApp', 'Instagram'];
 
   String _sala = 'Villa';
   String? _brinde;
@@ -623,7 +624,7 @@ class _RegistrarAtendimentoScreenState
     for (final c in [
       _nomeCtrl, _idadeCtrl, _profissaoCtrl, _telefoneCtrl,
       _conjugeCtrl, _idadeConjugeCtrl, _profissaoConjugeCtrl,
-      _telefoneConjugeCtrl, _pontoCapCtrl,
+      _telefoneConjugeCtrl,
     ]) {
       c.dispose();
     }
@@ -685,9 +686,7 @@ class _RegistrarAtendimentoScreenState
             : _telefoneConjugeCtrl.text.trim(),
         brinde: _brinde,
         sala: _sala,
-        origem: _pontoCapCtrl.text.trim().isEmpty
-            ? null
-            : _pontoCapCtrl.text.trim(),
+        origem: _pontoCap,
         captadorId: _captador?.id,
         captadorNome: _captador?.nome,
         linerId: _liner?.id,
@@ -787,14 +786,11 @@ class _RegistrarAtendimentoScreenState
                                   final autoAtual = _sala == 'Villa'
                                       ? 'Presencial'
                                       : 'WhatsApp';
-                                  final autoNovo =
-                                      novaSala == 'Villa'
-                                          ? 'Presencial'
-                                          : 'WhatsApp';
-                                  if (_pontoCapCtrl.text.isEmpty ||
-                                      _pontoCapCtrl.text ==
-                                          autoAtual) {
-                                    _pontoCapCtrl.text = autoNovo;
+                                  final autoNovo = novaSala == 'Villa'
+                                      ? 'Presencial'
+                                      : 'WhatsApp';
+                                  if (_pontoCap == autoAtual) {
+                                    _pontoCap = autoNovo;
                                   }
                                   _sala = novaSala;
                                 });
@@ -803,15 +799,22 @@ class _RegistrarAtendimentoScreenState
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: TextFormField(
-                              controller: _pontoCapCtrl,
+                            child: DropdownButtonFormField<String>(
+                              value: _pontoCap,
                               decoration: const InputDecoration(
                                 labelText: 'Ponto de Captação',
                                 prefixIcon:
                                     Icon(Icons.location_on_outlined),
                               ),
-                              textCapitalization:
-                                  TextCapitalization.words,
+                              items: _origens
+                                  .map((o) => DropdownMenuItem(
+                                      value: o, child: Text(o)))
+                                  .toList(),
+                              onChanged: (v) {
+                                if (v != null) {
+                                  setState(() => _pontoCap = v);
+                                }
+                              },
                             ),
                           ),
                         ]),
