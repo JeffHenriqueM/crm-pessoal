@@ -8,9 +8,15 @@
  * 4. No console Firebase > Project Settings > Cloud Messaging > Web Push certificates:
  *    Gere uma VAPID key e substitua 'SUBSTITUA_PELA_SUA_VAPID_KEY' em push_notification_service.dart
  *
+ * ⚠️ lembreteProximoContato usa Cloud Scheduler — habilite a API em:
+ *    console.cloud.google.com > Cloud Scheduler API
+ *
  * Funções implementadas:
  * - onNegociacaoAtualizada: notifica o embaixador quando o admin aprova/nega/pede atualização
  * - onCampanhaPublicada: notifica todos os usuários quando uma campanha é publicada
+ * - onTicketAtualizado: notifica criador quando status muda; notifica novo atribuído
+ * - onComentarioAdicionado: notifica criador e atribuído quando alguém comenta no ticket
+ * - lembreteProximoContato: cron diário — lembrete de contatos do dia + mensagens atrasadas
  */
 
 import * as functions from 'firebase-functions';
@@ -244,5 +250,198 @@ export const onCampanhaPublicada = functions
     );
 
     functions.logger.info(`Campanha "${nome}" publicada — ${tokens.length} notificações disparadas`);
+    return null;
+  });
+
+// ── Função 3: Notifica criador/atribuído quando ticket é atualizado ───────────
+export const onTicketAtualizado = functions
+  .region('us-central1')
+  .firestore
+  .document('tickets/{ticketId}')
+  .onUpdate(async (change, context) => {
+    const antes = change.before.data();
+    const depois = change.after.data();
+
+    const titulo = depois.titulo as string ?? 'Ticket';
+    const numero = depois.numero as number ?? 0;
+    const label = numero > 0 ? `#${numero} ${titulo}` : `"${titulo}"`;
+
+    const criadoPorId = depois.criadoPorId as string;
+    const atribuidoDepois = depois.atribuidoParaId as string | undefined;
+    const atribuidoAntes = antes.atribuidoParaId as string | undefined;
+
+    const notificacoes: Promise<void>[] = [];
+
+    // Status mudou → notifica criador do ticket
+    if (antes.status !== depois.status) {
+      const displayStatus: Record<string, string> = {
+        aberto:               'Aberto',
+        emAndamento:          'Em andamento',
+        aguardandoValidacao:  'Aguardando Validação',
+        resolvido:            'Resolvido',
+        fechado:              'Fechado',
+      };
+      const statusNovo = displayStatus[depois.status as string] ?? depois.status;
+      const token = await getToken(criadoPorId);
+      if (token) {
+        notificacoes.push(enviarParaToken(
+          criadoPorId, token,
+          'Villamor CRM — Ticket',
+          `Seu ticket ${label} agora está: ${statusNovo}.`,
+          { ticketId: context.params.ticketId, tipo: 'ticket_status' },
+        ));
+      }
+    }
+
+    // Atribuição mudou para alguém novo → notifica o novo atribuído
+    if (atribuidoDepois && atribuidoDepois !== atribuidoAntes) {
+      // Não re-notifica o criador se ele mesmo for o atribuído (já recebeu o status acima)
+      const mesmoQueCriador = atribuidoDepois === criadoPorId && antes.status === depois.status;
+      if (!mesmoQueCriador) {
+        const token = await getToken(atribuidoDepois);
+        if (token) {
+          notificacoes.push(enviarParaToken(
+            atribuidoDepois, token,
+            'Villamor CRM — Ticket Atribuído',
+            `O ticket ${label} foi atribuído a você.`,
+            { ticketId: context.params.ticketId, tipo: 'ticket_atribuido' },
+          ));
+        }
+      }
+    }
+
+    await Promise.all(notificacoes);
+    return null;
+  });
+
+// ── Função 4: Notifica criador/atribuído quando um comentário é adicionado ────
+export const onComentarioAdicionado = functions
+  .region('us-central1')
+  .firestore
+  .document('tickets/{ticketId}/comentarios/{comentarioId}')
+  .onCreate(async (snap, context) => {
+    const comentario = snap.data();
+    const autorId   = comentario.autorId   as string;
+    const autorNome = comentario.autorNome as string ?? 'Alguém';
+    const texto     = (comentario.texto    as string ?? '').substring(0, 80);
+
+    const ticketDoc = await db.collection('tickets').doc(context.params.ticketId).get();
+    if (!ticketDoc.exists) return null;
+
+    const ticket = ticketDoc.data()!;
+    const titulo  = ticket.titulo   as string ?? 'Ticket';
+    const numero  = ticket.numero   as number ?? 0;
+    const label   = numero > 0 ? `#${numero}` : `"${titulo}"`;
+    const criadoPorId     = ticket.criadoPorId     as string;
+    const atribuidoParaId = ticket.atribuidoParaId as string | undefined;
+
+    const notificacoes: Promise<void>[] = [];
+    const notificados   = new Set<string>();
+
+    if (criadoPorId && criadoPorId !== autorId) {
+      notificados.add(criadoPorId);
+      const token = await getToken(criadoPorId);
+      if (token) {
+        notificacoes.push(enviarParaToken(
+          criadoPorId, token,
+          `Villamor CRM — Ticket ${label}`,
+          `${autorNome}: ${texto}`,
+          { ticketId: context.params.ticketId, tipo: 'ticket_comentario' },
+        ));
+      }
+    }
+
+    if (atribuidoParaId && !notificados.has(atribuidoParaId) && atribuidoParaId !== autorId) {
+      const token = await getToken(atribuidoParaId);
+      if (token) {
+        notificacoes.push(enviarParaToken(
+          atribuidoParaId, token,
+          `Villamor CRM — Ticket ${label}`,
+          `${autorNome}: ${texto}`,
+          { ticketId: context.params.ticketId, tipo: 'ticket_comentario' },
+        ));
+      }
+    }
+
+    await Promise.all(notificacoes);
+    return null;
+  });
+
+// ── Função 5: Lembrete diário de próximos contatos e mensagens atrasadas ──────
+// Dispara às 08:00 BRT (11:00 UTC). Requer Cloud Scheduler API habilitada.
+export const lembreteProximoContato = functions
+  .region('us-central1')
+  .pubsub.schedule('0 11 * * *')
+  .timeZone('America/Sao_Paulo')
+  .onRun(async () => {
+    const agora = new Date();
+    const inicioDia = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+    const fimDia    = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1);
+
+    const [hojeSnap, atrasadosSnap] = await Promise.all([
+      // Contatos agendados para hoje
+      db.collection('clientes')
+        .where('proximoContato', '>=', admin.firestore.Timestamp.fromDate(inicioDia))
+        .where('proximoContato', '<',  admin.firestore.Timestamp.fromDate(fimDia))
+        .get(),
+      // Contatos atrasados (proximoContato no passado e mensagem ainda não enviada)
+      db.collection('clientes')
+        .where('proximoContato', '<', admin.firestore.Timestamp.fromDate(inicioDia))
+        .where('statusMensagem', '==', 'nao_enviada')
+        .get(),
+    ]);
+
+    // Agrupa nomes por vendedorId, ignorando leads deletados
+    const agrupar = (snap: admin.firestore.QuerySnapshot) => {
+      const mapa = new Map<string, string[]>();
+      snap.forEach((doc) => {
+        if (doc.data().deletado === true) return;
+        const vendedorId = doc.data().vendedorId as string | undefined;
+        const nome = doc.data().nome as string ?? 'Lead';
+        if (!vendedorId) return;
+        const lista = mapa.get(vendedorId) ?? [];
+        lista.push(nome);
+        mapa.set(vendedorId, lista);
+      });
+      return mapa;
+    };
+
+    const hojeMap      = agrupar(hojeSnap);
+    const atrasadosMap = agrupar(atrasadosSnap);
+
+    const envios: Promise<void>[] = [];
+
+    for (const [vendedorId, nomes] of hojeMap) {
+      const token = await getToken(vendedorId);
+      if (!token) continue;
+      const corpo = nomes.length === 1
+        ? `Hoje é o dia de contatar ${nomes[0]}.`
+        : `Hoje você tem ${nomes.length} contatos agendados.`;
+      envios.push(enviarParaToken(
+        vendedorId, token,
+        'Villamor CRM — Lembrete de Contato',
+        corpo,
+        { tipo: 'lembrete_contato' },
+      ));
+    }
+
+    for (const [vendedorId, nomes] of atrasadosMap) {
+      const token = await getToken(vendedorId);
+      if (!token) continue;
+      const corpo = nomes.length === 1
+        ? `Mensagem atrasada para ${nomes[0]}.`
+        : `Você tem ${nomes.length} mensagens atrasadas para enviar.`;
+      envios.push(enviarParaToken(
+        vendedorId, token,
+        'Villamor CRM — Mensagens Atrasadas',
+        corpo,
+        { tipo: 'mensagem_atrasada' },
+      ));
+    }
+
+    await Promise.all(envios);
+    functions.logger.info(
+      `Lembretes: ${hojeMap.size} vendedor(es) hoje, ${atrasadosMap.size} vendedor(es) atrasados`
+    );
     return null;
   });
