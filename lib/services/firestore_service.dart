@@ -9,6 +9,7 @@ import '../models/fase_enum.dart';
 import '../models/interacao_model.dart';
 import '../models/negociacao_model.dart';
 import '../models/notificacao_inapp_model.dart';
+import '../models/produto_model.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 
@@ -1009,5 +1010,34 @@ class FirestoreService {
     final doc = await _db.collection(_colClientes).doc(clienteId).get();
     if (!doc.exists) return null;
     return Cliente.fromFirestore(doc);
+  }
+
+  // --- PRODUTOS ---
+
+  static const _colProdutos = 'produtos';
+
+  Stream<List<Produto>> getProdutosStream({bool apenasAtivos = true}) {
+    Query query = _db.collection(_colProdutos);
+    if (apenasAtivos) query = query.where('ativo', isEqualTo: true);
+    return query
+        .orderBy('ordem')
+        .snapshots()
+        .map((s) => s.docs.map((d) => Produto.fromFirestore(d)).toList());
+  }
+
+  Future<void> salvarProduto(Map<String, dynamic> dados, {String? id}) async {
+    if (id != null) {
+      await _db.collection(_colProdutos).doc(id).update(dados);
+    } else {
+      await _db.collection(_colProdutos).add(dados);
+    }
+  }
+
+  Future<void> arquivarProduto(String id) async {
+    await _db.collection(_colProdutos).doc(id).update({'ativo': false});
+  }
+
+  Future<void> reativarProduto(String id) async {
+    await _db.collection(_colProdutos).doc(id).update({'ativo': true});
   }
 }

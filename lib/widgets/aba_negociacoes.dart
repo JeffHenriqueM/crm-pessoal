@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/negociacao_model.dart';
+import '../models/produto_model.dart';
 import '../services/proposta_pdf.dart';
 import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
@@ -11,26 +12,6 @@ import '../services/firestore_service.dart';
 final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 final _moedaCompacta = NumberFormat.currency(
     locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
-
-// ── Catálogo de produtos Villamor ─────────────────────────────────────────────
-class _Produto {
-  final String nome;
-  final double valor;
-  const _Produto(this.nome, this.valor);
-}
-
-const _produtos = [
-  // Categoria Luxo (Cota)
-  _Produto('Luxo Bronze',     45000),
-  _Produto('Luxo Prata',      77000),
-  _Produto('Luxo Ouro',      145000),
-  _Produto('Luxo Diamante', 1750000),
-  // Categoria Villamor
-  _Produto('Villamor Bronze',    61000),
-  _Produto('Villamor Prata',     98000),
-  _Produto('Villamor Ouro',     192000),
-  _Produto('Villamor Diamante', 2465000),
-];
 
 // ── Aba principal (usada dentro da FichaClienteScreen) ────────────────────────
 // StatefulWidget + AutomaticKeepAliveClientMixin para que o TabBarView NÃO
@@ -786,7 +767,9 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   String? _vinculoClienteNome;
 
   // Produto selecionado
-  _Produto? _produtoSelecionado;
+  Produto? _produtoSelecionado;
+  List<Produto> _produtosFirestore = [];
+  bool _carregandoProdutos = true;
 
   // Embaixador
   List<Usuario> _usuarios = [];
@@ -796,21 +779,9 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
-  // ── Limites de negociação especial por produto ────────────────────────────
-  static const _limitesEspecial = {
-    'Luxo Bronze':      37000.0,
-    'Luxo Prata':       61000.0,
-    'Luxo Ouro':       116000.0,
-    'Luxo Diamante':  1224000.0,
-    'Villamor Bronze':  51000.0,
-    'Villamor Prata':   88000.0,
-    'Villamor Ouro':   171000.0,
-    'Villamor Diamante': 2190000.0,
-  };
-
   bool get _deveSerEspecial {
     if (_produtoSelecionado == null) return false;
-    final limite = _limitesEspecial[_produtoSelecionado!.nome];
+    final limite = _produtoSelecionado!.limiteEspecial;
     if (limite == null) return false;
     return _valorFinal > 0 && _valorFinal < limite;
   }
@@ -899,6 +870,21 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     _valorDiariaCtrl.addListener(() { if (mounted) setState(() {}); });
 
     _carregarUsuarios();
+    _carregarProdutos();
+  }
+
+  Future<void> _carregarProdutos() async {
+    try {
+      final service = widget.service ?? FirestoreService();
+      final lista = await service.getProdutosStream().first;
+      if (!mounted) return;
+      setState(() {
+        _produtosFirestore = lista;
+        _carregandoProdutos = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _carregandoProdutos = false);
+    }
   }
 
   Future<void> _carregarUsuarios() async {
@@ -1091,8 +1077,28 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
 
   // ── Escolha de produto ────────────────────────────────────────────────────
   Future<void> _abrirEscolhaProduto() async {
+    if (_carregandoProdutos) return;
+    if (_produtosFirestore.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Nenhum produto cadastrado. Peça ao Super Admin para adicionar produtos.'),
+          ),
+        );
+      }
+      return;
+    }
+
     final cs = Theme.of(context).colorScheme;
-    final resultado = await showModalBottomSheet<_Produto>(
+    final categorias = _produtosFirestore.map((p) => p.categoria).toSet().toList()
+      ..sort((a, b) {
+        final ordemA = _produtosFirestore.firstWhere((p) => p.categoria == a).ordem;
+        final ordemB = _produtosFirestore.firstWhere((p) => p.categoria == b).ordem;
+        return ordemA.compareTo(ordemB);
+      });
+
+    final resultado = await showModalBottomSheet<Produto>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1100,50 +1106,45 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       ),
       builder: (ctx) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.villa_outlined, color: cs.primary, size: 22),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Escolher Produto',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.villa_outlined, color: cs.primary, size: 22),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Escolher Produto',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                        ),
                       ),
-                    ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  for (final cat in categorias) ...[
+                    Text(cat,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary,
+                            letterSpacing: 0.4)),
+                    const SizedBox(height: 8),
+                    ...(_produtosFirestore
+                        .where((p) => p.categoria == cat)
+                        .toList()
+                        ..sort((a, b) => a.ordem.compareTo(b.ordem)))
+                        .map((p) => _produtoTile(ctx, p, cs)),
+                    const SizedBox(height: 14),
                   ],
-                ),
-                const SizedBox(height: 16),
-                // Categoria Luxo
-                Text('Categoria Luxo — Cota',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary,
-                        letterSpacing: 0.4)),
-                const SizedBox(height: 8),
-                ..._produtos.where((p) => p.nome.startsWith('Luxo')).map((p) =>
-                    _produtoTile(ctx, p, cs)),
-                const SizedBox(height: 14),
-                // Categoria Villamor
-                Text('Categoria Villamor',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary,
-                        letterSpacing: 0.4)),
-                const SizedBox(height: 8),
-                ..._produtos.where((p) => p.nome.startsWith('Villamor')).map((p) =>
-                    _produtoTile(ctx, p, cs)),
-                const SizedBox(height: 8),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1166,7 +1167,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     }
   }
 
-  Widget _produtoTile(BuildContext ctx, _Produto p, ColorScheme cs) {
+  Widget _produtoTile(BuildContext ctx, Produto p, ColorScheme cs) {
     final selecionado = _produtoSelecionado?.nome == p.nome;
     return InkWell(
       onTap: () => Navigator.of(ctx).pop(p),
@@ -1709,7 +1710,8 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                   const LinearProgressIndicator()
                                 else if (_isAdmin)
                                   DropdownButtonFormField<Usuario>(
-                                    value: _embaixador,
+                                    key: ValueKey(_embaixador?.id),
+                                    initialValue: _embaixador,
                                     isExpanded: true,
                                     decoration: const InputDecoration(
                                       labelText: 'Embaixador',

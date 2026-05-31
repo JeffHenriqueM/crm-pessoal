@@ -4,6 +4,7 @@ import '../screens/apresentacao_screen.dart';
 import '../screens/campanhas_screen.dart';
 import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
 import '../screens/pos_venda_screen.dart';
@@ -425,6 +426,33 @@ class _MainShellState extends State<MainShell> {
               showAsListTile: true,
             ),
 
+            // Produtos (super admin only)
+            if (widget.userProfile == 'super admin')
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: ListTile(
+                  leading: Icon(Icons.inventory_2_outlined,
+                      color: cs.onSurfaceVariant, size: 22),
+                  title: Text('Produtos',
+                      style: TextStyle(fontSize: 15, color: cs.onSurface)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  horizontalTitleGap: 8,
+                  dense: true,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const GerenciarProdutosScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
             // Usuários (admin only)
             if (_isAdmin)
               Padding(
@@ -691,6 +719,50 @@ class _MainShellState extends State<MainShell> {
                 currentUserName: widget.currentUserName,
               ),
             ),
+
+          // ── Produtos (super admin only) ────────────────────────────────
+          if (widget.userProfile == 'super admin')
+            if (_sidebarExpanded)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: ListTile(
+                  leading: Icon(Icons.inventory_2_outlined,
+                      color: cs.onSurfaceVariant, size: 20),
+                  title: Text('Produtos',
+                      style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  horizontalTitleGap: 8,
+                  dense: true,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const GerenciarProdutosScreen(),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Center(
+                child: Tooltip(
+                  message: 'Produtos',
+                  preferBelow: false,
+                  child: IconButton(
+                    icon: Icon(Icons.inventory_2_outlined,
+                        color: cs.onSurfaceVariant, size: 20),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const GerenciarProdutosScreen(),
+                      ),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
 
           // ── Usuários (admin only) ──────────────────────────────────────
           if (_isAdmin)

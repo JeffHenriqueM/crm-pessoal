@@ -104,5 +104,13 @@ service cloud.firestore {
     match /tickets/{ticketId}/comentarios/{docId} {
       allow read, write: if isAuth();
     }
+
+    // ── Produtos ──────────────────────────────────────────────────────────────
+    // Leitura: qualquer autenticado (necessário para negociações e apresentações).
+    // Escrita: exclusivo de super admin.
+    match /produtos/{docId} {
+      allow read:          if isAuth();
+      allow create, update, delete: if isAuth() && isSuperAdmin();
+    }
   }
 }

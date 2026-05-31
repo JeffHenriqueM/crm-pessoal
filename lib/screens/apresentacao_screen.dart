@@ -1,26 +1,11 @@
 // lib/screens/apresentacao_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../models/produto_model.dart';
+import '../services/firestore_service.dart';
 import 'negociacoes_screen.dart';
-
-// ── Produtos (mesma tabela de aba_negociacoes) ────────────────────────────────
-class _Produto {
-  final String nome;
-  final double valor;
-  const _Produto(this.nome, this.valor);
-}
-
-const _produtos = [
-  _Produto('Luxo Bronze',       45000),
-  _Produto('Luxo Prata',        77000),
-  _Produto('Luxo Ouro',        145000),
-  _Produto('Luxo Diamante',   1750000),
-  _Produto('Villamor Bronze',   61000),
-  _Produto('Villamor Prata',    98000),
-  _Produto('Villamor Ouro',    192000),
-  _Produto('Villamor Diamante',2465000),
-];
 
 // ── Tela principal ────────────────────────────────────────────────────────────
 class ApresentacaoScreen extends StatefulWidget {
@@ -49,7 +34,9 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
   late final TextEditingController _cdiCtrl;
   late final TextEditingController _poupancaCtrl;
 
-  _Produto? _produto;
+  Produto? _produto;
+  List<Produto> _produtos = [];
+  StreamSubscription<List<Produto>>? _produtosSub;
   double    _taxaOcupacao = 0.63;
   bool      _modoDias     = false; // false = %, true = dias
 
@@ -65,10 +52,16 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
     for (final c in [_valorCtrl, _diariaCtrl, _cdiCtrl, _poupancaCtrl]) {
       c.addListener(() { if (mounted) setState(() {}); });
     }
+    _produtosSub = FirestoreService()
+        .getProdutosStream()
+        .listen((lista) {
+          if (mounted) setState(() => _produtos = lista);
+        });
   }
 
   @override
   void dispose() {
+    _produtosSub?.cancel();
     for (final c in [_valorCtrl, _diariaCtrl, _cdiCtrl, _poupancaCtrl]) {
       c.dispose();
     }
@@ -115,54 +108,67 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
 
   // ── Selecionar produto ────────────────────────────────────────────────────
   Future<void> _escolherProduto() async {
-    final cs = Theme.of(context).colorScheme;
+    if (_produtos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Nenhum produto cadastrado. Peça ao Super Admin para adicionar produtos.'),
+        ),
+      );
+      return;
+    }
 
-    final resultado = await showModalBottomSheet<_Produto>(
+    final cs = Theme.of(context).colorScheme;
+    final categorias = _produtos.map((p) => p.categoria).toSet().toList()
+      ..sort((a, b) {
+        final ordemA = _produtos.firstWhere((p) => p.categoria == a).ordem;
+        final ordemB = _produtos.firstWhere((p) => p.categoria == b).ordem;
+        return ordemA.compareTo(ordemB);
+      });
+
+    final resultado = await showModalBottomSheet<Produto>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.villa_outlined, color: cs.primary, size: 22),
-                  const SizedBox(width: 10),
-                  Text('Escolher Produto',
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.villa_outlined, color: cs.primary, size: 22),
+                    const SizedBox(width: 10),
+                    Text('Escolher Produto',
+                        style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                for (final cat in categorias) ...[
+                  Text(cat,
                       style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface)),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary,
+                          letterSpacing: 0.4)),
+                  const SizedBox(height: 8),
+                  ...(_produtos
+                      .where((p) => p.categoria == cat)
+                      .toList()
+                      ..sort((a, b) => a.ordem.compareTo(b.ordem)))
+                      .map((p) => _produtoTile(ctx, p, cs)),
+                  const SizedBox(height: 14),
                 ],
-              ),
-              const SizedBox(height: 16),
-              Text('Categoria Luxo — Cota',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                      letterSpacing: 0.4)),
-              const SizedBox(height: 8),
-              ..._produtos.where((p) => p.nome.startsWith('Luxo')).map(
-                    (p) => _produtoTile(ctx, p, cs)),
-              const SizedBox(height: 14),
-              Text('Categoria Villamor',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                      letterSpacing: 0.4)),
-              const SizedBox(height: 8),
-              ..._produtos.where((p) => p.nome.startsWith('Villamor')).map(
-                    (p) => _produtoTile(ctx, p, cs)),
-              const SizedBox(height: 8),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -176,7 +182,7 @@ class _ApresentacaoScreenState extends State<ApresentacaoScreen> {
     }
   }
 
-  Widget _produtoTile(BuildContext ctx, _Produto p, ColorScheme cs) {
+  Widget _produtoTile(BuildContext ctx, Produto p, ColorScheme cs) {
     final sel = _produto?.nome == p.nome;
     return InkWell(
       onTap: () => Navigator.of(ctx).pop(p),
