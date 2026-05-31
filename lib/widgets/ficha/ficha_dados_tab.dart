@@ -160,6 +160,7 @@ class FichaDadosTab extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Telefone 1',
               prefixIcon: Icon(Icons.phone_outlined),
+              hintText: '(XX) XXXXX-XXXX ou +55 11 99999-9999',
             ),
             keyboardType: TextInputType.phone,
           ),
@@ -169,6 +170,7 @@ class FichaDadosTab extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Telefone 2 (opcional)',
               prefixIcon: Icon(Icons.phone_outlined),
+              hintText: '(XX) XXXXX-XXXX ou +55 11 99999-9999',
             ),
             keyboardType: TextInputType.phone,
           ),

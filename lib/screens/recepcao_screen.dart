@@ -13,14 +13,29 @@ import '../services/ficha_pdf.dart';
 import '../services/firestore_service.dart';
 import 'ficha_cliente_screen.dart';
 
-// ── Máscara de telefone (XX) XXXXX-XXXX ─────────────────────────────────────
+// ── Máscara de telefone ───────────────────────────────────────────────────────
+// Internacional (começa com +): permite +CC e até 15 dígitos (E.164), sem máscara.
+// Brasileiro: aplica (XX) XXXXX-XXXX com limite de 11 dígitos.
 class _PhoneFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final raw = newValue.text;
+
+    if (raw.startsWith('+')) {
+      final digits = raw.substring(1).replaceAll(RegExp(r'\D'), '');
+      final s = '+$digits';
+      // E.164 permite até 15 dígitos após o +
+      final limited = s.length > 16 ? s.substring(0, 16) : s;
+      return TextEditingValue(
+        text: limited,
+        selection: TextSelection.collapsed(offset: limited.length),
+      );
+    }
+
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
     final buf = StringBuffer();
     for (var i = 0; i < digits.length && i < 11; i++) {
       if (i == 0) buf.write('(');
@@ -388,7 +403,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Telefone',
                           prefixIcon: Icon(Icons.phone_outlined),
-                          hintText: '(XX) XXXXX-XXXX',
+                          hintText: '(XX) XXXXX-XXXX ou +55 11 99999-9999',
                         ),
                         keyboardType: TextInputType.phone,
                         inputFormatters: [_PhoneFormatter()],
@@ -448,7 +463,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Telefone',
                           prefixIcon: Icon(Icons.phone_outlined),
-                          hintText: '(XX) XXXXX-XXXX',
+                          hintText: '(XX) XXXXX-XXXX ou +55 11 99999-9999',
                         ),
                         keyboardType: TextInputType.phone,
                         inputFormatters: [_PhoneFormatter()],
