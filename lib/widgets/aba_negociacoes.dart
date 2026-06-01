@@ -144,6 +144,8 @@ class _AbaNegociacoesState extends State<AbaNegociacoes>
                 onExportPdf: () => PropostaPdf.gerar(neg),
                 onStatusChange: (s) =>
                     _handleStatusMudanca(context, _service, neg, s),
+                onInativar: () => _abrirDialogInativacao(context, _service, neg),
+                onReativar: () => _service.reativarNegociacao(neg.id!),
               ),
             );
           },
@@ -231,6 +233,97 @@ class _AbaNegociacoesState extends State<AbaNegociacoes>
       ),
     );
   }
+
+  static const _motivosInativacao = [
+    'Negada pelo cliente',
+    'Não aprovado pela gerência',
+    'Proposta com data expirada',
+    'Campanha não está mais válida',
+    'Produto descontinuado',
+    'Outro',
+  ];
+
+  void _abrirDialogInativacao(
+      BuildContext context, FirestoreService service, Negociacao neg) {
+    String? motivoSelecionado;
+    final outroCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Inativar proposta'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('"${neg.titulo}"',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(
+                  'Selecione o motivo da inativação:',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                RadioGroup<String>(
+                  groupValue: motivoSelecionado,
+                  onChanged: (v) => setLocal(() => motivoSelecionado = v),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _motivosInativacao
+                        .map((m) => RadioListTile<String>(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(m,
+                                  style: const TextStyle(fontSize: 14)),
+                              value: m,
+                            ))
+                        .toList(),
+                  ),
+                ),
+                if (motivoSelecionado == 'Outro') ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: outroCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Descreva o motivo',
+                      isDense: true,
+                    ),
+                    maxLines: 2,
+                    autofocus: true,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: motivoSelecionado == null
+                  ? null
+                  : () async {
+                      final motivo = motivoSelecionado == 'Outro'
+                          ? (outroCtrl.text.trim().isEmpty
+                              ? 'Outro'
+                              : outroCtrl.text.trim())
+                          : motivoSelecionado!;
+                      Navigator.of(ctx).pop();
+                      await service.inativarNegociacao(neg.id!, motivo);
+                    },
+              child: const Text('Inativar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── FAB público ───────────────────────────────────────────────────────────────
@@ -272,6 +365,8 @@ class _NegociacaoCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onExportPdf;
   final Function(StatusNegociacao) onStatusChange;
+  final VoidCallback onInativar;
+  final VoidCallback onReativar;
 
   const _NegociacaoCard({
     required this.negociacao,
@@ -279,6 +374,8 @@ class _NegociacaoCard extends StatelessWidget {
     required this.onDelete,
     required this.onExportPdf,
     required this.onStatusChange,
+    required this.onInativar,
+    required this.onReativar,
   });
 
   static const _statusCores = {
@@ -286,6 +383,7 @@ class _NegociacaoCard extends StatelessWidget {
     StatusNegociacao.aceita: Color(0xFF2E7D32),
     StatusNegociacao.recusada: Color(0xFFC62828),
     StatusNegociacao.contratoEfetivado: Color(0xFF6A1B9A),
+    StatusNegociacao.inativa: Color(0xFF78909C),
   };
 
   static const _aprovacaoCores = {
@@ -357,6 +455,7 @@ class _NegociacaoCard extends StatelessWidget {
                     tooltip: 'Alterar status',
                     onSelected: onStatusChange,
                     itemBuilder: (_) => StatusNegociacao.values
+                        .where((s) => s != StatusNegociacao.inativa)
                         .map((s) => PopupMenuItem(
                               value: s,
                               child: Text(s.nomeDisplay),
@@ -575,6 +674,39 @@ class _NegociacaoCard extends StatelessWidget {
                 ),
               ],
 
+              // Banner de motivo de inativação
+              if (negociacao.status == StatusNegociacao.inativa &&
+                  negociacao.motivoInativacao != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF78909C).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color:
+                            const Color(0xFF78909C).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.block_outlined,
+                          size: 13, color: Color(0xFF78909C)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          negociacao.motivoInativacao!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF78909C)),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               // ── Rodapé ────────────────────────────────────────
               const SizedBox(height: 8),
               Row(
@@ -588,27 +720,51 @@ class _NegociacaoCard extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.picture_as_pdf_outlined,
-                            size: 16, color: Color(0xFFC62828)),
-                        onPressed: onExportPdf,
-                        tooltip: 'Exportar PDF',
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.edit_outlined,
-                            size: 16, color: cs.primary),
-                        onPressed: onEdit,
-                        tooltip: 'Editar',
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.delete_outline,
-                            size: 16, color: cs.error),
-                        onPressed: onDelete,
-                        tooltip: 'Excluir',
-                        visualDensity: VisualDensity.compact,
-                      ),
+                      if (negociacao.status == StatusNegociacao.inativa) ...[
+                        IconButton(
+                          icon: Icon(Icons.restart_alt_outlined,
+                              size: 16, color: cs.primary),
+                          onPressed: onReativar,
+                          tooltip: 'Reativar',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline,
+                              size: 16, color: cs.error),
+                          onPressed: onDelete,
+                          tooltip: 'Excluir',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ] else ...[
+                        IconButton(
+                          icon: const Icon(Icons.picture_as_pdf_outlined,
+                              size: 16, color: Color(0xFFC62828)),
+                          onPressed: onExportPdf,
+                          tooltip: 'Exportar PDF',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.edit_outlined,
+                              size: 16, color: cs.primary),
+                          onPressed: onEdit,
+                          tooltip: 'Editar',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.block_outlined,
+                              size: 16, color: Color(0xFF78909C)),
+                          onPressed: onInativar,
+                          tooltip: 'Inativar',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline,
+                              size: 16, color: cs.error),
+                          onPressed: onDelete,
+                          tooltip: 'Excluir',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
                     ],
                   ),
                 ],

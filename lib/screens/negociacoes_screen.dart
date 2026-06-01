@@ -299,15 +299,17 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
                           child: _NegociacaoGlobalCard(
                             negociacao: neg,
                             isAdmin: widget.isAdmin,
-                            onEdit: () => abrirFormularioNegociacao(
-                              context,
-                              service: widget.service,
-                              proximoNumero: i + 1,
-                              editando: neg,
-                              currentUserId: widget.currentUserId,
-                              currentUserName: widget.currentUserName,
-                              userProfile: widget.userProfile,
-                            ),
+                            onEdit: neg.status != StatusNegociacao.inativa
+                                ? () => abrirFormularioNegociacao(
+                                      context,
+                                      service: widget.service,
+                                      proximoNumero: i + 1,
+                                      editando: neg,
+                                      currentUserId: widget.currentUserId,
+                                      currentUserName: widget.currentUserName,
+                                      userProfile: widget.userProfile,
+                                    )
+                                : null,
                             onDelete: () =>
                                 _confirmarExclusao(context, neg),
                             onAbrirCliente: neg.clienteId != null
@@ -317,7 +319,15 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
                                     neg.tipo == TipoNegociacao.especial
                                 ? () => widget.onAprovar!(neg)
                                 : null,
-                            onExportarPdf: () => PropostaPdf.gerar(neg),
+                            onExportarPdf: neg.status != StatusNegociacao.inativa
+                                ? () => PropostaPdf.gerar(neg)
+                                : null,
+                            onInativar: neg.status != StatusNegociacao.inativa
+                                ? () => _abrirDialogInativacao(context, neg)
+                                : null,
+                            onReativar: neg.status == StatusNegociacao.inativa
+                                ? () => widget.service.reativarNegociacao(neg.id!)
+                                : null,
                           ),
                         );
                       },
@@ -416,6 +426,96 @@ class _ListaNegociacoesState extends State<_ListaNegociacoes> {
     );
   }
 
+  static const _motivosInativacao = [
+    'Negada pelo cliente',
+    'Não aprovado pela gerência',
+    'Proposta com data expirada',
+    'Campanha não está mais válida',
+    'Produto descontinuado',
+    'Outro',
+  ];
+
+  void _abrirDialogInativacao(BuildContext context, Negociacao neg) {
+    String? motivoSelecionado;
+    final outroCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Inativar proposta'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('"${neg.titulo}"',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(
+                  'Selecione o motivo da inativação:',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                RadioGroup<String>(
+                  groupValue: motivoSelecionado,
+                  onChanged: (v) => setLocal(() => motivoSelecionado = v),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _motivosInativacao
+                        .map((m) => RadioListTile<String>(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(m,
+                                  style: const TextStyle(fontSize: 14)),
+                              value: m,
+                            ))
+                        .toList(),
+                  ),
+                ),
+                if (motivoSelecionado == 'Outro') ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: outroCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Descreva o motivo',
+                      isDense: true,
+                    ),
+                    maxLines: 2,
+                    autofocus: true,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: motivoSelecionado == null
+                  ? null
+                  : () async {
+                      final motivo = motivoSelecionado == 'Outro'
+                          ? (outroCtrl.text.trim().isEmpty
+                              ? 'Outro'
+                              : outroCtrl.text.trim())
+                          : motivoSelecionado!;
+                      Navigator.of(ctx).pop();
+                      await widget.service.inativarNegociacao(neg.id!, motivo);
+                    },
+              child: const Text('Inativar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _abrirCliente(Negociacao neg) {
     // Abre a ficha do cliente associado à negociação
     // Buscamos apenas pelo clienteId — a FichaClienteScreen recebe o cliente completo,
@@ -509,6 +609,8 @@ class _NegociacaoGlobalCard extends StatelessWidget {
   final VoidCallback? onAbrirCliente;
   final VoidCallback? onAprovar;
   final VoidCallback? onExportarPdf;
+  final VoidCallback? onInativar;
+  final VoidCallback? onReativar;
   final bool highlightAprovacao;
 
   const _NegociacaoGlobalCard({
@@ -519,14 +621,17 @@ class _NegociacaoGlobalCard extends StatelessWidget {
     this.onAbrirCliente,
     this.onAprovar,
     this.onExportarPdf,
+    this.onInativar,
+    this.onReativar,
     this.highlightAprovacao = false,
   });
 
   static const _statusCores = {
-    StatusNegociacao.ativa:              Color(0xFF1565C0),
-    StatusNegociacao.aceita:             Color(0xFF2E7D32),
-    StatusNegociacao.recusada:           Color(0xFFC62828),
-    StatusNegociacao.contratoEfetivado:  Color(0xFF6A1B9A),
+    StatusNegociacao.ativa:             Color(0xFF1565C0),
+    StatusNegociacao.aceita:            Color(0xFF2E7D32),
+    StatusNegociacao.recusada:          Color(0xFFC62828),
+    StatusNegociacao.contratoEfetivado: Color(0xFF6A1B9A),
+    StatusNegociacao.inativa:           Color(0xFF78909C),
   };
 
   static const _aprovacaoCores = {
@@ -735,39 +840,98 @@ class _NegociacaoGlobalCard extends StatelessWidget {
                       foregroundColor: Colors.amber.shade700,
                     ),
                   ),
-                if (onExportarPdf != null)
-                  IconButton(
-                    icon: const Icon(Icons.picture_as_pdf_outlined,
-                        size: 18, color: Color(0xFFC62828)),
-                    tooltip: 'Exportar PDF',
-                    onPressed: onExportarPdf,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                if (onAbrirCliente != null)
-                  IconButton(
-                    icon: const Icon(Icons.person_outlined, size: 18),
-                    tooltip: 'Ver cliente',
-                    onPressed: onAbrirCliente,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                if (onEdit != null)
-                  IconButton(
-                    icon: Icon(Icons.edit_outlined,
-                        size: 18, color: cs.primary),
-                    tooltip: 'Editar',
-                    onPressed: onEdit,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                if (onDelete != null)
-                  IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        size: 18, color: cs.error),
-                    tooltip: 'Excluir',
-                    onPressed: onDelete,
-                    visualDensity: VisualDensity.compact,
-                  ),
+                if (negociacao.status == StatusNegociacao.inativa) ...[
+                  if (onReativar != null)
+                    IconButton(
+                      icon: Icon(Icons.restart_alt_outlined,
+                          size: 18, color: cs.primary),
+                      tooltip: 'Reativar',
+                      onPressed: onReativar,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (onDelete != null)
+                    IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          size: 18, color: cs.error),
+                      tooltip: 'Excluir',
+                      onPressed: onDelete,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ] else ...[
+                  if (onExportarPdf != null)
+                    IconButton(
+                      icon: const Icon(Icons.picture_as_pdf_outlined,
+                          size: 18, color: Color(0xFFC62828)),
+                      tooltip: 'Exportar PDF',
+                      onPressed: onExportarPdf,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (onAbrirCliente != null)
+                    IconButton(
+                      icon: const Icon(Icons.person_outlined, size: 18),
+                      tooltip: 'Ver cliente',
+                      onPressed: onAbrirCliente,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (onEdit != null)
+                    IconButton(
+                      icon: Icon(Icons.edit_outlined,
+                          size: 18, color: cs.primary),
+                      tooltip: 'Editar',
+                      onPressed: onEdit,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (onInativar != null)
+                    IconButton(
+                      icon: const Icon(Icons.block_outlined,
+                          size: 18, color: Color(0xFF78909C)),
+                      tooltip: 'Inativar',
+                      onPressed: onInativar,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (onDelete != null)
+                    IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          size: 18, color: cs.error),
+                      tooltip: 'Excluir',
+                      onPressed: onDelete,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
               ],
             ),
+
+            // Banner de motivo de inativação
+            if (negociacao.status == StatusNegociacao.inativa &&
+                negociacao.motivoInativacao != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF78909C).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: const Color(0xFF78909C).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.block_outlined,
+                        size: 13, color: Color(0xFF78909C)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        negociacao.motivoInativacao!,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF78909C)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

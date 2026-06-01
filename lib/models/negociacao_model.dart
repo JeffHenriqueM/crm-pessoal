@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // ── Enums originais ───────────────────────────────────────────────────────────
 enum TipoDesconto { fixo, percentual }
 
-enum StatusNegociacao { ativa, aceita, recusada, contratoEfetivado }
+enum StatusNegociacao { ativa, aceita, recusada, contratoEfetivado, inativa }
 
 extension StatusNegociacaoExt on StatusNegociacao {
   String get nomeDisplay {
@@ -16,6 +16,8 @@ extension StatusNegociacaoExt on StatusNegociacao {
         return 'Recusada';
       case StatusNegociacao.contratoEfetivado:
         return 'Contrato Efetivado';
+      case StatusNegociacao.inativa:
+        return 'Inativa';
     }
   }
 
@@ -103,6 +105,7 @@ class Negociacao {
   final int? quantidadeParcelas;
   final double? valorParcelaOverride;
   final StatusNegociacao status;
+  final String? motivoInativacao;
   final DateTime dataCriacao;
   final String? observacoes;
 
@@ -133,6 +136,7 @@ class Negociacao {
     this.quantidadeParcelas,
     this.valorParcelaOverride,
     this.status = StatusNegociacao.ativa,
+    this.motivoInativacao,
     required this.dataCriacao,
     this.observacoes,
   });
@@ -181,6 +185,7 @@ class Negociacao {
     Object? quantidadeParcelas = _sentinel,
     Object? valorParcelaOverride = _sentinel,
     StatusNegociacao? status,
+    Object? motivoInativacao = _sentinel,
     DateTime? dataCriacao,
     Object? observacoes = _sentinel,
   }) {
@@ -211,6 +216,7 @@ class Negociacao {
       quantidadeParcelas: quantidadeParcelas == _sentinel ? this.quantidadeParcelas : quantidadeParcelas as int?,
       valorParcelaOverride: valorParcelaOverride == _sentinel ? this.valorParcelaOverride : valorParcelaOverride as double?,
       status: status ?? this.status,
+      motivoInativacao: motivoInativacao == _sentinel ? this.motivoInativacao : motivoInativacao as String?,
       dataCriacao: dataCriacao ?? this.dataCriacao,
       observacoes: observacoes == _sentinel ? this.observacoes : observacoes as String?,
     );
@@ -250,6 +256,7 @@ class Negociacao {
       valorParcelaOverride:
           (d['valorParcelaOverride'] as num?)?.toDouble(),
       status: _statusFromString(d['status']),
+      motivoInativacao: d['motivoInativacao'] as String?,
       dataCriacao:
           (d['dataCriacao'] as Timestamp?)?.toDate() ?? DateTime.now(),
       observacoes: d['observacoes'],
@@ -288,6 +295,8 @@ class Negociacao {
         return StatusNegociacao.recusada;
       case 'contratoEfetivado':
         return StatusNegociacao.contratoEfetivado;
+      case 'inativa':
+        return StatusNegociacao.inativa;
       default:
         return StatusNegociacao.ativa;
     }
@@ -324,6 +333,7 @@ class Negociacao {
         'quantidadeParcelas': quantidadeParcelas,
         'valorParcelaOverride': valorParcelaOverride,
         'status': status.nome,
+        'motivoInativacao': motivoInativacao,
         'dataCriacao': Timestamp.fromDate(dataCriacao),
         'observacoes': observacoes,
       };

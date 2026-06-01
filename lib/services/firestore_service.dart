@@ -585,6 +585,24 @@ class FirestoreService {
     });
   }
 
+  Future<void> inativarNegociacao(String negId, String motivo) async {
+    await _db.collection(_colNegociacoes).doc(negId).update({
+      'status': 'inativa',
+      'motivoInativacao': motivo,
+      'editadoPorId': _currentUserId,
+      'editadoPorNome': _currentUserName,
+    });
+  }
+
+  Future<void> reativarNegociacao(String negId) async {
+    await _db.collection(_colNegociacoes).doc(negId).update({
+      'status': 'ativa',
+      'motivoInativacao': null,
+      'editadoPorId': _currentUserId,
+      'editadoPorNome': _currentUserName,
+    });
+  }
+
   // --- USUÁRIOS ---
 
   // ── Metas mensais (#12) ──────────────────────────────────────────────────
