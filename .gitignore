@@ -43,6 +43,8 @@ tickets_screenshots/*.webp
 .env
 .env.*
 serviceAccount.json
+scripts/client_secret.json
+scripts/.drive_credentials.json
 
 # Firebase
 .firebase/

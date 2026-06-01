@@ -75,6 +75,71 @@ Use este mapa para ir direto ao arquivo correto sem grep:
 
 ---
 
+## 🎫 Criar Ticket via Script (sem abrir o app)
+
+Útil para registrar tickets durante sessões de code review, auditorias ou quando o app não está aberto.
+O script usa a Firestore REST API com o token salvo pelo `firebase login`.
+
+```bash
+node -e "
+const path = require('path'), os = require('os'), fs = require('fs'), https = require('https');
+const token = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/configstore/firebase-tools.json'), 'utf8')).tokens.access_token;
+const project = 'crm-pessoal-d993d';
+const base = '/v1/projects/' + project + '/databases/(default)/documents';
+
+function r(method, url, body) {
+  return new Promise((res, rej) => {
+    const data = body ? JSON.stringify(body) : null;
+    const req = https.request({ hostname: 'firestore.googleapis.com', path: url, method, headers: { 'Authorization': 'Bearer ' + token, ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}) } }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => res({ status: resp.statusCode, body: JSON.parse(d) })); });
+    r.on('error', rej); if (data) req.write(data); req.end();
+  });
+}
+
+// ── PREENCHA AQUI ──────────────────────────────────────────────
+const TITULO    = 'Título do ticket';
+const DESCRICAO = 'Descrição detalhada';
+const TIPO      = 'melhoria'; // bug | melhoria | funcionalidade
+const PRIORIDADE = 'media';   // baixa | media | alta
+// ───────────────────────────────────────────────────────────────
+
+async function main() {
+  const counter = await r('GET', base + '/_contadores/tickets');
+  let maxNum = parseInt(counter.body?.fields?.tickets?.integerValue || '0');
+
+  // fallback: varrer tickets para achar o maior número
+  if (!maxNum) {
+    const list = await r('GET', base + '/tickets?pageSize=300');
+    (list.body.documents || []).forEach(d => { const n = parseInt(d.fields?.numero?.integerValue || '0'); if (n > maxNum) maxNum = n; });
+  }
+
+  const num = maxNum + 1;
+  const now = new Date().toISOString();
+  const doc = { fields: {
+    numero: { integerValue: String(num) }, titulo: { stringValue: TITULO },
+    descricao: { stringValue: DESCRICAO }, status: { stringValue: 'aberto' },
+    prioridade: { stringValue: PRIORIDADE }, tipo: { stringValue: TIPO },
+    criadoPorId: { stringValue: 'claude-assistant' }, criadoPorNome: { stringValue: 'Claude (Assistant)' },
+    criadoPorPerfil: { stringValue: 'super admin' }, contexto: { nullValue: null },
+    atribuidoParaId: { nullValue: null }, atribuidoParaNome: { nullValue: null },
+    dataCriacao: { timestampValue: now }, dataAtualizacao: { timestampValue: now },
+    clienteId: { nullValue: null }, clienteNome: { nullValue: null }, totalComentarios: { integerValue: '0' },
+  }};
+
+  const create = await r('POST', base + '/tickets', doc);
+  if (create.status === 200) {
+    await r('PATCH', base + '/_contadores/tickets?updateMask.fieldPaths=tickets', { fields: { tickets: { integerValue: String(num) } } });
+    console.log('✅ Ticket #' + num + ' criado — ID: ' + create.body.name.split('/').pop());
+  } else { console.error('Erro:', create.status, JSON.stringify(create.body)); }
+}
+main().catch(console.error);
+"
+```
+
+**Campos obrigatórios para preencher:** `TITULO`, `DESCRICAO`, `TIPO` e `PRIORIDADE`.
+O número é atribuído automaticamente em sequência.
+
+---
+
 ## 🪓 Contexto para Resolução de Backlog Ativo
 Ao atuar nos tickets abertos do sistema, consulte os seguintes arquivos-alvo para evitar buscas globais (grep) desnecessárias:
 

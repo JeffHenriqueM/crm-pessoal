@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Agendamento do backup diário do Villamor CRM via launchd (macOS).
+
+  Para instalar (uma vez):
+    cp scripts/com.villamor.crm.backup.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.villamor.crm.backup.plist
+
+  Para desinstalar:
+    launchctl unload ~/Library/LaunchAgents/com.villamor.crm.backup.plist
+    rm ~/Library/LaunchAgents/com.villamor.crm.backup.plist
+
+  Para rodar manualmente agora:
+    launchctl start com.villamor.crm.backup
+
+  Log em: ~/Library/Logs/crm_backup.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.villamor.crm.backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/jeffersonhenrique/Documents/Projetos/crm_pessoal/scripts/backup_firestore.cjs</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_PATH</key>
+    <string>/Users/jeffersonhenrique/Documents/Projetos/crm_pessoal/functions/node_modules</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffersonhenrique/Documents/Projetos/crm_pessoal</string>
+
+  <!-- Roda todo dia às 09:10 -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>10</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jeffersonhenrique/Library/Logs/crm_backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jeffersonhenrique/Library/Logs/crm_backup.log</string>
+
+  <!-- Não roda ao fazer login, só no horário agendado -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
