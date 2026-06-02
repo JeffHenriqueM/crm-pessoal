@@ -662,6 +662,55 @@ class FirestoreService {
     });
   }
 
+  /// Retorna o mapa de metas do usuário {tipoMeta: valorAlvo}, permitindo
+  /// várias metas simultâneas. Retrocompatível com o formato antigo (meta
+  /// única em tipoMeta/valorMeta) e o legado (metaMensal → fechamentos).
+  Future<Map<String, double>> getMetas(String userId) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(userId).get();
+      final data = doc.data();
+      if (data == null) return {};
+
+      final raw = data['metas'];
+      if (raw is Map && raw.isNotEmpty) {
+        return raw.map((k, v) => MapEntry(k as String, (v as num).toDouble()));
+      }
+      // Retrocompatibilidade: meta única antiga.
+      if (data['valorMeta'] != null) {
+        return {
+          (data['tipoMeta'] as String?) ?? 'fechamentos':
+              (data['valorMeta'] as num).toDouble(),
+        };
+      }
+      // Legado: metaMensal (fechamentos).
+      final legado = data['metaMensal'] as int?;
+      if (legado != null) return {'fechamentos': legado.toDouble()};
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Substitui o conjunto de metas do usuário. Passe o mapa completo
+  /// {tipoMeta: valor}; um mapa vazio remove todas as metas. Limpa os campos
+  /// legados de meta única.
+  ///
+  /// O campo `metas` é apagado antes de ser regravado para garantir a
+  /// substituição (e não um merge) das chaves — comportamento consistente
+  /// entre o Firestore real e o fake usado nos testes.
+  Future<void> definirMetas(String userId, Map<String, double> metas) async {
+    final ref = _db.collection('usuarios').doc(userId);
+    await ref.update({
+      'metas': FieldValue.delete(),
+      'tipoMeta': null,
+      'valorMeta': null,
+      'metaMensal': null,
+    });
+    if (metas.isNotEmpty) {
+      await ref.update({'metas': metas});
+    }
+  }
+
   /// Leads captados por um captador/recepção (campo captadorId). Usado para
   /// medir o progresso das metas de captação (casais captados, vendas captadas).
   Future<List<Cliente>> getClientesCaptados(String captadorId) async {
@@ -1010,11 +1059,26 @@ class FirestoreService {
     String contratoId,
     Interacao interacao,
   ) async {
-    await _db
-        .collection(_colContratos)
-        .doc(contratoId)
-        .collection('interacoes')
-        .add(_flagTeste(interacao.toFirestore()));
+    final ref = _db.collection(_colContratos).doc(contratoId);
+    await Future.wait([
+      ref.collection('interacoes').add(_flagTeste(interacao.toFirestore())),
+      // Marca o contrato como contatado no mês (meta de pós-venda).
+      ref.set({
+        'interacoesPorMes': {chaveMesAtual(): FieldValue.increment(1)},
+      }, SetOptions(merge: true)),
+    ]);
+  }
+
+  /// Busca única de todos os contratos (não-stream) — usado para calcular o
+  /// progresso da meta de pós-venda (% de contratos contatados no mês).
+  Future<List<Contrato>> getContratos() async {
+    try {
+      final snap = await _db.collection(_colContratos).get();
+      return snap.docs.map(Contrato.fromFirestore).toList();
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar contratos: $e');
+      return [];
+    }
   }
 
   /// Exclui uma interação da subcoleção de um contrato.
@@ -1031,14 +1095,73 @@ class FirestoreService {
   }
 
   /// Atualiza apenas o status de assinatura de um contrato.
+  /// Quando o contrato passa a "assinado" (transição), conta a assinatura
+  /// conseguida para o usuário logado (meta de pós-venda).
   Future<void> atualizarStatusAssinatura(
     String contratoId,
     StatusAssinatura status,
   ) async {
-    await _db.collection(_colContratos).doc(contratoId).update({
+    final ref = _db.collection(_colContratos).doc(contratoId);
+    final snap = await ref.get();
+    final anterior = snap.data()?['statusAssinatura'] as String?;
+    await ref.update({
       'statusAssinatura': status.value,
       'atualizadoEm': FieldValue.serverTimestamp(),
     });
+    if (status == StatusAssinatura.assinado && anterior != 'assinado') {
+      await _incrementarContadorUsuario('assinaturas');
+    }
+  }
+
+  /// Incrementa um contador mensal + total no doc do usuário logado.
+  /// Usado para metas de pós-venda (assinaturas, upgrades).
+  Future<void> _incrementarContadorUsuario(String nome) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    await _db.collection('usuarios').doc(uid).set({
+      '${nome}PorMes': {chaveMesAtual(): FieldValue.increment(1)},
+      '${nome}Total': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+  }
+
+  /// Marca que um upgrade foi OFERECIDO ao cliente do contrato (idempotente).
+  Future<void> registrarUpgradeOferecido(String contratoId) async {
+    final ref = _db.collection(_colContratos).doc(contratoId);
+    final snap = await ref.get();
+    if (snap.data()?['upgradeOferecidoEm'] != null) return;
+    await ref.set(
+      {'upgradeOferecidoEm': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Marca que um upgrade foi REALIZADO (conta para a meta do usuário logado).
+  /// Idempotente: só conta na primeira vez. Realizar implica ter sido oferecido.
+  Future<void> registrarUpgradeRealizado(String contratoId) async {
+    final ref = _db.collection(_colContratos).doc(contratoId);
+    final snap = await ref.get();
+    final data = snap.data();
+    if (data?['upgradeRealizadoEm'] != null) return;
+    final updates = <String, dynamic>{
+      'upgradeRealizadoEm': FieldValue.serverTimestamp(),
+    };
+    if (data?['upgradeOferecidoEm'] == null) {
+      updates['upgradeOferecidoEm'] = FieldValue.serverTimestamp();
+    }
+    await ref.set(updates, SetOptions(merge: true));
+    await _incrementarContadorUsuario('upgrades');
+  }
+
+  /// Lê um usuário específico (para contadores de meta de pós-venda).
+  Future<Usuario?> getUsuario(String userId) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(userId).get();
+      if (!doc.exists) return null;
+      return Usuario.fromMap(doc.data()!, doc.id);
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar usuário: $e');
+      return null;
+    }
   }
 
   // ── Notificações in-app ───────────────────────────────────────────────────

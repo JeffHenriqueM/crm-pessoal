@@ -27,6 +27,10 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   List<Interacao> _interacoes = [];
   String _perfil = '';
 
+  // Estado local dos marcos de upgrade (a tela não faz stream do contrato).
+  late bool _upgradeOferecido = widget.contrato.upgradeOferecido;
+  late bool _upgradeRealizado = widget.contrato.upgradeRealizado;
+
   StreamSubscription<List<Interacao>>? _interSub;
 
   @override
@@ -78,7 +82,15 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
       body: TabBarView(
         controller: _tabCtrl,
         children: [
-          _DadosTab(contrato: c, isAdmin: _isAdmin, onAssinaturaAlterada: _alterarAssinatura),
+          _DadosTab(
+            contrato: c,
+            isAdmin: _isAdmin,
+            onAssinaturaAlterada: _alterarAssinatura,
+            upgradeOferecido: _upgradeOferecido,
+            upgradeRealizado: _upgradeRealizado,
+            onOfereceuUpgrade: _ofereceuUpgrade,
+            onFezUpgrade: _fezUpgrade,
+          ),
           _InteracoesTab(
             interacoes: _interacoes,
             onItemTap: (i) => _menuInteracao(i),
@@ -107,6 +119,29 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
         SnackBar(content: Text('Assinatura atualizada: ${novo.label}')),
       );
     }
+  }
+
+  // ── Upgrade (meta de captação de upgrade do pós-venda) ──────────────────────
+
+  void _ofereceuUpgrade() async {
+    await _fs.registrarUpgradeOferecido(widget.contrato.localizador);
+    if (!mounted) return;
+    setState(() => _upgradeOferecido = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Upgrade marcado como oferecido.')),
+    );
+  }
+
+  void _fezUpgrade() async {
+    await _fs.registrarUpgradeRealizado(widget.contrato.localizador);
+    if (!mounted) return;
+    setState(() {
+      _upgradeRealizado = true;
+      _upgradeOferecido = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Upgrade marcado como realizado! 🎉')),
+    );
   }
 
   // ── Interações ─────────────────────────────────────────────────────────────
@@ -182,11 +217,19 @@ class _DadosTab extends StatelessWidget {
   final Contrato contrato;
   final bool isAdmin;
   final ValueChanged<StatusAssinatura> onAssinaturaAlterada;
+  final bool upgradeOferecido;
+  final bool upgradeRealizado;
+  final VoidCallback onOfereceuUpgrade;
+  final VoidCallback onFezUpgrade;
 
   const _DadosTab({
     required this.contrato,
     required this.isAdmin,
     required this.onAssinaturaAlterada,
+    required this.upgradeOferecido,
+    required this.upgradeRealizado,
+    required this.onOfereceuUpgrade,
+    required this.onFezUpgrade,
   });
 
   @override
@@ -221,6 +264,44 @@ class _DadosTab extends StatelessWidget {
             _campo('Status de Assinatura', c.statusAssinatura.label),
         ]),
         const SizedBox(height: 8),
+
+        // Upgrade (registro para a meta de captação de upgrade do pós-venda)
+        if (isAdmin) ...[
+          _secao('Upgrade', [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: upgradeOferecido ? null : onOfereceuUpgrade,
+                    icon: Icon(
+                        upgradeOferecido
+                            ? Icons.check
+                            : Icons.local_offer_outlined,
+                        size: 16),
+                    label: Text(
+                        upgradeOferecido ? 'Oferecido' : 'Ofereci upgrade',
+                        style: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: upgradeRealizado ? null : onFezUpgrade,
+                    icon: Icon(
+                        upgradeRealizado
+                            ? Icons.check_circle
+                            : Icons.upgrade,
+                        size: 16),
+                    label: Text(
+                        upgradeRealizado ? 'Realizado' : 'Fez upgrade',
+                        style: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 8),
+        ],
 
         // Financeiro
         _secao('Financeiro', [

@@ -100,3 +100,21 @@ test('vendedor incrementa o próprio contador de interações', async () => {
     }),
   );
 });
+
+test('vendedor define várias metas próprias (mapa metas)', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertSucceeds(
+    updateDoc(doc(db, 'usuarios/vendedor_a'), {
+      metas: { valorVendido: 50000, mensagensEnviadas: 300 },
+    }),
+  );
+});
+
+test('vendedor NÃO define metas de outro usuário', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertFails(
+    updateDoc(doc(db, 'usuarios/admin'), {
+      metas: { valorVendido: 50000 },
+    }),
+  );
+});

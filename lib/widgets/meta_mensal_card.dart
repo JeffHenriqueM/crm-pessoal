@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
 
 // ── Tipos de meta disponíveis ─────────────────────────────────────────────────
@@ -14,6 +15,10 @@ enum _TipoMeta {
   casaisCaptados,
   vendasCaptadas,
   valorCaptado,
+  // Pós-venda
+  mensagensPosVenda, // percentual de contratos contatados no mês
+  assinaturas, // assinaturas conseguidas no mês
+  upgrades, // upgrades realizados no mês
   // Legado (mantido para retrocompatibilidade de dados antigos)
   novosLeads;
 
@@ -31,27 +36,14 @@ enum _TipoMeta {
         return 'Vendas Captadas';
       case _TipoMeta.valorCaptado:
         return 'Valor Captado';
+      case _TipoMeta.mensagensPosVenda:
+        return 'Contatos Pós-venda';
+      case _TipoMeta.assinaturas:
+        return 'Assinaturas';
+      case _TipoMeta.upgrades:
+        return 'Upgrades';
       case _TipoMeta.novosLeads:
         return 'Novos Leads';
-    }
-  }
-
-  String get descricao {
-    switch (this) {
-      case _TipoMeta.fechamentos:
-        return 'Quantos clientes fechados no mês?';
-      case _TipoMeta.valorVendido:
-        return 'Quanto em vendas (R\$) no mês?';
-      case _TipoMeta.mensagensEnviadas:
-        return 'Quantas mensagens/interações com clientes no mês?';
-      case _TipoMeta.casaisCaptados:
-        return 'Quantos casais captados no mês?';
-      case _TipoMeta.vendasCaptadas:
-        return 'Quantas vendas dos seus leads captados no mês?';
-      case _TipoMeta.valorCaptado:
-        return 'Quanto em vendas (R\$) dos seus captados no mês?';
-      case _TipoMeta.novosLeads:
-        return 'Quantos novos leads cadastrados no mês?';
     }
   }
 
@@ -69,6 +61,12 @@ enum _TipoMeta {
         return Icons.shopping_bag_outlined;
       case _TipoMeta.valorCaptado:
         return Icons.savings_outlined;
+      case _TipoMeta.mensagensPosVenda:
+        return Icons.mark_chat_read_outlined;
+      case _TipoMeta.assinaturas:
+        return Icons.draw_outlined;
+      case _TipoMeta.upgrades:
+        return Icons.upgrade;
       case _TipoMeta.novosLeads:
         return Icons.person_add_outlined;
     }
@@ -77,25 +75,8 @@ enum _TipoMeta {
   bool get isMonetario =>
       this == _TipoMeta.valorVendido || this == _TipoMeta.valorCaptado;
 
-  /// Unidade no singular/plural para o texto de status (não-monetários).
-  String unidade(int qtd) {
-    final um = qtd == 1;
-    switch (this) {
-      case _TipoMeta.fechamentos:
-        return um ? 'fechamento' : 'fechamentos';
-      case _TipoMeta.mensagensEnviadas:
-        return um ? 'mensagem' : 'mensagens';
-      case _TipoMeta.casaisCaptados:
-        return um ? 'casal' : 'casais';
-      case _TipoMeta.vendasCaptadas:
-        return um ? 'venda' : 'vendas';
-      case _TipoMeta.novosLeads:
-        return um ? 'lead' : 'leads';
-      case _TipoMeta.valorVendido:
-      case _TipoMeta.valorCaptado:
-        return '';
-    }
-  }
+  /// Meta expressa em porcentagem (0–100).
+  bool get isPercentual => this == _TipoMeta.mensagensPosVenda;
 
   String get toKey => name;
 
@@ -116,6 +97,13 @@ enum _TipoMeta {
         _TipoMeta.valorCaptado,
       ];
     }
+    if (p == 'pós-venda' || p == 'pos-venda') {
+      return const [
+        _TipoMeta.mensagensPosVenda,
+        _TipoMeta.assinaturas,
+        _TipoMeta.upgrades,
+      ];
+    }
     return const [
       _TipoMeta.fechamentos,
       _TipoMeta.valorVendido,
@@ -128,6 +116,9 @@ enum _TipoMeta {
       this == _TipoMeta.vendasCaptadas ||
       this == _TipoMeta.valorCaptado;
 }
+
+/// Meta padrão de contatos do pós-venda (% dos contratos no mês).
+const double kMetaPadraoPosVenda = 80.0;
 
 // ── Widget principal ──────────────────────────────────────────────────────────
 class MetaMensalCard extends StatefulWidget {
@@ -156,12 +147,18 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   final _moedaCompacto = NumberFormat.compactCurrency(
       locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
 
-  Map<String, dynamic>? _meta; // {tipoMeta, valorMeta}
+  // Metas definidas: {tipoMeta: valorAlvo}.
+  Map<String, double> _metas = {};
   bool _carregando = true;
 
   // Dados complementares para metas que não saem da lista `clientes`.
   int _interacoesMes = 0;
   List<Cliente> _clientesCaptados = const [];
+  // Contratos do pós-venda (para a meta de % contatados no mês).
+  int _contratosTotal = 0;
+  int _contratosContatados = 0;
+  // Usuário (contadores de assinaturas/upgrades) — carregado para pós-venda.
+  Usuario? _usuario;
 
   static const _meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril',
@@ -171,6 +168,27 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
 
   List<_TipoMeta> get _tiposDisponiveis => _TipoMeta.paraPerfil(widget.perfil);
 
+  bool get _ehPosVenda =>
+      _tiposDisponiveis.contains(_TipoMeta.mensagensPosVenda);
+
+  /// O pós-venda só visualiza (a meta é definida pelo admin).
+  bool get _soLeitura => _ehPosVenda;
+
+  /// Metas efetivas: para o pós-venda, garante a meta padrão (80%) de contatos
+  /// quando o admin ainda não definiu, e inclui assinaturas/upgrades se houver.
+  Map<String, double> get _metasEfetivas {
+    if (_ehPosVenda) {
+      return {
+        'mensagensPosVenda':
+            _metas['mensagensPosVenda'] ?? kMetaPadraoPosVenda,
+        if (_metas.containsKey('assinaturas'))
+          'assinaturas': _metas['assinaturas']!,
+        if (_metas.containsKey('upgrades')) 'upgrades': _metas['upgrades']!,
+      };
+    }
+    return _metas;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -178,17 +196,23 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   }
 
   Future<void> _carregarDados() async {
-    final meta = await _service.getMeta(widget.userId);
+    final metas = await _service.getMetas(widget.userId);
     final interacoes = await _service.getInteracoesMesAtual(widget.userId);
-    // Leads captados só são necessários para perfis de captação.
     final captados = _tiposDisponiveis.any((t) => t.isCaptacao)
         ? await _service.getClientesCaptados(widget.userId)
         : const <Cliente>[];
+    final contratos =
+        _ehPosVenda ? await _service.getContratos() : const <dynamic>[];
+    final usuario = _ehPosVenda ? await _service.getUsuario(widget.userId) : null;
     if (mounted) {
       setState(() {
-        _meta = meta;
+        _metas = metas;
         _interacoesMes = interacoes;
         _clientesCaptados = captados;
+        _contratosTotal = contratos.length;
+        _contratosContatados =
+            contratos.where((c) => c.contatadoEsteMes == true).length;
+        _usuario = usuario;
         _carregando = false;
       });
     }
@@ -244,6 +268,16 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 _esteMs(c.dataFechamento ?? c.dataAtualizacao))
             .fold(0.0, (soma, c) => soma + (c.valorVendido ?? 0.0));
 
+      case _TipoMeta.mensagensPosVenda:
+        if (_contratosTotal == 0) return 0;
+        return _contratosContatados / _contratosTotal * 100;
+
+      case _TipoMeta.assinaturas:
+        return (_usuario?.assinaturasMesAtual ?? 0).toDouble();
+
+      case _TipoMeta.upgrades:
+        return (_usuario?.upgradesMesAtual ?? 0).toDouble();
+
       case _TipoMeta.novosLeads:
         return widget.clientes
             .where((c) => _esteMs(c.dataCadastro))
@@ -252,8 +286,8 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     }
   }
 
-  // ── Formata o valor de progresso conforme o tipo ─────────────────────────
   String _formatarValor(double v, _TipoMeta tipo) {
+    if (tipo.isPercentual) return '${v.round()}%';
     if (tipo.isMonetario) {
       return v >= 1000 ? _moedaCompacto.format(v) : _moeda.format(v);
     }
@@ -261,157 +295,122 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   }
 
   String _formatarMeta(double v, _TipoMeta tipo) {
-    if (tipo.isMonetario) {
-      return _moedaCompacto.format(v);
-    }
+    if (tipo.isPercentual) return '${v.round()}%';
+    if (tipo.isMonetario) return _moedaCompacto.format(v);
     return v.toInt().toString();
   }
 
-  // ── Dialog de edição ─────────────────────────────────────────────────────
-  Future<void> _editarMeta(BuildContext context) async {
-    // Captura antes de qualquer await para não usar BuildContext após async gap.
+  // ── Dialog de gerenciamento (várias metas, uma por tipo) ──────────────────
+  Future<void> _editarMetas(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final corErro = Theme.of(context).colorScheme.error;
-
     final tipos = _tiposDisponiveis;
-    final tipoAtual = _meta != null
-        ? _TipoMeta.fromKey(_meta!['tipoMeta'] as String?)
-        : tipos.first;
-    final valorAtual = (_meta?['valorMeta'] as double?);
 
-    // Garante que o tipo atual pertence aos tipos do perfil.
-    _TipoMeta tipoSelecionado =
-        tipos.contains(tipoAtual) ? tipoAtual : tipos.first;
-    final ctrl = TextEditingController(
-        text: valorAtual != null ? valorAtual.toInt().toString() : '');
+    // Um controller por tipo, pré-preenchido com a meta atual (se houver).
+    final ctrls = {
+      for (final t in tipos)
+        t: TextEditingController(
+          text: _metas.containsKey(t.toKey)
+              ? _metas[t.toKey]!.toInt().toString()
+              : '',
+        ),
+    };
 
-    final resultado = await showDialog<Map<String, dynamic>?>(
+    final salvar = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
           title: const Row(
             children: [
               Icon(Icons.flag_outlined),
               SizedBox(width: 10),
-              Text('Meta do Mês'),
+              Expanded(child: Text('Metas do Mês')),
             ],
           ),
           content: SizedBox(
-            width: 340,
+            width: 360,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Tipo de meta ──────────────────────────────────────────
                 Text(
-                  'Tipo de meta',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: tipos.map((t) {
-                    final sel = tipoSelecionado == t;
-                    final cs = Theme.of(ctx).colorScheme;
-                    return ChoiceChip(
-                      avatar: Icon(t.icone,
-                          size: 14,
-                          color: sel ? cs.onPrimaryContainer : cs.onSurface),
-                      label: Text(t.label,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: sel
-                                  ? cs.onPrimaryContainer
-                                  : cs.onSurface)),
-                      selected: sel,
-                      onSelected: (_) => setSt(() => tipoSelecionado = t),
-                    );
-                  }).toList(),
+                  'Defina uma ou mais metas. Deixe em branco para não usar.',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: 16),
-
-                // ── Valor alvo ────────────────────────────────────────────
-                Text(
-                  tipoSelecionado.descricao,
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: ctrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: false),
-                  autofocus: true,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 28, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    labelText: tipoSelecionado.isMonetario
-                        ? 'Valor alvo (R\$)'
-                        : 'Quantidade alvo',
-                    border: const OutlineInputBorder(),
-                    prefixIcon: Icon(tipoSelecionado.icone),
-                  ),
-                ),
+                ...tipos.map((t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          Icon(t.icone, size: 18, color: cs.primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 3,
+                            child: Text(t.label,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: ctrls[t],
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: false),
+                              textAlign: TextAlign.center,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: t.isMonetario ? 'R\$' : 'qtd',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 10),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
               ],
             ),
           ),
           actions: [
-            if (_meta != null)
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(<String, dynamic>{}),
-                child: Text('Remover meta',
-                    style: TextStyle(
-                        color: Theme.of(ctx).colorScheme.error, fontSize: 13)),
-              ),
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(null),
+              onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () {
-                final v = double.tryParse(ctrl.text.trim());
-                if (v != null && v > 0) {
-                  Navigator.of(ctx).pop({
-                    'tipoMeta': tipoSelecionado.toKey,
-                    'valorMeta': v,
-                  });
-                }
-              },
+              onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Salvar'),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
 
-    ctrl.dispose();
-    if (resultado == null) return;
+    // Monta o novo mapa a partir dos campos preenchidos.
+    final novo = <String, double>{};
+    for (final t in tipos) {
+      final v = double.tryParse(ctrls[t]!.text.trim());
+      if (v != null && v > 0) novo[t.toKey] = v;
+    }
+    for (final c in ctrls.values) {
+      c.dispose();
+    }
+
+    if (salvar != true) return;
 
     try {
-      if (resultado.isEmpty) {
-        // Remover meta
-        await _service.atualizarMeta(widget.userId, 'fechamentos', null);
-        if (mounted) setState(() => _meta = null);
-      } else {
-        final tipo = resultado['tipoMeta'] as String;
-        final valor = resultado['valorMeta'] as double;
-        await _service.atualizarMeta(widget.userId, tipo, valor);
-        if (mounted) setState(() => _meta = resultado);
-      }
+      await _service.definirMetas(widget.userId, novo);
+      if (mounted) setState(() => _metas = novo);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Meta atualizada.')),
+        const SnackBar(content: Text('Metas atualizadas.')),
       );
     } catch (e) {
-      debugPrint('[MetaMensalCard] Erro ao salvar meta: $e');
+      debugPrint('[MetaMensalCard] Erro ao salvar metas: $e');
       messenger.showSnackBar(
         SnackBar(
           content:
-              const Text('Não foi possível salvar a meta. Tente novamente.'),
+              const Text('Não foi possível salvar as metas. Tente novamente.'),
           backgroundColor: corErro,
         ),
       );
@@ -426,41 +425,43 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     final cs = Theme.of(context).colorScheme;
     final agora = DateTime.now();
     final nomeMes = _meses[agora.month - 1];
+    final metas = _metasEfetivas;
 
-    // ── Sem meta definida ─────────────────────────────────────────────────
-    if (_meta == null) {
+    // ── Sem metas definidas ───────────────────────────────────────────────
+    // (Não se aplica ao pós-venda, que sempre tem a meta padrão de 80%.)
+    if (metas.isEmpty) {
       return Card(
         margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _editarMeta(context),
+          onTap: () => _editarMetas(context),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
                 CircleAvatar(
                   backgroundColor: cs.primaryContainer,
-                  child: Icon(Icons.flag_outlined,
-                      color: cs.onPrimaryContainer),
+                  child:
+                      Icon(Icons.flag_outlined, color: cs.onPrimaryContainer),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Meta do Mês',
+                      const Text('Metas do Mês',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 14)),
                       Text(
-                        'Toque para definir sua meta de $nomeMes.',
-                        style: TextStyle(
-                            fontSize: 12, color: cs.onSurfaceVariant),
+                        'Toque para definir suas metas de $nomeMes.',
+                        style:
+                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                       ),
                     ],
                   ),
                 ),
                 FilledButton.tonal(
-                  onPressed: () => _editarMeta(context),
+                  onPressed: () => _editarMetas(context),
                   child: const Text('Definir'),
                 ),
               ],
@@ -470,143 +471,119 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
       );
     }
 
-    // ── Com meta definida ─────────────────────────────────────────────────
-    final tipo = _TipoMeta.fromKey(_meta!['tipoMeta'] as String?);
-    final alvo = (_meta!['valorMeta'] as double?) ?? 0.0;
-    final progresso = _calcularProgresso(tipo);
-    final pct = (alvo == 0 ? 0.0 : progresso / alvo).clamp(0.0, 1.0);
-    final atingiu = progresso >= alvo;
-    final excedeu = progresso > alvo;
-
-    final corProgresso = atingiu
-        ? Colors.green.shade600
-        : pct >= 0.7
-            ? Colors.orange.shade600
-            : cs.primary;
-
-    // ── Texto de status ───────────────────────────────────────────────────
-    late final String statusTexto;
-    if (atingiu) {
-      if (excedeu) {
-        final extra = progresso - alvo;
-        statusTexto = tipo.isMonetario
-            ? '🎉 Meta atingida! ${_moedaCompacto.format(extra)} além do esperado.'
-            : '🎉 Meta atingida! ${extra.toInt()} além do esperado.';
-      } else {
-        statusTexto = '🎉 Parabéns! Meta atingida este mês.';
-      }
-    } else {
-      final falta = alvo - progresso;
-      if (tipo.isMonetario) {
-        statusTexto = '${_moedaCompacto.format(falta)} para atingir a meta';
-      } else {
-        final qtd = falta.ceil();
-        statusTexto = '$qtd ${tipo.unidade(qtd)} para atingir a meta';
-      }
-    }
+    // ── Com metas definidas ───────────────────────────────────────────────
+    // Ordena pelas posições dos tipos do perfil; tipos legados vão ao fim.
+    final tiposOrdenados = metas.keys
+        .map(_TipoMeta.fromKey)
+        .toList()
+      ..sort((a, b) {
+        final ia = _tiposDisponiveis.indexOf(a);
+        final ib = _tiposDisponiveis.indexOf(b);
+        return (ia == -1 ? 99 : ia).compareTo(ib == -1 ? 99 : ib);
+      });
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Anel de progresso ─────────────────────────────────────────
-            SizedBox(
-              width: 72,
-              height: 72,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CircularProgressIndicator(
-                    value: pct,
-                    strokeWidth: 7,
-                    backgroundColor: corProgresso.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation<Color>(corProgresso),
+            Row(
+              children: [
+                Icon(Icons.flag_outlined, size: 18, color: cs.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Metas — $nomeMes',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14)),
+                ),
+                if (!_soLeitura)
+                  IconButton(
+                    icon: Icon(Icons.edit_outlined,
+                        size: 18, color: cs.outline),
+                    onPressed: () => _editarMetas(context),
+                    tooltip: 'Editar metas',
+                    visualDensity: VisualDensity.compact,
                   ),
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _formatarValor(progresso, tipo),
-                          style: TextStyle(
-                            fontSize: tipo.isMonetario ? 13 : 20,
-                            fontWeight: FontWeight.bold,
-                            color: corProgresso,
-                            height: 1,
-                          ),
-                        ),
-                        Text(
-                          '/ ${_formatarMeta(alvo, tipo)}',
-                          style: TextStyle(
-                              fontSize: 11, color: cs.outline, height: 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
-            const SizedBox(width: 16),
-
-            // ── Texto de progresso ────────────────────────────────────────
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(tipo.icone, size: 14, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          '${tipo.label} — $nomeMes',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (atingiu)
-                        Icon(Icons.check_circle,
-                            size: 18, color: Colors.green.shade600),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: pct,
-                      backgroundColor: corProgresso.withValues(alpha: 0.12),
-                      valueColor: AlwaysStoppedAnimation<Color>(corProgresso),
-                      minHeight: 6,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    statusTexto,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: atingiu
-                          ? Colors.green.shade700
-                          : cs.onSurfaceVariant,
-                      fontWeight:
-                          atingiu ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Botão editar ──────────────────────────────────────────────
-            IconButton(
-              icon: Icon(Icons.edit_outlined, size: 18, color: cs.outline),
-              onPressed: () => _editarMeta(context),
-              tooltip: 'Editar meta',
-              visualDensity: VisualDensity.compact,
-            ),
+            const SizedBox(height: 4),
+            ...tiposOrdenados.map((tipo) => _linhaMeta(cs, tipo, metas)),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Linha compacta de uma meta ────────────────────────────────────────────
+  Widget _linhaMeta(ColorScheme cs, _TipoMeta tipo, Map<String, double> metas) {
+    final alvo = metas[tipo.toKey] ?? 0.0;
+    final progresso = _calcularProgresso(tipo);
+    final pct = (alvo == 0 ? 0.0 : progresso / alvo).clamp(0.0, 1.0);
+    final atingiu = progresso >= alvo;
+    final cor = atingiu
+        ? Colors.green.shade600
+        : pct >= 0.7
+            ? Colors.orange.shade600
+            : cs.primary;
+
+    // Total acumulado (somente para metas com contagem total no usuário).
+    final int? total = tipo == _TipoMeta.assinaturas
+        ? _usuario?.assinaturasTotal
+        : tipo == _TipoMeta.upgrades
+            ? _usuario?.upgradesTotal
+            : null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(tipo.icone, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          total != null
+                              ? '${tipo.label}  ·  $total no total'
+                              : tipo.label,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (atingiu) ...[
+                      Icon(Icons.check_circle,
+                          size: 14, color: Colors.green.shade600),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      '${_formatarValor(progresso, tipo)} / ${_formatarMeta(alvo, tipo)}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: cor),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: pct,
+                    backgroundColor: cor.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation<Color>(cor),
+                    minHeight: 6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
