@@ -112,6 +112,16 @@ class Contrato {
   final DateTime? criadoEm;
   final DateTime? atualizadoEm;
 
+  /// Contador de interações por mês {'AAAA-M': qtd}. Mantido pelo
+  /// FirestoreService (não é serializado no toFirestore para que o re-import
+  /// por merge não zere o contador). Usado na meta de pós-venda.
+  final Map<String, int> interacoesPorMes;
+
+  /// Marcos de upgrade (meta de captação de upgrade do pós-venda). Não são
+  /// serializados no toFirestore para sobreviver ao re-import por merge.
+  final DateTime? upgradeOferecidoEm;
+  final DateTime? upgradeRealizadoEm;
+
   const Contrato({
     required this.localizador,
     required this.localizadorAtendimento,
@@ -160,11 +170,23 @@ class Contrato {
     this.statusAssinatura = StatusAssinatura.naoAssinado,
     this.criadoEm,
     this.atualizadoEm,
+    this.interacoesPorMes = const {},
+    this.upgradeOferecidoEm,
+    this.upgradeRealizadoEm,
   });
 
   bool get temAtrasos => valorAtrasado > 0;
   bool get estaQuitado => statusFinanceiro.toLowerCase() == 'quitado';
   String get nomeExibicao => nomeComprador;
+
+  /// True se o contrato teve ao menos uma interação no mês corrente.
+  bool get contatadoEsteMes {
+    final a = DateTime.now();
+    return (interacoesPorMes['${a.year}-${a.month}'] ?? 0) > 0;
+  }
+
+  bool get upgradeOferecido => upgradeOferecidoEm != null;
+  bool get upgradeRealizado => upgradeRealizadoEm != null;
 
   factory Contrato.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -220,6 +242,11 @@ class Contrato {
           StatusAssinatura.fromString(d['statusAssinatura'] as String?),
       criadoEm: (d['criadoEm'] as Timestamp?)?.toDate(),
       atualizadoEm: (d['atualizadoEm'] as Timestamp?)?.toDate(),
+      interacoesPorMes: (d['interacoesPorMes'] as Map<String, dynamic>?)
+              ?.map((k, v) => MapEntry(k, (v as num?)?.toInt() ?? 0)) ??
+          const {},
+      upgradeOferecidoEm: (d['upgradeOferecidoEm'] as Timestamp?)?.toDate(),
+      upgradeRealizadoEm: (d['upgradeRealizadoEm'] as Timestamp?)?.toDate(),
     );
   }
 

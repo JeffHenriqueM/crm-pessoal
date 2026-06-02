@@ -24,6 +24,15 @@ class Usuario {
   /// Usado para o progresso da meta "mensagens enviadas".
   final Map<String, int> interacoesPorMes;
 
+  // ── Contadores de pós-venda ───────────────────────────────────────────────
+  /// Assinaturas conseguidas por mês {'AAAA-M': qtd} + total acumulado.
+  final Map<String, int> assinaturasPorMes;
+  final int assinaturasTotal;
+
+  /// Upgrades realizados por mês {'AAAA-M': qtd} + total acumulado.
+  final Map<String, int> upgradesPorMes;
+  final int upgradesTotal;
+
   Usuario({
     required this.id,
     required this.nome,
@@ -35,7 +44,18 @@ class Usuario {
     this.valorMeta,
     this.metas = const {},
     this.interacoesPorMes = const {},
+    this.assinaturasPorMes = const {},
+    this.assinaturasTotal = 0,
+    this.upgradesPorMes = const {},
+    this.upgradesTotal = 0,
   });
+
+  static Map<String, int> _lerContadorMes(dynamic raw) {
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k as String, (v as num?)?.toInt() ?? 0));
+    }
+    return const {};
+  }
 
   factory Usuario.fromMap(Map<String, dynamic> data, String documentId) {
     return Usuario(
@@ -51,8 +71,23 @@ class Usuario {
       interacoesPorMes: (data['interacoesPorMes'] as Map<String, dynamic>?)
               ?.map((k, v) => MapEntry(k, (v as num?)?.toInt() ?? 0)) ??
           const {},
+      assinaturasPorMes: _lerContadorMes(data['assinaturasPorMes']),
+      assinaturasTotal: (data['assinaturasTotal'] as num?)?.toInt() ?? 0,
+      upgradesPorMes: _lerContadorMes(data['upgradesPorMes']),
+      upgradesTotal: (data['upgradesTotal'] as num?)?.toInt() ?? 0,
     );
   }
+
+  int _mesAtual(Map<String, int> m) {
+    final a = DateTime.now();
+    return m['${a.year}-${a.month}'] ?? 0;
+  }
+
+  /// Assinaturas conseguidas pelo usuário no mês corrente.
+  int get assinaturasMesAtual => _mesAtual(assinaturasPorMes);
+
+  /// Upgrades realizados pelo usuário no mês corrente.
+  int get upgradesMesAtual => _mesAtual(upgradesPorMes);
 
   /// Lê o mapa de metas com retrocompatibilidade: usa `metas` quando existir;
   /// senão converte a meta única antiga (tipoMeta/valorMeta) ou a legada

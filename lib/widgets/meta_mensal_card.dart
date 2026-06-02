@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
 
 // ── Tipos de meta disponíveis ─────────────────────────────────────────────────
@@ -14,6 +15,10 @@ enum _TipoMeta {
   casaisCaptados,
   vendasCaptadas,
   valorCaptado,
+  // Pós-venda
+  mensagensPosVenda, // percentual de contratos contatados no mês
+  assinaturas, // assinaturas conseguidas no mês
+  upgrades, // upgrades realizados no mês
   // Legado (mantido para retrocompatibilidade de dados antigos)
   novosLeads;
 
@@ -31,6 +36,12 @@ enum _TipoMeta {
         return 'Vendas Captadas';
       case _TipoMeta.valorCaptado:
         return 'Valor Captado';
+      case _TipoMeta.mensagensPosVenda:
+        return 'Contatos Pós-venda';
+      case _TipoMeta.assinaturas:
+        return 'Assinaturas';
+      case _TipoMeta.upgrades:
+        return 'Upgrades';
       case _TipoMeta.novosLeads:
         return 'Novos Leads';
     }
@@ -50,6 +61,12 @@ enum _TipoMeta {
         return Icons.shopping_bag_outlined;
       case _TipoMeta.valorCaptado:
         return Icons.savings_outlined;
+      case _TipoMeta.mensagensPosVenda:
+        return Icons.mark_chat_read_outlined;
+      case _TipoMeta.assinaturas:
+        return Icons.draw_outlined;
+      case _TipoMeta.upgrades:
+        return Icons.upgrade;
       case _TipoMeta.novosLeads:
         return Icons.person_add_outlined;
     }
@@ -57,6 +74,9 @@ enum _TipoMeta {
 
   bool get isMonetario =>
       this == _TipoMeta.valorVendido || this == _TipoMeta.valorCaptado;
+
+  /// Meta expressa em porcentagem (0–100).
+  bool get isPercentual => this == _TipoMeta.mensagensPosVenda;
 
   String get toKey => name;
 
@@ -77,6 +97,13 @@ enum _TipoMeta {
         _TipoMeta.valorCaptado,
       ];
     }
+    if (p == 'pós-venda' || p == 'pos-venda') {
+      return const [
+        _TipoMeta.mensagensPosVenda,
+        _TipoMeta.assinaturas,
+        _TipoMeta.upgrades,
+      ];
+    }
     return const [
       _TipoMeta.fechamentos,
       _TipoMeta.valorVendido,
@@ -89,6 +116,9 @@ enum _TipoMeta {
       this == _TipoMeta.vendasCaptadas ||
       this == _TipoMeta.valorCaptado;
 }
+
+/// Meta padrão de contatos do pós-venda (% dos contratos no mês).
+const double kMetaPadraoPosVenda = 80.0;
 
 // ── Widget principal ──────────────────────────────────────────────────────────
 class MetaMensalCard extends StatefulWidget {
@@ -124,6 +154,11 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   // Dados complementares para metas que não saem da lista `clientes`.
   int _interacoesMes = 0;
   List<Cliente> _clientesCaptados = const [];
+  // Contratos do pós-venda (para a meta de % contatados no mês).
+  int _contratosTotal = 0;
+  int _contratosContatados = 0;
+  // Usuário (contadores de assinaturas/upgrades) — carregado para pós-venda.
+  Usuario? _usuario;
 
   static const _meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril',
@@ -132,6 +167,27 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   ];
 
   List<_TipoMeta> get _tiposDisponiveis => _TipoMeta.paraPerfil(widget.perfil);
+
+  bool get _ehPosVenda =>
+      _tiposDisponiveis.contains(_TipoMeta.mensagensPosVenda);
+
+  /// O pós-venda só visualiza (a meta é definida pelo admin).
+  bool get _soLeitura => _ehPosVenda;
+
+  /// Metas efetivas: para o pós-venda, garante a meta padrão (80%) de contatos
+  /// quando o admin ainda não definiu, e inclui assinaturas/upgrades se houver.
+  Map<String, double> get _metasEfetivas {
+    if (_ehPosVenda) {
+      return {
+        'mensagensPosVenda':
+            _metas['mensagensPosVenda'] ?? kMetaPadraoPosVenda,
+        if (_metas.containsKey('assinaturas'))
+          'assinaturas': _metas['assinaturas']!,
+        if (_metas.containsKey('upgrades')) 'upgrades': _metas['upgrades']!,
+      };
+    }
+    return _metas;
+  }
 
   @override
   void initState() {
@@ -145,11 +201,18 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     final captados = _tiposDisponiveis.any((t) => t.isCaptacao)
         ? await _service.getClientesCaptados(widget.userId)
         : const <Cliente>[];
+    final contratos =
+        _ehPosVenda ? await _service.getContratos() : const <dynamic>[];
+    final usuario = _ehPosVenda ? await _service.getUsuario(widget.userId) : null;
     if (mounted) {
       setState(() {
         _metas = metas;
         _interacoesMes = interacoes;
         _clientesCaptados = captados;
+        _contratosTotal = contratos.length;
+        _contratosContatados =
+            contratos.where((c) => c.contatadoEsteMes == true).length;
+        _usuario = usuario;
         _carregando = false;
       });
     }
@@ -205,6 +268,16 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 _esteMs(c.dataFechamento ?? c.dataAtualizacao))
             .fold(0.0, (soma, c) => soma + (c.valorVendido ?? 0.0));
 
+      case _TipoMeta.mensagensPosVenda:
+        if (_contratosTotal == 0) return 0;
+        return _contratosContatados / _contratosTotal * 100;
+
+      case _TipoMeta.assinaturas:
+        return (_usuario?.assinaturasMesAtual ?? 0).toDouble();
+
+      case _TipoMeta.upgrades:
+        return (_usuario?.upgradesMesAtual ?? 0).toDouble();
+
       case _TipoMeta.novosLeads:
         return widget.clientes
             .where((c) => _esteMs(c.dataCadastro))
@@ -214,6 +287,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   }
 
   String _formatarValor(double v, _TipoMeta tipo) {
+    if (tipo.isPercentual) return '${v.round()}%';
     if (tipo.isMonetario) {
       return v >= 1000 ? _moedaCompacto.format(v) : _moeda.format(v);
     }
@@ -221,6 +295,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   }
 
   String _formatarMeta(double v, _TipoMeta tipo) {
+    if (tipo.isPercentual) return '${v.round()}%';
     if (tipo.isMonetario) return _moedaCompacto.format(v);
     return v.toInt().toString();
   }
@@ -350,9 +425,11 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     final cs = Theme.of(context).colorScheme;
     final agora = DateTime.now();
     final nomeMes = _meses[agora.month - 1];
+    final metas = _metasEfetivas;
 
     // ── Sem metas definidas ───────────────────────────────────────────────
-    if (_metas.isEmpty) {
+    // (Não se aplica ao pós-venda, que sempre tem a meta padrão de 80%.)
+    if (metas.isEmpty) {
       return Card(
         margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: InkWell(
@@ -396,7 +473,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
 
     // ── Com metas definidas ───────────────────────────────────────────────
     // Ordena pelas posições dos tipos do perfil; tipos legados vão ao fim.
-    final tiposOrdenados = _metas.keys
+    final tiposOrdenados = metas.keys
         .map(_TipoMeta.fromKey)
         .toList()
       ..sort((a, b) {
@@ -421,17 +498,18 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 14)),
                 ),
-                IconButton(
-                  icon:
-                      Icon(Icons.edit_outlined, size: 18, color: cs.outline),
-                  onPressed: () => _editarMetas(context),
-                  tooltip: 'Editar metas',
-                  visualDensity: VisualDensity.compact,
-                ),
+                if (!_soLeitura)
+                  IconButton(
+                    icon: Icon(Icons.edit_outlined,
+                        size: 18, color: cs.outline),
+                    onPressed: () => _editarMetas(context),
+                    tooltip: 'Editar metas',
+                    visualDensity: VisualDensity.compact,
+                  ),
               ],
             ),
             const SizedBox(height: 4),
-            ...tiposOrdenados.map((tipo) => _linhaMeta(cs, tipo)),
+            ...tiposOrdenados.map((tipo) => _linhaMeta(cs, tipo, metas)),
           ],
         ),
       ),
@@ -439,8 +517,8 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   }
 
   // ── Linha compacta de uma meta ────────────────────────────────────────────
-  Widget _linhaMeta(ColorScheme cs, _TipoMeta tipo) {
-    final alvo = _metas[tipo.toKey] ?? 0.0;
+  Widget _linhaMeta(ColorScheme cs, _TipoMeta tipo, Map<String, double> metas) {
+    final alvo = metas[tipo.toKey] ?? 0.0;
     final progresso = _calcularProgresso(tipo);
     final pct = (alvo == 0 ? 0.0 : progresso / alvo).clamp(0.0, 1.0);
     final atingiu = progresso >= alvo;
@@ -449,6 +527,13 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
         : pct >= 0.7
             ? Colors.orange.shade600
             : cs.primary;
+
+    // Total acumulado (somente para metas com contagem total no usuário).
+    final int? total = tipo == _TipoMeta.assinaturas
+        ? _usuario?.assinaturasTotal
+        : tipo == _TipoMeta.upgrades
+            ? _usuario?.upgradesTotal
+            : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -463,7 +548,10 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(tipo.label,
+                      child: Text(
+                          total != null
+                              ? '${tipo.label}  ·  $total no total'
+                              : tipo.label,
                           style: const TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w600),
                           overflow: TextOverflow.ellipsis),
