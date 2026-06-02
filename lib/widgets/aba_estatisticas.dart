@@ -3,18 +3,37 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../screens/lista_clientes_screen.dart';
+import '../widgets/filtro_periodo.dart';
 import '../widgets/meta_mensal_card.dart';
 
-class AbaEstatisticas extends StatelessWidget {
+class AbaEstatisticas extends StatefulWidget {
   final List<Cliente> clientes;
+
   /// Quando fornecido, exibe o MetaMensalCard no topo da aba (rola junto).
   final String? userId;
 
-  const AbaEstatisticas({super.key, required this.clientes, this.userId});
+  /// Perfil do dono da aba — define os tipos de meta oferecidos no card.
+  final String? perfil;
+
+  const AbaEstatisticas(
+      {super.key, required this.clientes, this.userId, this.perfil});
+
+  @override
+  State<AbaEstatisticas> createState() => _AbaEstatisticasState();
+}
+
+class _AbaEstatisticasState extends State<AbaEstatisticas> {
+  FiltroPeriodo _filtro = const FiltroPeriodo(periodo: Periodo.tudo);
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // O filtro de período aplica à data de cadastro — não afeta o card de meta.
+    final clientes = widget.clientes
+        .where((c) => _filtro.contem(c.dataCadastro))
+        .toList();
+
     final total = clientes.length;
     final visitasAgendadas = clientes.where((c) => c.dataVisita != null).length;
     final fechados = clientes.where((c) => c.fase == FaseCliente.fechado).length;
@@ -25,11 +44,24 @@ class AbaEstatisticas extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Meta mensal do vendedor (só quando userId é fornecido)
-          if (userId != null) ...[
-            MetaMensalCard(userId: userId!, clientes: clientes),
+          // Meta mensal do vendedor (só quando userId é fornecido) — sempre
+          // sobre a lista completa, independente do filtro de período.
+          if (widget.userId != null) ...[
+            MetaMensalCard(
+                userId: widget.userId!,
+                clientes: widget.clientes,
+                perfil: widget.perfil),
             const SizedBox(height: 20),
           ],
+
+          // ── Filtro de período ────────────────────────────────────────────
+          FiltroPeriodoBar(
+            filtro: _filtro,
+            onChanged: (f) => setState(() => _filtro = f),
+            legenda: 'Filtro aplica à data de cadastro dos leads',
+          ),
+          const SizedBox(height: 20),
+
           _sectionTitle(context, 'Resumo Geral'),
           const SizedBox(height: 12),
           Row(children: [
@@ -68,7 +100,7 @@ class AbaEstatisticas extends StatelessWidget {
               .where((f) => f != FaseCliente.atendimento)
               .map(
                 (fase) => _itemFunil(context, fase,
-                    clientes.where((c) => c.fase == fase).length, cs),
+                    clientes.where((c) => c.fase == fase).length, total, cs),
               ),
           const SizedBox(height: 16),
         ],
@@ -125,10 +157,10 @@ class AbaEstatisticas extends StatelessWidget {
     );
   }
 
-  Widget _itemFunil(
-      BuildContext context, FaseCliente fase, int qtd, ColorScheme cs) {
+  Widget _itemFunil(BuildContext context, FaseCliente fase, int qtd, int total,
+      ColorScheme cs) {
     final cor = _corDeFase(fase, cs);
-    final pct = clientes.isEmpty ? 0.0 : qtd / clientes.length;
+    final pct = total == 0 ? 0.0 : qtd / total;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 6),

@@ -56,3 +56,47 @@ test('super admin altera perfil de outro usuário', async () => {
     updateDoc(doc(db, 'usuarios/vendedor_a'), { perfil: 'pós-venda' }),
   );
 });
+
+// ── Meta própria (#editar-meta) ───────────────────────────────────────────────
+// Comportamento desejado: o próprio usuário pode editar SOMENTE os campos de
+// meta no seu doc (tipoMeta/valorMeta/metaMensal/interacoesPorMes), sem poder
+// escalar privilégio nem mexer no doc de outro usuário.
+
+test('vendedor edita a própria meta (tipoMeta + valorMeta)', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertSucceeds(
+    updateDoc(doc(db, 'usuarios/vendedor_a'), {
+      tipoMeta: 'fechamentos',
+      valorMeta: 5,
+    }),
+  );
+});
+
+test('vendedor NÃO edita a meta de outro usuário', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertFails(
+    updateDoc(doc(db, 'usuarios/admin'), {
+      tipoMeta: 'fechamentos',
+      valorMeta: 5,
+    }),
+  );
+});
+
+test('vendedor NÃO escala privilégio junto com a meta', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertFails(
+    updateDoc(doc(db, 'usuarios/vendedor_a'), {
+      valorMeta: 5,
+      perfil: 'admin',
+    }),
+  );
+});
+
+test('vendedor incrementa o próprio contador de interações', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertSucceeds(
+    updateDoc(doc(db, 'usuarios/vendedor_a'), {
+      interacoesPorMes: { '2026-6': 1 },
+    }),
+  );
+});

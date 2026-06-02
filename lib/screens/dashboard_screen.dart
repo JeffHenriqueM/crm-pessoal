@@ -7,6 +7,7 @@ import '../widgets/aba_admin_overview.dart';
 import '../widgets/aba_captacao.dart';
 import '../widgets/aba_estatisticas.dart';
 import '../widgets/aba_financeiro.dart';
+import '../widgets/aba_metas.dart';
 import '../widgets/aba_motivos_perda.dart';
 import '../widgets/aba_relatorios.dart';
 
@@ -75,7 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 6 : 3,
+      length: isAdmin ? 7 : 3,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -92,6 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           tabAlignment: TabAlignment.start,
           tabs: [
             Tab(text: 'Equipe',       icon: Icon(Icons.groups_outlined)),
+            Tab(text: 'Meta',         icon: Icon(Icons.flag_outlined)),
             Tab(text: 'Financeiro',   icon: Icon(Icons.account_balance_outlined)),
             Tab(text: 'Captação',     icon: Icon(Icons.campaign_outlined)),
             Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
@@ -117,18 +119,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 todosClientes: todos,
                 todosVendedores: _todosVendedores,
               ),
-              // 1 — Financeiro
+              // 1 — Meta (visão de todas as metas + inatividade)
+              AbaMetas(
+                todosClientes: todos,
+                todosUsuarios: _todosVendedores,
+              ),
+              // 2 — Financeiro
               AbaFinanceiro(clientes: todos),
-              // 2 — Captação (com filtro interno por captador)
+              // 3 — Captação (com filtro interno por captador)
               AbaCaptacao(
                 clientes: todos,
                 todosUsuarios: _todosVendedores,
               ),
-              // 3 — Estatísticas
+              // 4 — Estatísticas
               AbaEstatisticas(clientes: todos),
-              // 4 — Relatórios
+              // 5 — Relatórios
               AbaRelatorios(clientes: todos),
-              // 5 — Perdas
+              // 6 — Perdas
               AbaMotivosPerda(clientes: todos),
             ],
           );
@@ -164,7 +171,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final clientes = snapshot.data ?? [];
           return TabBarView(
             children: [
-              AbaEstatisticas(clientes: clientes, userId: _vendedorIdFiltro),
+              AbaEstatisticas(
+                  clientes: clientes,
+                  userId: _vendedorIdFiltro,
+                  perfil: _userProfile),
               AbaRelatorios(clientes: clientes),
               AbaMotivosPerda(clientes: clientes),
             ],

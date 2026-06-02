@@ -6,8 +6,15 @@ import '../services/firestore_service.dart';
 
 // ── Tipos de meta disponíveis ─────────────────────────────────────────────────
 enum _TipoMeta {
+  // Vendedor
   fechamentos,
   valorVendido,
+  mensagensEnviadas,
+  // Captador / recepção
+  casaisCaptados,
+  vendasCaptadas,
+  valorCaptado,
+  // Legado (mantido para retrocompatibilidade de dados antigos)
   novosLeads;
 
   String get label {
@@ -16,6 +23,14 @@ enum _TipoMeta {
         return 'Fechamentos';
       case _TipoMeta.valorVendido:
         return 'Valor Vendido';
+      case _TipoMeta.mensagensEnviadas:
+        return 'Mensagens';
+      case _TipoMeta.casaisCaptados:
+        return 'Casais Captados';
+      case _TipoMeta.vendasCaptadas:
+        return 'Vendas Captadas';
+      case _TipoMeta.valorCaptado:
+        return 'Valor Captado';
       case _TipoMeta.novosLeads:
         return 'Novos Leads';
     }
@@ -27,6 +42,14 @@ enum _TipoMeta {
         return 'Quantos clientes fechados no mês?';
       case _TipoMeta.valorVendido:
         return 'Quanto em vendas (R\$) no mês?';
+      case _TipoMeta.mensagensEnviadas:
+        return 'Quantas mensagens/interações com clientes no mês?';
+      case _TipoMeta.casaisCaptados:
+        return 'Quantos casais captados no mês?';
+      case _TipoMeta.vendasCaptadas:
+        return 'Quantas vendas dos seus leads captados no mês?';
+      case _TipoMeta.valorCaptado:
+        return 'Quanto em vendas (R\$) dos seus captados no mês?';
       case _TipoMeta.novosLeads:
         return 'Quantos novos leads cadastrados no mês?';
     }
@@ -38,28 +61,80 @@ enum _TipoMeta {
         return Icons.handshake_outlined;
       case _TipoMeta.valorVendido:
         return Icons.attach_money_outlined;
+      case _TipoMeta.mensagensEnviadas:
+        return Icons.forum_outlined;
+      case _TipoMeta.casaisCaptados:
+        return Icons.favorite_outline;
+      case _TipoMeta.vendasCaptadas:
+        return Icons.shopping_bag_outlined;
+      case _TipoMeta.valorCaptado:
+        return Icons.savings_outlined;
       case _TipoMeta.novosLeads:
         return Icons.person_add_outlined;
     }
   }
 
-  String get toKey => name; // 'fechamentos' | 'valorVendido' | 'novosLeads'
+  bool get isMonetario =>
+      this == _TipoMeta.valorVendido || this == _TipoMeta.valorCaptado;
 
-  static _TipoMeta fromKey(String? key) {
-    switch (key) {
-      case 'valorVendido':
-        return _TipoMeta.valorVendido;
-      case 'novosLeads':
-        return _TipoMeta.novosLeads;
-      default:
-        return _TipoMeta.fechamentos;
+  /// Unidade no singular/plural para o texto de status (não-monetários).
+  String unidade(int qtd) {
+    final um = qtd == 1;
+    switch (this) {
+      case _TipoMeta.fechamentos:
+        return um ? 'fechamento' : 'fechamentos';
+      case _TipoMeta.mensagensEnviadas:
+        return um ? 'mensagem' : 'mensagens';
+      case _TipoMeta.casaisCaptados:
+        return um ? 'casal' : 'casais';
+      case _TipoMeta.vendasCaptadas:
+        return um ? 'venda' : 'vendas';
+      case _TipoMeta.novosLeads:
+        return um ? 'lead' : 'leads';
+      case _TipoMeta.valorVendido:
+      case _TipoMeta.valorCaptado:
+        return '';
     }
   }
+
+  String get toKey => name;
+
+  static _TipoMeta fromKey(String? key) {
+    return _TipoMeta.values.firstWhere(
+      (t) => t.name == key,
+      orElse: () => _TipoMeta.fechamentos,
+    );
+  }
+
+  /// Tipos oferecidos conforme o perfil do usuário.
+  static List<_TipoMeta> paraPerfil(String? perfil) {
+    final p = perfil?.toLowerCase();
+    if (p == 'captador' || p == 'recepcao' || p == 'recepção') {
+      return const [
+        _TipoMeta.casaisCaptados,
+        _TipoMeta.vendasCaptadas,
+        _TipoMeta.valorCaptado,
+      ];
+    }
+    return const [
+      _TipoMeta.fechamentos,
+      _TipoMeta.valorVendido,
+      _TipoMeta.mensagensEnviadas,
+    ];
+  }
+
+  bool get isCaptacao =>
+      this == _TipoMeta.casaisCaptados ||
+      this == _TipoMeta.vendasCaptadas ||
+      this == _TipoMeta.valorCaptado;
 }
 
 // ── Widget principal ──────────────────────────────────────────────────────────
 class MetaMensalCard extends StatefulWidget {
   final String userId;
+
+  /// Perfil do usuário — define quais tipos de meta são oferecidos.
+  final String? perfil;
 
   /// Lista de clientes do usuário — usada para calcular progresso da meta.
   final List<Cliente> clientes;
@@ -68,6 +143,7 @@ class MetaMensalCard extends StatefulWidget {
     super.key,
     required this.userId,
     required this.clientes,
+    this.perfil,
   });
 
   @override
@@ -83,21 +159,39 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
   Map<String, dynamic>? _meta; // {tipoMeta, valorMeta}
   bool _carregando = true;
 
+  // Dados complementares para metas que não saem da lista `clientes`.
+  int _interacoesMes = 0;
+  List<Cliente> _clientesCaptados = const [];
+
   static const _meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril',
     'Maio', 'Junho', 'Julho', 'Agosto',
     'Setembro', 'Outubro', 'Novembro', 'Dezembro',
   ];
 
+  List<_TipoMeta> get _tiposDisponiveis => _TipoMeta.paraPerfil(widget.perfil);
+
   @override
   void initState() {
     super.initState();
-    _carregarMeta();
+    _carregarDados();
   }
 
-  Future<void> _carregarMeta() async {
+  Future<void> _carregarDados() async {
     final meta = await _service.getMeta(widget.userId);
-    if (mounted) setState(() { _meta = meta; _carregando = false; });
+    final interacoes = await _service.getInteracoesMesAtual(widget.userId);
+    // Leads captados só são necessários para perfis de captação.
+    final captados = _tiposDisponiveis.any((t) => t.isCaptacao)
+        ? await _service.getClientesCaptados(widget.userId)
+        : const <Cliente>[];
+    if (mounted) {
+      setState(() {
+        _meta = meta;
+        _interacoesMes = interacoes;
+        _clientesCaptados = captados;
+        _carregando = false;
+      });
+    }
   }
 
   // ── Helpers de data ───────────────────────────────────────────────────────
@@ -106,8 +200,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     return DateTime(agora.year, agora.month, 1);
   }
 
-  bool _esteMs(DateTime? dt) =>
-      dt != null && !dt.isBefore(_inicioMes);
+  bool _esteMs(DateTime? dt) => dt != null && !dt.isBefore(_inicioMes);
 
   // ── Cálculo do progresso ──────────────────────────────────────────────────
   double _calcularProgresso(_TipoMeta tipo) {
@@ -127,6 +220,30 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 _esteMs(c.dataFechamento ?? c.dataAtualizacao))
             .fold(0.0, (soma, c) => soma + (c.valorVendido ?? 0.0));
 
+      case _TipoMeta.mensagensEnviadas:
+        return _interacoesMes.toDouble();
+
+      case _TipoMeta.casaisCaptados:
+        return _clientesCaptados
+            .where((c) => _esteMs(c.dataCadastro))
+            .length
+            .toDouble();
+
+      case _TipoMeta.vendasCaptadas:
+        return _clientesCaptados
+            .where((c) =>
+                c.fase == FaseCliente.fechado &&
+                _esteMs(c.dataFechamento ?? c.dataAtualizacao))
+            .length
+            .toDouble();
+
+      case _TipoMeta.valorCaptado:
+        return _clientesCaptados
+            .where((c) =>
+                c.fase == FaseCliente.fechado &&
+                _esteMs(c.dataFechamento ?? c.dataAtualizacao))
+            .fold(0.0, (soma, c) => soma + (c.valorVendido ?? 0.0));
+
       case _TipoMeta.novosLeads:
         return widget.clientes
             .where((c) => _esteMs(c.dataCadastro))
@@ -137,14 +254,14 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
 
   // ── Formata o valor de progresso conforme o tipo ─────────────────────────
   String _formatarValor(double v, _TipoMeta tipo) {
-    if (tipo == _TipoMeta.valorVendido) {
+    if (tipo.isMonetario) {
       return v >= 1000 ? _moedaCompacto.format(v) : _moeda.format(v);
     }
     return v.toInt().toString();
   }
 
   String _formatarMeta(double v, _TipoMeta tipo) {
-    if (tipo == _TipoMeta.valorVendido) {
+    if (tipo.isMonetario) {
       return _moedaCompacto.format(v);
     }
     return v.toInt().toString();
@@ -152,16 +269,21 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
 
   // ── Dialog de edição ─────────────────────────────────────────────────────
   Future<void> _editarMeta(BuildContext context) async {
-    final tipoAtual = _TipoMeta.fromKey(_meta?['tipoMeta'] as String?);
+    // Captura antes de qualquer await para não usar BuildContext após async gap.
+    final messenger = ScaffoldMessenger.of(context);
+    final corErro = Theme.of(context).colorScheme.error;
+
+    final tipos = _tiposDisponiveis;
+    final tipoAtual = _meta != null
+        ? _TipoMeta.fromKey(_meta!['tipoMeta'] as String?)
+        : tipos.first;
     final valorAtual = (_meta?['valorMeta'] as double?);
 
-    _TipoMeta tipoSelecionado = tipoAtual;
+    // Garante que o tipo atual pertence aos tipos do perfil.
+    _TipoMeta tipoSelecionado =
+        tipos.contains(tipoAtual) ? tipoAtual : tipos.first;
     final ctrl = TextEditingController(
-        text: valorAtual != null
-            ? (tipoAtual == _TipoMeta.valorVendido
-                ? valorAtual.toInt().toString()
-                : valorAtual.toInt().toString())
-            : '');
+        text: valorAtual != null ? valorAtual.toInt().toString() : '');
 
     final resultado = await showDialog<Map<String, dynamic>?>(
       context: context,
@@ -191,7 +313,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
-                  children: _TipoMeta.values.map((t) {
+                  children: tipos.map((t) {
                     final sel = tipoSelecionado == t;
                     final cs = Theme.of(ctx).colorScheme;
                     return ChoiceChip(
@@ -205,8 +327,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                                   ? cs.onPrimaryContainer
                                   : cs.onSurface)),
                       selected: sel,
-                      onSelected: (_) =>
-                          setSt(() => tipoSelecionado = t),
+                      onSelected: (_) => setSt(() => tipoSelecionado = t),
                     );
                   }).toList(),
                 ),
@@ -229,7 +350,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                   style: const TextStyle(
                       fontSize: 28, fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
-                    labelText: tipoSelecionado == _TipoMeta.valorVendido
+                    labelText: tipoSelecionado.isMonetario
                         ? 'Valor alvo (R\$)'
                         : 'Quantidade alvo',
                     border: const OutlineInputBorder(),
@@ -245,8 +366,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 onPressed: () => Navigator.of(ctx).pop(<String, dynamic>{}),
                 child: Text('Remover meta',
                     style: TextStyle(
-                        color: Theme.of(ctx).colorScheme.error,
-                        fontSize: 13)),
+                        color: Theme.of(ctx).colorScheme.error, fontSize: 13)),
               ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(null),
@@ -270,17 +390,31 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     );
 
     ctrl.dispose();
-    if (!mounted || resultado == null) return;
+    if (resultado == null) return;
 
-    if (resultado.isEmpty) {
-      // Remover meta
-      await _service.atualizarMeta(widget.userId, 'fechamentos', null);
-      if (mounted) setState(() => _meta = null);
-    } else {
-      final tipo = resultado['tipoMeta'] as String;
-      final valor = resultado['valorMeta'] as double;
-      await _service.atualizarMeta(widget.userId, tipo, valor);
-      if (mounted) setState(() => _meta = resultado);
+    try {
+      if (resultado.isEmpty) {
+        // Remover meta
+        await _service.atualizarMeta(widget.userId, 'fechamentos', null);
+        if (mounted) setState(() => _meta = null);
+      } else {
+        final tipo = resultado['tipoMeta'] as String;
+        final valor = resultado['valorMeta'] as double;
+        await _service.atualizarMeta(widget.userId, tipo, valor);
+        if (mounted) setState(() => _meta = resultado);
+      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Meta atualizada.')),
+      );
+    } catch (e) {
+      debugPrint('[MetaMensalCard] Erro ao salvar meta: $e');
+      messenger.showSnackBar(
+        SnackBar(
+          content:
+              const Text('Não foi possível salvar a meta. Tente novamente.'),
+          backgroundColor: corErro,
+        ),
+      );
     }
   }
 
@@ -355,7 +489,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     if (atingiu) {
       if (excedeu) {
         final extra = progresso - alvo;
-        statusTexto = tipo == _TipoMeta.valorVendido
+        statusTexto = tipo.isMonetario
             ? '🎉 Meta atingida! ${_moedaCompacto.format(extra)} além do esperado.'
             : '🎉 Meta atingida! ${extra.toInt()} além do esperado.';
       } else {
@@ -363,14 +497,11 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
       }
     } else {
       final falta = alvo - progresso;
-      if (tipo == _TipoMeta.valorVendido) {
+      if (tipo.isMonetario) {
         statusTexto = '${_moedaCompacto.format(falta)} para atingir a meta';
       } else {
         final qtd = falta.ceil();
-        final suf = tipo == _TipoMeta.fechamentos
-            ? (qtd == 1 ? 'fechamento' : 'fechamentos')
-            : (qtd == 1 ? 'lead' : 'leads');
-        statusTexto = '$qtd $suf para atingir a meta';
+        statusTexto = '$qtd ${tipo.unidade(qtd)} para atingir a meta';
       }
     }
 
@@ -400,9 +531,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                         Text(
                           _formatarValor(progresso, tipo),
                           style: TextStyle(
-                            fontSize: tipo == _TipoMeta.valorVendido
-                                ? 13
-                                : 20,
+                            fontSize: tipo.isMonetario ? 13 : 20,
                             fontWeight: FontWeight.bold,
                             color: corProgresso,
                             height: 1,
@@ -428,8 +557,7 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
                 children: [
                   Row(
                     children: [
-                      Icon(tipo.icone,
-                          size: 14, color: cs.onSurfaceVariant),
+                      Icon(tipo.icone, size: 14, color: cs.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
