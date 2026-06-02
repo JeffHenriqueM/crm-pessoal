@@ -1,10 +1,8 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
-
-enum _Periodo { hoje, semana, mes, tudo, personalizado }
+import 'filtro_periodo.dart';
 
 class AbaFinanceiro extends StatefulWidget {
   final List<Cliente> clientes;
@@ -15,72 +13,18 @@ class AbaFinanceiro extends StatefulWidget {
 }
 
 class _AbaFinanceiroState extends State<AbaFinanceiro> {
-  _Periodo _periodo = _Periodo.mes;
-  DateTime? _customInicio;
-  DateTime? _customFim;
+  FiltroPeriodo _filtro = const FiltroPeriodo(periodo: Periodo.mes);
 
   static const _meses = [
     'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
     'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
   ];
 
-  static final _dateFmt = DateFormat('dd/MM/yy');
-
   List<Cliente> get _base =>
       widget.clientes.where((c) => c.fase != FaseCliente.atendimento).toList();
 
-  List<Cliente> get _filtrados {
-    final agora = DateTime.now();
-    final inicioDia = DateTime(agora.year, agora.month, agora.day);
-    switch (_periodo) {
-      case _Periodo.hoje:
-        return _base
-            .where((c) => !c.dataCadastro.isBefore(inicioDia))
-            .toList();
-      case _Periodo.semana:
-        final ini = inicioDia.subtract(Duration(days: agora.weekday - 1));
-        return _base.where((c) => !c.dataCadastro.isBefore(ini)).toList();
-      case _Periodo.mes:
-        final ini = DateTime(agora.year, agora.month, 1);
-        return _base.where((c) => !c.dataCadastro.isBefore(ini)).toList();
-      case _Periodo.tudo:
-        return _base;
-      case _Periodo.personalizado:
-        if (_customInicio != null && _customFim != null) {
-          final fim = DateTime(
-              _customFim!.year, _customFim!.month, _customFim!.day + 1);
-          return _base
-              .where((c) =>
-                  !c.dataCadastro.isBefore(_customInicio!) &&
-                  c.dataCadastro.isBefore(fim))
-              .toList();
-        }
-        return _base;
-    }
-  }
-
-  Future<void> _onPeriodoChanged(Set<_Periodo> s) async {
-    final p = s.first;
-    if (p == _Periodo.personalizado) {
-      final range = await showDateRangePicker(
-        context: context,
-        firstDate: DateTime(2020),
-        lastDate: DateTime.now(),
-        initialDateRange: _customInicio != null && _customFim != null
-            ? DateTimeRange(start: _customInicio!, end: _customFim!)
-            : null,
-      );
-      if (range != null && mounted) {
-        setState(() {
-          _periodo = _Periodo.personalizado;
-          _customInicio = range.start;
-          _customFim = range.end;
-        });
-      }
-    } else {
-      setState(() => _periodo = p);
-    }
-  }
+  List<Cliente> get _filtrados =>
+      _base.where((c) => _filtro.contem(c.dataCadastro)).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -102,51 +46,11 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Filtro de período ────────────────────────────────────────
-          SegmentedButton<_Periodo>(
-            segments: const [
-              ButtonSegment(value: _Periodo.hoje, label: Text('Hoje')),
-              ButtonSegment(value: _Periodo.semana, label: Text('Semana')),
-              ButtonSegment(value: _Periodo.mes, label: Text('Mês')),
-              ButtonSegment(value: _Periodo.tudo, label: Text('Tudo')),
-              ButtonSegment(
-                value: _Periodo.personalizado,
-                icon: Icon(Icons.calendar_month_outlined, size: 15),
-              ),
-            ],
-            selected: {_periodo},
-            onSelectionChanged: (s) { _onPeriodoChanged(s); },
+          FiltroPeriodoBar(
+            filtro: _filtro,
+            onChanged: (f) => setState(() => _filtro = f),
+            legenda: 'Filtro aplica à data de cadastro dos leads',
           ),
-          const SizedBox(height: 4),
-          if (_periodo == _Periodo.personalizado &&
-              _customInicio != null &&
-              _customFim != null)
-            Row(
-              children: [
-                Icon(Icons.date_range, size: 12, color: cs.primary),
-                const SizedBox(width: 4),
-                Text(
-                  '${_dateFmt.format(_customInicio!)} – ${_dateFmt.format(_customFim!)}',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: cs.primary,
-                      fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () => setState(() {
-                    _periodo = _Periodo.mes;
-                    _customInicio = null;
-                    _customFim = null;
-                  }),
-                  child: Icon(Icons.close, size: 12, color: cs.primary),
-                ),
-              ],
-            )
-          else
-            Text(
-              'Filtro aplica à data de cadastro dos leads',
-              style: TextStyle(fontSize: 11, color: cs.outline),
-            ),
           const SizedBox(height: 24),
 
           // ── KPI cards ────────────────────────────────────────────────

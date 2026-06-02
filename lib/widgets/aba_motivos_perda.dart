@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import 'filtro_periodo.dart';
 
 class AbaMotivosPerda extends StatefulWidget {
   final List<Cliente> clientes;
@@ -79,12 +80,14 @@ class AbaMotivosPerda extends StatefulWidget {
 
 class _AbaMotivosPerdaState extends State<AbaMotivosPerda> {
   int _touchedIndex = -1;
+  FiltroPeriodo _filtro = const FiltroPeriodo(periodo: Periodo.tudo);
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final perdidos = widget.clientes
         .where((c) => c.fase == FaseCliente.perdido)
+        .where((c) => _filtro.contem(c.dataAtualizacao))
         .toList()
       ..sort((a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
 
@@ -113,6 +116,14 @@ class _AbaMotivosPerdaState extends State<AbaMotivosPerda> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Filtro de período ─────────────────────────────────────────────
+          FiltroPeriodoBar(
+            filtro: _filtro,
+            onChanged: (f) => setState(() => _filtro = f),
+            legenda: 'Filtro aplica à data da perda (última atualização)',
+          ),
+          const SizedBox(height: 20),
+
           // ── KPIs ──────────────────────────────────────────────────────────
           Row(children: [
             _kpi(cs, '$total', 'Perdidos\ntotal',

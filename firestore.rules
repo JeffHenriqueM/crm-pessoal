@@ -22,6 +22,14 @@ service cloud.firestore {
       return perfil() == 'super admin';
     }
 
+    // Edição de meta própria: o usuário pode alterar SOMENTE os campos de meta
+    // e o contador de interações no seu próprio doc — nunca perfil/ativo (evita
+    // escalonamento de privilégio).
+    function soMexeEmCamposDeMeta() {
+      let permitidos = ['tipoMeta', 'valorMeta', 'metaMensal', 'interacoesPorMes'];
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(permitidos);
+    }
+
     // Dono de um lead: uid aparece em qualquer campo de atribuição.
     function isDono(data) {
       return data.vendedorId == request.auth.uid
@@ -57,11 +65,15 @@ service cloud.firestore {
     // ── Usuários ────────────────────────────────────────────────────────────
     // Leitura: qualquer autenticado (necessário para verificar perfis na app).
     // Criação: o próprio usuário cria seu doc, ou gestor cria para outros.
-    // Atualização: exclusivo de super admin (evita escalonamento de privilégio).
+    // Atualização: gestor pode tudo (gerência de usuários); o próprio usuário
+    // pode editar SOMENTE os campos de meta/contador no seu doc.
     match /usuarios/{docId} {
       allow read:   if isAuth();
       allow create: if isAuth() && (request.auth.uid == docId || isGestor());
-      allow update: if isAuth() && isGestor();
+      allow update: if isAuth() && (
+                      isGestor() ||
+                      (request.auth.uid == docId && soMexeEmCamposDeMeta())
+                    );
       allow delete: if false;
     }
 

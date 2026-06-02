@@ -326,7 +326,25 @@ class FirestoreService {
         if (interacao.houveResposta)
           'no_response_count': 0,
       }),
+      // Contador mensal de interações do autor (meta "mensagens enviadas").
+      _incrementarContadorInteracaoUsuario(),
     ]);
+  }
+
+  /// Chave do mês no formato 'AAAA-M' (ex.: '2026-6'), usada no mapa
+  /// `interacoesPorMes` do usuário. Mantida em um único lugar para que
+  /// gravação (contador) e leitura (progresso da meta) usem o mesmo formato.
+  static String chaveMesDe(DateTime dt) => '${dt.year}-${dt.month}';
+  String chaveMesAtual() => chaveMesDe(DateTime.now());
+
+  /// Incrementa em 1 o contador de interações do usuário logado no mês corrente.
+  /// Grava no próprio doc (permitido pelas regras como campo de meta/contador).
+  Future<void> _incrementarContadorInteracaoUsuario() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    await _db.collection('usuarios').doc(uid).set({
+      'interacoesPorMes': {chaveMesAtual(): FieldValue.increment(1)},
+    }, SetOptions(merge: true));
   }
 
   Future<void> atualizarInteracao(String clienteId, Interacao interacao) async {
@@ -642,6 +660,37 @@ class FirestoreService {
       'valorMeta': valor,
       'metaMensal': null, // limpa campo legado
     });
+  }
+
+  /// Leads captados por um captador/recepção (campo captadorId). Usado para
+  /// medir o progresso das metas de captação (casais captados, vendas captadas).
+  Future<List<Cliente>> getClientesCaptados(String captadorId) async {
+    try {
+      final snap = await _db
+          .collection(_colClientes)
+          .where('captadorId', isEqualTo: captadorId)
+          .get();
+      return snap.docs
+          .map((d) => Cliente.fromFirestore(d))
+          .where((c) => !c.deletado)
+          .toList();
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar clientes captados: $e');
+      return [];
+    }
+  }
+
+  /// Total de interações registradas pelo usuário no mês corrente — usado para
+  /// medir o progresso da meta "mensagens enviadas". Retorna 0 se não houver.
+  Future<int> getInteracoesMesAtual(String userId) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(userId).get();
+      final mapa = doc.data()?['interacoesPorMes'] as Map<String, dynamic>?;
+      if (mapa == null) return 0;
+      return (mapa[chaveMesAtual()] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// [Legado] Retorna a meta mensal atual de um usuário.
