@@ -164,17 +164,14 @@ class AbaMetas extends StatelessWidget {
     return !dt.isBefore(DateTime(agora.year, agora.month, 1));
   }
 
-  /// Retorna (rótulo do tipo, alvo, progresso, monetário) ou null se sem meta.
-  ({String tipo, double alvo, double progresso, bool monetario})? _meta(
+  /// Calcula (rótulo, alvo, progresso, monetário) de uma meta específica.
+  ({String tipo, double alvo, double progresso, bool monetario}) _progresso(
+    String tipoKey,
+    double alvo,
     Usuario u,
     List<Cliente> seusLeads,
     List<Cliente> captados,
   ) {
-    final tipoKey =
-        u.tipoMeta ?? (u.metaMensal != null ? 'fechamentos' : null);
-    final alvo = u.valorMeta ?? u.metaMensal?.toDouble();
-    if (tipoKey == null || alvo == null) return null;
-
     double progresso;
     bool monetario = false;
     String rotulo;
@@ -233,13 +230,14 @@ class AbaMetas extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final moeda = NumberFormat.compactCurrency(
         locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
-    final meta = _meta(u, seusLeads, captados);
+    final metas = u.metas; // {tipoKey: alvo}
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _avatar(u.nome, cs),
             const SizedBox(width: 12),
@@ -251,56 +249,58 @@ class AbaMetas extends StatelessWidget {
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 4),
-                  if (meta == null)
+                  if (metas.isEmpty)
                     Text('Sem meta definida',
                         style: TextStyle(fontSize: 12, color: cs.outline))
-                  else ...[
-                    Builder(builder: (_) {
-                      final pct = (meta.alvo == 0
-                              ? 0.0
-                              : meta.progresso / meta.alvo)
+                  else
+                    ...metas.entries.map((e) {
+                      final m = _progresso(
+                          e.key, e.value, u, seusLeads, captados);
+                      final pct = (m.alvo == 0 ? 0.0 : m.progresso / m.alvo)
                           .clamp(0.0, 1.0);
-                      final atingiu = meta.progresso >= meta.alvo;
+                      final atingiu = m.progresso >= m.alvo;
                       final cor = atingiu
                           ? Colors.green.shade600
                           : pct >= 0.7
                               ? Colors.orange.shade600
                               : cs.primary;
-                      String fmt(double v) => meta.monetario
-                          ? moeda.format(v)
-                          : v.toInt().toString();
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(meta.tipo,
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: cs.onSurfaceVariant)),
-                              Text('${fmt(meta.progresso)} / ${fmt(meta.alvo)}',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: cor)),
-                            ],
-                          ),
-                          const SizedBox(height: 5),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: pct,
-                              backgroundColor: cor.withValues(alpha: 0.12),
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(cor),
-                              minHeight: 6,
+                      String fmt(double v) =>
+                          m.monetario ? moeda.format(v) : v.toInt().toString();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(m.tipo,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant)),
+                                Text('${fmt(m.progresso)} / ${fmt(m.alvo)}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: cor)),
+                              ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 5),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: pct,
+                                backgroundColor: cor.withValues(alpha: 0.12),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(cor),
+                                minHeight: 6,
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     }),
-                  ],
                 ],
               ),
             ),

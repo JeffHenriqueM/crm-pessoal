@@ -104,7 +104,8 @@ class _AbaAdminOverviewState extends State<AbaAdminOverview> {
         vendedorId: v.id,
         vendedorNome: v.nome,
         clientes: clientes,
-        metaMensal: v.metaMensal,
+        // Mostra a meta de fechamentos (novo mapa) com fallback ao campo legado.
+        metaMensal: v.metas['fechamentos']?.toInt() ?? v.metaMensal,
       ));
     }
 

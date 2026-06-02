@@ -662,6 +662,55 @@ class FirestoreService {
     });
   }
 
+  /// Retorna o mapa de metas do usuário {tipoMeta: valorAlvo}, permitindo
+  /// várias metas simultâneas. Retrocompatível com o formato antigo (meta
+  /// única em tipoMeta/valorMeta) e o legado (metaMensal → fechamentos).
+  Future<Map<String, double>> getMetas(String userId) async {
+    try {
+      final doc = await _db.collection('usuarios').doc(userId).get();
+      final data = doc.data();
+      if (data == null) return {};
+
+      final raw = data['metas'];
+      if (raw is Map && raw.isNotEmpty) {
+        return raw.map((k, v) => MapEntry(k as String, (v as num).toDouble()));
+      }
+      // Retrocompatibilidade: meta única antiga.
+      if (data['valorMeta'] != null) {
+        return {
+          (data['tipoMeta'] as String?) ?? 'fechamentos':
+              (data['valorMeta'] as num).toDouble(),
+        };
+      }
+      // Legado: metaMensal (fechamentos).
+      final legado = data['metaMensal'] as int?;
+      if (legado != null) return {'fechamentos': legado.toDouble()};
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Substitui o conjunto de metas do usuário. Passe o mapa completo
+  /// {tipoMeta: valor}; um mapa vazio remove todas as metas. Limpa os campos
+  /// legados de meta única.
+  ///
+  /// O campo `metas` é apagado antes de ser regravado para garantir a
+  /// substituição (e não um merge) das chaves — comportamento consistente
+  /// entre o Firestore real e o fake usado nos testes.
+  Future<void> definirMetas(String userId, Map<String, double> metas) async {
+    final ref = _db.collection('usuarios').doc(userId);
+    await ref.update({
+      'metas': FieldValue.delete(),
+      'tipoMeta': null,
+      'valorMeta': null,
+      'metaMensal': null,
+    });
+    if (metas.isNotEmpty) {
+      await ref.update({'metas': metas});
+    }
+  }
+
   /// Leads captados por um captador/recepção (campo captadorId). Usado para
   /// medir o progresso das metas de captação (casais captados, vendas captadas).
   Future<List<Cliente>> getClientesCaptados(String captadorId) async {
