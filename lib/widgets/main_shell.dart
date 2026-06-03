@@ -4,6 +4,7 @@ import '../screens/apresentacao_screen.dart';
 import '../screens/campanhas_screen.dart';
 import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/fluxo_cliente_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
@@ -78,6 +79,13 @@ class _MainShellState extends State<MainShell> {
     label: 'Tickets',
   );
 
+  // ── Item de fluxo do cliente — visível apenas para admin ─────────────────
+  static const _fluxoItem = _NavItem(
+    icon: Icons.account_tree_outlined,
+    activeIcon: Icons.account_tree,
+    label: 'Fluxo',
+  );
+
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
     // ── Admin: Dashboard primeiro ─────────────────────────────────
@@ -90,6 +98,7 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.description_outlined,      activeIcon: Icons.description,           label: 'Pós-Venda'),
         _apresentacaoItem,
         _ticketsItem,
+        _fluxoItem,
         _recepcaoItem,
       ];
     }
@@ -136,6 +145,7 @@ class _MainShellState extends State<MainShell> {
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      const FluxoClienteScreen(),
       const RecepcaoShell(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
