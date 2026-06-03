@@ -26,7 +26,7 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
   int _passo = 0;
   bool _mostrarTodos = false;
   Timer? _auto;
-  final FocusNode _focus = FocusNode();
+  int _total = 1; // total de nós do fluxo atual (atualizado no build)
 
   bool get _tocando => _auto != null;
 
@@ -48,17 +48,37 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
   @override
   void initState() {
     super.initState();
-    // Garante que a tela receba os eventos de teclado (setas ← →) no web.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
-    });
+    // Captura global das setas do teclado — funciona mesmo quando o foco está
+    // num botão da barra de controle (caso em que CallbackShortcuts/Focus falha
+    // no web, pois as setas viram navegação de foco).
+    HardwareKeyboard.instance.addHandler(_aoTeclar);
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_aoTeclar);
     _auto?.cancel();
-    _focus.dispose();
     super.dispose();
+  }
+
+  // Handler global de teclas: ← ↑ voltam · → ↓ avançam.
+  bool _aoTeclar(KeyEvent event) {
+    if (!mounted) return false;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+    final k = event.logicalKey;
+    if (k == LogicalKeyboardKey.arrowRight ||
+        k == LogicalKeyboardKey.arrowDown) {
+      _pausar();
+      _proximo(_total);
+      return true;
+    }
+    if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.arrowUp) {
+      _pausar();
+      _anterior();
+      return true;
+    }
+    return false;
   }
 
   // ── Navegação ──────────────────────────────────────────────────────────────
@@ -90,7 +110,6 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
   }
 
   void _tocarCard(int i, int total) {
-    _focus.requestFocus(); // reativa o teclado após o clique
     _pausar();
     // Clicar no card atual avança; clicar em outro pula para ele.
     if (i == _passo) {
@@ -129,6 +148,7 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
     final cs = Theme.of(context).colorScheme;
     final nos = _nos(cs);
     final total = nos.length;
+    _total = total;
     if (_passo >= total) _passo = total - 1;
 
     return Scaffold(
@@ -154,34 +174,9 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
           ),
         ],
       ),
-      body: CallbackShortcuts(
-        bindings: <ShortcutActivator, VoidCallback>{
-          const SingleActivator(LogicalKeyboardKey.arrowRight): () {
-            _pausar();
-            _proximo(total);
-          },
-          const SingleActivator(LogicalKeyboardKey.arrowDown): () {
-            _pausar();
-            _proximo(total);
-          },
-          const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
-            _pausar();
-            _anterior();
-          },
-          const SingleActivator(LogicalKeyboardKey.arrowUp): () {
-            _pausar();
-            _anterior();
-          },
-        },
-        child: Focus(
-          focusNode: _focus,
-          autofocus: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => _focus.requestFocus(),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-          child: Column(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Processo comercial',
@@ -233,10 +228,7 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
               _legenda(cs),
             ],
           ),
-            ),
-          ),
         ),
-      ),
     );
   }
 
@@ -327,20 +319,29 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
   }
 
   List<_No> _entradaPresencial() => const [
-        _No('Reserva', 'Cliente reserva no resort.',
+        _No('Reserva', 'Cliente realiza sua reserva',
             Icons.event_available_outlined, _corPresencial),
-        _No('Mensagem pré-chegada', 'Recebe mensagem sobre o resort.',
+        _No('Mensagem de convite', 'Recebe mensagem sobre o resort.',
             Icons.sms_outlined, _corPresencial),
-        _No('Check-in', 'Imagens e tablet na recepção.',
-            Icons.meeting_room_outlined, _corPresencial),
-        _No('No quarto', 'Panfleto; brinde se for conhecer.',
+        _No(
+            'Check-in',
+            'Imagem do resort na parede e tablet com informações: "Aproveite enquanto espera para conhecer nosso resort (arraste pro lado)".',
+            Icons.meeting_room_outlined,
+            _corPresencial),
+        _No('Na acomodação', 'Panfleto; brinde se for conhecer.',
             Icons.hotel_outlined, _corPresencial),
         _No('Captadora', 'Aborda e convida a conhecer o projeto.',
             Icons.record_voice_over_outlined, _corPresencial),
-        _No('Restaurante', 'Vídeos do projeto e tablet.',
-            Icons.restaurant_outlined, _corPresencial),
-        _No('Qualificação', 'Recepção/captadora avaliam o perfil.',
-            Icons.fact_check_outlined, _corQualif),
+        _No(
+            'Restaurante',
+            'Vídeo de divulgação do resort passando na televisão e tablet para o cliente poder visualizar.',
+            Icons.restaurant_outlined,
+            _corPresencial),
+        _No(
+            'Qualificação',
+            'Captadora avalia o perfil e combina agendamento para assistir à apresentação, ou já leva para a sala.',
+            Icons.fact_check_outlined,
+            _corQualif),
         _No('Foi conhecer?', 'Sim → Apresentação · Não → Nutrição.',
             Icons.help_outline, _corQualif, tag: 'Decisão'),
       ];
@@ -361,9 +362,6 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
   List<_No> _caudaCompartilhada(ColorScheme cs) => [
         const _No('Apresentação', 'Os dois fluxos convergem aqui.',
             Icons.slideshow_outlined, _corApresentacao),
-        _No('Tornou-se sócio', 'Pós-venda + Indique e Ganhe ↻.',
-            Icons.handshake_outlined, Colors.green.shade600,
-            tag: 'Desfecho'),
         _No('Sem interesse', 'Entra na lista de atualizações.',
             Icons.bookmark_added_outlined, cs.primary, tag: 'Desfecho'),
         _No('Quer pensar', 'Follow-up — segue no funil ↻.',
@@ -371,6 +369,9 @@ class _FluxoClienteScreenState extends State<FluxoClienteScreen> {
         const _No('Nutrição / Re-engajamento',
             'WhatsApp, e-mail e tráfego pago trazem o cliente de volta ↻.',
             Icons.autorenew, _corNutricao),
+        _No('Tornou-se sócio', 'Pós-venda + Indique e Ganhe ↻.',
+            Icons.handshake_outlined, Colors.green.shade600,
+            tag: 'Desfecho'),
       ];
 
   // ── Legenda ────────────────────────────────────────────────────────────────
