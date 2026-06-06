@@ -4,7 +4,9 @@ import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/aba_admin_overview.dart';
+import '../widgets/aba_calibracao.dart';
 import '../widgets/aba_captacao.dart';
+import '../widgets/aba_desempenho_vendedor.dart';
 import '../widgets/aba_estatisticas.dart';
 import '../widgets/aba_financeiro.dart';
 import '../widgets/aba_metas.dart';
@@ -78,7 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 9 : 5,
+      length: isAdmin ? 11 : 5,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -103,6 +105,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
             Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
             Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
+            Tab(text: 'Desempenho',   icon: Icon(Icons.speed_outlined)),
+            Tab(text: 'Calibração',   icon: Icon(Icons.science_outlined)),
           ],
         ),
       ),
@@ -153,6 +157,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
+              // 9 — Desempenho de Vendedor (diagnóstico vs média do time)
+              AbaDesempenhoVendedor(
+                todosClientes: todos,
+                todosVendedores: _todosVendedores,
+              ),
+              // 10 — Calibração dos sinais (backtest dos pesos)
+              AbaCalibracao(todosClientes: todos),
             ],
           );
         },
