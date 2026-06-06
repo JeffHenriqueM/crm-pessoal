@@ -10,6 +10,7 @@ import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/lista_clientes_screen.dart';
 import '../screens/pos_venda_screen.dart';
 import '../screens/recepcao_screen.dart';
+import 'aba_analise_imoveis.dart';
 import 'aba_pos_venda.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/vendedor_home_screen.dart';
@@ -870,7 +871,7 @@ class _PosVendaHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Pós-Venda'),
@@ -880,6 +881,7 @@ class _PosVendaHomeScreen extends StatelessWidget {
             tabs: [
               Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
               Tab(text: 'Contratos',   icon: Icon(Icons.description_outlined)),
+              Tab(text: 'Análise',     icon: Icon(Icons.analytics_outlined)),
             ],
           ),
         ),
@@ -887,6 +889,7 @@ class _PosVendaHomeScreen extends StatelessWidget {
           children: [
             const AbaPosVenda(),
             PosVendaScreen(userProfile: userProfile),
+            AbaAnaliseImoveis(userProfile: userProfile),
           ],
         ),
       ),

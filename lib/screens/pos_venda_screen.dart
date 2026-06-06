@@ -244,11 +244,22 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         await _fs.salvarContratosLote(fatia);
         overlay.update(i + fatia.length);
       }
+      // Projeta os contratos linkáveis nas cotas dos imóveis (Análise).
+      // Falha aqui não invalida a importação — apenas avisa.
+      String sufixoCotas = '';
+      try {
+        final res = await _fs.sincronizarCotas();
+        sufixoCotas = ' · ${res.cotas} cotas sincronizadas';
+      } catch (e) {
+        debugPrint('Falha ao sincronizar cotas após import: $e');
+      }
+
       overlay.dismiss();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${contratos.length} contratos importados com sucesso!'),
+            content: Text(
+                '${contratos.length} contratos importados com sucesso!$sufixoCotas'),
             backgroundColor: Colors.green,
           ),
         );
