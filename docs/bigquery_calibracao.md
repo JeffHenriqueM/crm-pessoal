@@ -4,6 +4,11 @@
 > de Silêncio realmente preveem fechamento. Há duas camadas: a **local** (já
 > pronta, dentro do app) e a **de escala** (BigQuery, descrita aqui para você
 > executar no console quando quiser).
+>
+> 👉 **Para ativar e rodar:** o passo a passo de console + as queries prontas
+> (SQL real, ajustado ao schema deste projeto) estão em
+> **[`bigquery_runbook.md`](bigquery_runbook.md)**. Este documento é o "porquê";
+> o runbook é o "como".
 
 ---
 
