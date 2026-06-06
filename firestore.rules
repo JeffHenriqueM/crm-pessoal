@@ -117,6 +117,20 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // ── Imóveis (inventário do empreendimento) e suas cotas ───────────────────
+    // Leitura: qualquer autenticado (aba Análise da Pós-Venda).
+    // Escrita: gestores — admin/super admin geram o inventário (seed) e a
+    // sincronização de cotas roda no fluxo de importação da pós-venda.
+    match /imoveis/{docId} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && isGestor();
+    }
+
+    match /imoveis/{imovelId}/cotas/{docId} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && isGestor();
+    }
+
     // ── Produtos ──────────────────────────────────────────────────────────────
     // Leitura: qualquer autenticado (necessário para negociações e apresentações).
     // Escrita: exclusivo de super admin.
