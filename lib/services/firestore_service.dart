@@ -321,6 +321,8 @@ class FirestoreService {
       clienteRef.collection('interacoes').add(_flagTeste(dados)),
       clienteRef.update({
         'interaction_count': FieldValue.increment(1),
+        // Marca a data do último contato real (base do "Risco de Silêncio").
+        'ultimoContato': FieldValue.serverTimestamp(),
         if (!interacao.houveResposta)
           'no_response_count': FieldValue.increment(1),
         if (interacao.houveResposta)
