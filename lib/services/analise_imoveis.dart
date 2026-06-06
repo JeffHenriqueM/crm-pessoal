@@ -227,6 +227,18 @@ Map<String, List<Cota>> projetarCotas(List<Contrato> contratos) {
 List<Contrato> contratosAvulsos(List<Contrato> contratos) =>
     contratos.where((c) => imovelIdDoContrato(c) == null).toList();
 
+/// Explica por que um contrato avulso não casa com Bloco B/C/Bangalô.
+String motivoAvulso(Contrato c) {
+  final bloco = normalizarBloco(c.bloco);
+  if (bloco == null) {
+    return 'Bloco fora da 1ª etapa: "${c.bloco.isEmpty ? '—' : c.bloco}"';
+  }
+  if (bloco == 'BANGALO') {
+    return 'Bangalô sem letra válida (F–Q): "${c.imovel}"';
+  }
+  return 'Imóvel fora do range do Bloco $bloco: "${c.imovel}"';
+}
+
 // ── Resultado da análise ────────────────────────────────────────────────────
 
 enum SituacaoImovel { indefinido, parcial, esgotado }
