@@ -50,6 +50,35 @@ Map<int, List<VendaMes>> vendasPorAno(List<Contrato> contratos) {
   return out;
 }
 
+// ── Permuta ─────────────────────────────────────────────────────────────────
+// Provisório: ainda não há marcação de permuta nos contratos, então
+// identificamos pelos compradores conhecidos. Cada entrada é uma lista de
+// tokens que precisam TODOS aparecer no nome (robusto a nome do meio/abreviação).
+const List<List<String>> kCompradoresPermuta = [
+  ['mateus', 'camilo'],
+];
+
+String _semAcento(String s) {
+  const de = 'áàâãäéèêëíìîïóòôõöúùûüç';
+  const para = 'aaaaaeeeeiiiiooooouuuuc';
+  var r = s.toLowerCase();
+  for (var i = 0; i < de.length; i++) {
+    r = r.replaceAll(de[i], para[i]);
+  }
+  return r;
+}
+
+/// True se o contrato é venda por permuta (pelo comprador conhecido).
+bool ehPermuta(Contrato c) {
+  final nome = _semAcento(c.nomeComprador);
+  return kCompradoresPermuta
+      .any((tokens) => tokens.every((t) => nome.contains(_semAcento(t))));
+}
+
+/// Contratos vendidos por permuta.
+List<Contrato> contratosPermuta(List<Contrato> contratos) =>
+    contratos.where(ehPermuta).toList();
+
 /// Total a receber: soma dos saldos restantes dos contratos não quitados.
 double valorAReceber(List<Contrato> contratos) =>
     contratos.where((c) => !c.estaQuitado).fold(0.0, (s, c) => s + c.saldoRestante);

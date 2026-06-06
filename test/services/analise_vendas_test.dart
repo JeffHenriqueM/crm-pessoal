@@ -83,6 +83,28 @@ void main() {
     expect(dataAtualizacaoDados(cs), DateTime(2026, 5, 30));
   });
 
+  group('permuta', () {
+    test('identifica pelo comprador conhecido (acento/caixa/nome do meio)', () {
+      expect(ehPermuta(_c(id: '1')), isFalse);
+      final mateus = Contrato(
+          localizador: 'p1',
+          localizadorAtendimento: '',
+          nomeComprador: 'MATEUS ANTONIO CAMILO');
+      final mateus2 = Contrato(
+          localizador: 'p2',
+          localizadorAtendimento: '',
+          nomeComprador: 'Mateus Antônio Camilo');
+      final outro = Contrato(
+          localizador: 'o1',
+          localizadorAtendimento: '',
+          nomeComprador: 'João da Silva');
+      expect(ehPermuta(mateus), isTrue);
+      expect(ehPermuta(mateus2), isTrue);
+      expect(ehPermuta(outro), isFalse);
+      expect(contratosPermuta([mateus, mateus2, outro]).length, 2);
+    });
+  });
+
   group('contratosSemPagamento', () {
     final agora = DateTime(2026, 6, 6);
     test('inclui em atraso e vencidos há muito; exclui quitados e em dia', () {

@@ -1350,6 +1350,17 @@ class _SecaoDados extends StatelessWidget {
     final inadValor = contratos.fold<double>(0, (s, c) => s + c.valorAtrasado);
     final inadCount = contratos.where((c) => c.valorAtrasado > 0).length;
 
+    // (1) e (13) Permuta — por enquanto pelo comprador conhecido.
+    final permutas = contratosPermuta(contratos);
+    final imovelTipo = {for (final a in r.imoveis) a.imovel.id: a.imovel.tipo};
+    final permutaPorTipo = <String, int>{};
+    for (final c in permutas) {
+      final id = imovelIdDoContrato(c);
+      final tipo = id != null ? imovelTipo[id] : null;
+      final cat = tipo != null ? _tituloCategoria(tipo) : 'Avulso';
+      permutaPorTipo[cat] = (permutaPorTipo[cat] ?? 0) + 1;
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -1357,16 +1368,33 @@ class _SecaoDados extends StatelessWidget {
             style: tt.bodySmall?.copyWith(color: Colors.grey)),
         const SizedBox(height: 8),
 
-        // 1) Permuta (sem dado ainda)
+        // 1) Permuta (por comprador conhecido)
         _Expansivel(
           chaveId: 'dados-permuta',
           titulo: 'Quantos foram vendidos por permuta?',
-          resumo: 'a definir',
+          resumo: '${permutas.length}',
           children: [
             _notaPendente(context,
-                'Ainda não há marcação de permuta nos contratos (ex.: as do '
-                'Mateus Antônio Camilo). Me diga como identificar — por nome do '
-                'comprador, uma flag no Excel, etc. — que eu calculo aqui.'),
+                'Provisório: identificado pelo comprador (Mateus Antônio Camilo). '
+                'Quando houver marcação própria no Excel, troco por ela.'),
+            const SizedBox(height: 4),
+            if (permutas.isEmpty)
+              _notaPendente(context, 'Nenhum contrato de permuta encontrado.'),
+            for (final c in permutas)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.swap_horiz, size: 18),
+                title: Text(c.nomeComprador,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('${c.cota} · ${c.bloco} ${c.imovel} · ${c.produto}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: Text(_moedaCompacta.format(c.valorTotalReajustado),
+                    style: const TextStyle(fontSize: 12)),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => FichaContratoScreen(contrato: c),
+                )),
+              ),
           ],
         ),
 
@@ -1474,15 +1502,17 @@ class _SecaoDados extends StatelessWidget {
           ],
         ),
 
-        // 13) Permutas por tipo (sem dado)
+        // 13) Permutas por tipo
         _Expansivel(
           chaveId: 'dados-permutas-tipo',
           titulo: 'Quantas permutas por tipo foram feitas',
-          resumo: 'a definir',
+          resumo: '${permutas.length}',
           children: [
-            _notaPendente(context,
-                'Depende da marcação de permuta (item acima). Definido isso, '
-                'quebro por tipo de apartamento.'),
+            if (permutas.isEmpty)
+              _notaPendente(context, 'Nenhuma permuta encontrada.'),
+            for (final e in (permutaPorTipo.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value))))
+              _linhaDado(context, e.key, '${e.value}'),
           ],
         ),
 
