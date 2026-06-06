@@ -1038,7 +1038,8 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
         _produtosFirestore = lista;
         _carregandoProdutos = false;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Falha ao carregar produtos: $e');
       if (mounted) setState(() => _carregandoProdutos = false);
     }
   }

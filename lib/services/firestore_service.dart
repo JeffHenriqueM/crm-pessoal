@@ -1209,12 +1209,19 @@ class FirestoreService {
   static const _colProdutos = 'produtos';
 
   Stream<List<Produto>> getProdutosStream({bool apenasAtivos = true}) {
-    Query query = _db.collection(_colProdutos);
-    if (apenasAtivos) query = query.where('ativo', isEqualTo: true);
-    return query
+    // Filtra `ativo` no CLIENTE de propósito: combinar where('ativo') com
+    // orderBy('ordem') exigiria um índice composto no Firestore. Sem ele, a
+    // query falhava silenciosamente e a tela de proposta mostrava "Nenhum
+    // produto cadastrado" mesmo com produtos ativos. Ordenar por 'ordem' (campo
+    // único) usa o índice automático; o filtro de ativos é trivial em memória.
+    return _db
+        .collection(_colProdutos)
         .orderBy('ordem')
         .snapshots()
-        .map((s) => s.docs.map((d) => Produto.fromFirestore(d)).toList());
+        .map((s) {
+      final lista = s.docs.map((d) => Produto.fromFirestore(d)).toList();
+      return apenasAtivos ? lista.where((p) => p.ativo).toList() : lista;
+    });
   }
 
   Future<void> salvarProduto(Map<String, dynamic> dados, {String? id}) async {
