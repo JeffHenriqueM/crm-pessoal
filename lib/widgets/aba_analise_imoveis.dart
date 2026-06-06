@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/contrato_model.dart';
+import '../models/cota_model.dart';
 import '../models/imovel_model.dart';
+import '../screens/ficha_contrato_screen.dart';
 import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
 
@@ -58,7 +60,10 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
           builder: (context, snapContratos) {
             final contratos = snapContratos.data ?? [];
             final resumo = analisarEmpreendimento(imoveis, contratos);
-            return _buildConteudo(context, resumo);
+            final contratosPorId = {
+              for (final c in contratos) c.localizador: c,
+            };
+            return _buildConteudo(context, resumo, contratosPorId);
           },
         );
       },
@@ -99,9 +104,35 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
     );
   }
 
-  Widget _buildConteudo(BuildContext context, ResumoAnalise r) {
+  Widget _buildConteudo(
+    BuildContext context,
+    ResumoAnalise r,
+    Map<String, Contrato> contratosPorId,
+  ) {
+    final tt = Theme.of(context).textTheme;
     return Column(
       children: [
+        // Total de unidades no topo.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Row(
+            children: [
+              Text('${r.totalUnidades} unidades',
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: _ocupado ? null : _sincronizar,
+                icon: _ocupado
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.sync, size: 18),
+                label: const Text('Sincronizar cotas'),
+              ),
+            ],
+          ),
+        ),
         // Seletor de seção
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -119,38 +150,11 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
         const Divider(height: 1),
         Expanded(
           child: switch (_secao) {
-            0 => _SecaoEspelho(resumo: r),
+            0 => _SecaoEspelho(resumo: r, contratosPorId: contratosPorId),
             1 => _SecaoCotas(resumo: r),
             2 => _SecaoVendas(resumo: r),
             _ => _SecaoSaude(resumo: r),
           },
-        ),
-        // Barra de ações (sincronizar)
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${r.totalUnidades} unidades · ${r.totalCotasVendidas} cotas vendidas',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _ocupado ? null : _sincronizar,
-                  icon: _ocupado
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.sync, size: 18),
-                  label: const Text('Sincronizar cotas'),
-                ),
-              ],
-            ),
-          ),
         ),
       ],
     );
@@ -251,12 +255,31 @@ String _pavimentoLabel(String p) {
       return 'Térreo';
     case 'unico':
       return 'Bangalôs';
+    case '1':
+      return 'Primeiro andar';
+    case '2':
+      return 'Segundo andar';
+    case '3':
+      return 'Terceiro andar';
+    case '4':
+      return 'Quarto andar';
+    case '5':
+      return 'Quinto andar';
     default:
-      return '$pº pavimento';
+      return '$pº andar';
   }
 }
 
 int _numeroOrdenavel(String numero) => int.tryParse(numero) ?? 0;
+
+/// Extrai o número da cota ('Cota-06' → 6). 'Integral' → null.
+int? _numeroDaCota(String label) {
+  final m = RegExp(r'(\d+)').firstMatch(label);
+  return m == null ? null : int.tryParse(m.group(1)!);
+}
+
+/// Rótulo padronizado de uma cota: 'Cota-06'.
+String _rotuloCota(int n) => 'Cota-${n.toString().padLeft(2, '0')}';
 
 // ════════════════════════════════════════════════════════════════════════════
 // SEÇÃO 1 — ESPELHO DE VENDA
@@ -264,7 +287,8 @@ int _numeroOrdenavel(String numero) => int.tryParse(numero) ?? 0;
 
 class _SecaoEspelho extends StatelessWidget {
   final ResumoAnalise resumo;
-  const _SecaoEspelho({required this.resumo});
+  final Map<String, Contrato> contratosPorId;
+  const _SecaoEspelho({required this.resumo, required this.contratosPorId});
 
   @override
   Widget build(BuildContext context) {
@@ -330,7 +354,10 @@ class _SecaoEspelho extends StatelessWidget {
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: [for (final a in itens) _UnidadeChip(analise: a)],
+            children: [
+              for (final a in itens)
+                _UnidadeChip(analise: a, contratosPorId: contratosPorId)
+            ],
           ),
         ],
       ),
@@ -368,41 +395,84 @@ class _LegendaEspelho extends StatelessWidget {
 
 class _UnidadeChip extends StatelessWidget {
   final AnaliseImovel analise;
-  const _UnidadeChip({required this.analise});
+  final Map<String, Contrato> contratosPorId;
+  const _UnidadeChip({required this.analise, required this.contratosPorId});
 
   @override
   Widget build(BuildContext context) {
-    final cor = _corSituacao(analise.situacao);
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => showModalBottomSheet(
-        context: context,
-        showDragHandle: true,
-        builder: (_) => _DetalheImovel(analise: analise),
-      ),
-      child: Container(
-        width: 52,
-        height: 40,
-        decoration: BoxDecoration(
-          color: cor.withValues(alpha: 0.18),
-          border: Border.all(color: cor, width: 1.4),
-          borderRadius: BorderRadius.circular(8),
+    final a = analise;
+    final cor = _corSituacao(a.situacao);
+    final temVenda = a.cotasVendidas > 0;
+
+    final tooltip = a.cotasTotal == null
+        ? 'Apto ${a.imovel.numero} · disponível (sem cota definida)'
+        : 'Apto ${a.imovel.numero} · ${a.cotasVendidas} vendida(s) · ${a.disponiveis} disponível(is)';
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => showModalBottomSheet(
+          context: context,
+          showDragHandle: true,
+          isScrollControlled: true,
+          builder: (_) => _DetalheImovel(
+            analise: a,
+            contratosPorId: contratosPorId,
+          ),
         ),
-        child: Stack(
-          children: [
-            Center(
-              child: Text(
-                analise.imovel.numero,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        child: Container(
+          width: 56,
+          height: 48,
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          decoration: BoxDecoration(
+            color: cor.withValues(alpha: 0.18),
+            border: Border.all(color: cor, width: 1.4),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Stack(
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Contagem de vendidas em cima.
+                  SizedBox(
+                    height: 11,
+                    child: temVenda
+                        ? Text('${a.cotasVendidas}▲',
+                            style: TextStyle(
+                                fontSize: 9,
+                                height: 1,
+                                color: Colors.green.shade800,
+                                fontWeight: FontWeight.w600))
+                        : null,
+                  ),
+                  Text(
+                    a.imovel.numero,
+                    style: const TextStyle(
+                        fontSize: 13, height: 1, fontWeight: FontWeight.w700),
+                  ),
+                  // Disponíveis embaixo.
+                  SizedBox(
+                    height: 11,
+                    child: (temVenda && a.disponiveis != null)
+                        ? Text('${a.disponiveis}▼',
+                            style: TextStyle(
+                                fontSize: 9,
+                                height: 1,
+                                color: Colors.grey.shade700))
+                        : null,
+                  ),
+                ],
               ),
-            ),
-            if (analise.temAlerta)
-              const Positioned(
-                top: 1,
-                right: 1,
-                child: Icon(Icons.error, size: 11, color: Colors.red),
-              ),
-          ],
+              if (a.temAlerta)
+                const Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Icon(Icons.error, size: 11, color: Colors.red),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -411,123 +481,225 @@ class _UnidadeChip extends StatelessWidget {
 
 class _DetalheImovel extends StatelessWidget {
   final AnaliseImovel analise;
-  const _DetalheImovel({required this.analise});
+  final Map<String, Contrato> contratosPorId;
+  const _DetalheImovel({required this.analise, required this.contratosPorId});
 
   @override
   Widget build(BuildContext context) {
     final a = analise;
     final tt = Theme.of(context).textTheme;
     final im = a.imovel;
-    final cotas = [...a.cotas]
-      ..sort((x, y) => _numeroOrdenavel(x.numero).compareTo(_numeroOrdenavel(y.numero)));
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 12, height: 12,
-                decoration: BoxDecoration(color: _corSituacao(a.situacao), shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Text(im.bloco == 'BANGALO' ? 'Bangalô ${im.numero}' : '${im.bloco}-${im.numero}',
-                  style: tt.titleLarge),
-              const Spacer(),
-              Chip(label: Text(_labelSituacao(a.situacao)), visualDensity: VisualDensity.compact),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            [
-              im.tipo,
-              if (im.metragem != null) '${im.metragem!.toStringAsFixed(2)} m²',
-              if (a.tier != null) 'Cota ${a.tier!.label}',
-            ].join(' · '),
-            style: tt.bodyMedium?.copyWith(color: Colors.grey),
-          ),
-          const SizedBox(height: 12),
-          if (a.cotasTotal != null) ...[
+    return ConstrainedBox(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: (a.ocupacaoPct / 100).clamp(0.0, 1.0),
-                      minHeight: 8,
-                      backgroundColor: Colors.grey.shade200,
-                      valueColor: AlwaysStoppedAnimation(_corSituacao(a.situacao)),
-                    ),
-                  ),
+                Container(
+                  width: 12, height: 12,
+                  decoration: BoxDecoration(
+                      color: _corSituacao(a.situacao), shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 8),
-                Text('${a.cotasVendidas}/${a.cotasTotal}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                    im.bloco == 'BANGALO'
+                        ? 'Bangalô ${im.numero}'
+                        : '${im.bloco}-${im.numero}',
+                    style: tt.titleLarge),
+                const Spacer(),
+                Chip(
+                    label: Text(_labelSituacao(a.situacao)),
+                    visualDensity: VisualDensity.compact),
               ],
             ),
             const SizedBox(height: 4),
-            Text('${a.disponiveis} cota(s) disponível(is) · ${_moeda.format(a.receita)} em contratos',
-                style: tt.bodySmall),
-          ] else
-            Text('Sem cota vendida — tier ainda não definido', style: tt.bodySmall),
-          if (a.temAlerta) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(children: [
-                const Icon(Icons.error, color: Colors.red, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    [
-                      if (a.conflitoTier) 'Tiers misturados no mesmo imóvel',
-                      if (a.cotasDuplicadas.isNotEmpty)
-                        'Cota duplicada: ${a.cotasDuplicadas.join(', ')}',
-                    ].join(' · '),
-                    style: tt.bodySmall?.copyWith(color: Colors.red.shade900),
-                  ),
-                ),
-              ]),
+            Text(
+              [
+                im.tipo,
+                if (im.metragem != null) '${im.metragem!.toStringAsFixed(2)} m²',
+                if (a.tier != null) 'Cota ${a.tier!.label}',
+              ].join(' · '),
+              style: tt.bodyMedium?.copyWith(color: Colors.grey),
             ),
-          ],
-          const SizedBox(height: 12),
-          if (cotas.isNotEmpty) ...[
-            Text('Cotistas', style: tt.titleSmall),
-            const SizedBox(height: 4),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: cotas.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final c = cotas[i];
-                  return ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      radius: 14,
-                      child: Text(c.numero.replaceAll('Cota-', ''),
-                          style: const TextStyle(fontSize: 10)),
+            const SizedBox(height: 12),
+            if (a.cotasTotal != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: (a.ocupacaoPct / 100).clamp(0.0, 1.0),
+                        minHeight: 8,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor:
+                            AlwaysStoppedAnimation(_corSituacao(a.situacao)),
+                      ),
                     ),
-                    title: Text(c.clienteNome.isEmpty ? '(sem nome)' : c.clienteNome),
-                    subtitle: Text('${c.produto} · ${c.statusFinanceiro}'),
-                    trailing: Text(_moedaCompacta.format(c.valor),
-                        style: const TextStyle(fontSize: 12)),
-                  );
-                },
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${a.cotasVendidas}/${a.cotasTotal}',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                  '${a.disponiveis} disponível(is) · ${_moeda.format(a.receita)} em contratos',
+                  style: tt.bodySmall),
+            ] else
+              Text('Sem cota vendida — tier definido na primeira venda',
+                  style: tt.bodySmall),
+            if (a.temAlerta) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.error, color: Colors.red, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      [
+                        if (a.conflitoTier) 'Tiers misturados no mesmo imóvel',
+                        if (a.cotasDuplicadas.isNotEmpty)
+                          'Cota duplicada: ${a.cotasDuplicadas.join(', ')}',
+                      ].join(' · '),
+                      style: tt.bodySmall?.copyWith(color: Colors.red.shade900),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text('Cotas', style: tt.titleSmall),
+                const Spacer(),
+                if (a.cotasTotal != null)
+                  Text('${a.cotasVendidas} vendida(s) · ${a.disponiveis} livre(s)',
+                      style: tt.bodySmall?.copyWith(color: Colors.grey)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: _linhasCotas(context),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _linhasCotas(BuildContext context) {
+    final a = analise;
+    final vendidas = <int, Cota>{};
+    Cota? cotaUnica; // cota sem número (Integral)
+    for (final c in a.cotas) {
+      final n = _numeroDaCota(c.numero);
+      if (n == null) {
+        cotaUnica = c;
+      } else {
+        vendidas[n] = c;
+      }
+    }
+
+    final tier = a.tier;
+    final linhas = <Widget>[];
+
+    if (tier == null) {
+      if (a.cotas.isEmpty) {
+        return [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+                'Nenhuma cota vendida ainda. O tier (bronze/prata/ouro/diamante) '
+                'será definido na primeira venda.'),
+          ),
+        ];
+      }
+      for (final c in a.cotas) {
+        linhas.add(_linhaVendida(context, c.numero, c));
+      }
+      return linhas;
+    }
+
+    if (tier == TierCota.integral || tier == TierCota.diamante) {
+      final c = cotaUnica ?? vendidas[1] ?? (a.cotas.isNotEmpty ? a.cotas.first : null);
+      final label = tier == TierCota.integral ? 'Integral' : 'Cota única';
+      linhas.add(c == null ? _linhaLivre(label) : _linhaVendida(context, label, c));
+      return linhas;
+    }
+
+    for (var i = 1; i <= tier.cotasTotal; i++) {
+      final c = vendidas[i];
+      final label = _rotuloCota(i);
+      linhas.add(c == null ? _linhaLivre(label) : _linhaVendida(context, label, c));
+    }
+    return linhas;
+  }
+
+  Widget _linhaVendida(BuildContext context, String label, Cota c) {
+    final contrato = contratosPorId[c.contratoId];
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        radius: 14,
+        backgroundColor: Colors.green.shade100,
+        child: Text(label.replaceAll('Cota-', ''),
+            style: TextStyle(fontSize: 10, color: Colors.green.shade900)),
+      ),
+      title: Text(c.clienteNome.isEmpty ? '(sem nome)' : c.clienteNome),
+      subtitle: Text('$label · ${c.produto} · ${c.statusFinanceiro}',
+          maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_moedaCompacta.format(c.valor),
+              style: const TextStyle(fontSize: 12)),
+          if (contrato != null) const Icon(Icons.chevron_right, size: 18),
         ],
       ),
+      onTap: contrato == null
+          ? null
+          : () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => FichaContratoScreen(contrato: contrato),
+              ));
+            },
+    );
+  }
+
+  Widget _linhaLivre(String label) {
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        radius: 14,
+        backgroundColor: Colors.grey.shade200,
+        child: Text(label.replaceAll('Cota-', ''),
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+      ),
+      title: Text(label, style: TextStyle(color: Colors.grey.shade700)),
+      trailing: Text('Disponível',
+          style: TextStyle(
+              fontSize: 12,
+              color: Colors.green.shade700,
+              fontWeight: FontWeight.w600)),
     );
   }
 }

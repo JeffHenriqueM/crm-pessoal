@@ -22,6 +22,8 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   final _fs = FirestoreService();
 
   String _busca = '';
+  // Situação do contrato: por padrão mostra só os Ativos (null = ambos).
+  String? _filtroStatus = 'Ativo';
   String? _filtroStatusFin;
   String? _filtroAssinatura;
   String? _filtroProduto;
@@ -62,6 +64,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           c.localizador.contains(q) ||
           c.cidade.toLowerCase().contains(q);
 
+      final statusOk = _filtroStatus == null || c.status == _filtroStatus;
       final finOk =
           _filtroStatusFin == null || c.statusFinanceiro == _filtroStatusFin;
       final assOk =
@@ -69,7 +72,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           c.statusAssinatura.value == _filtroAssinatura;
       final prodOk = _filtroProduto == null || c.produto == _filtroProduto;
 
-      return buscaOk && finOk && assOk && prodOk;
+      return buscaOk && statusOk && finOk && assOk && prodOk;
     }).toList();
   }
 
@@ -163,6 +166,13 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [
+          _FilterChip(
+            label: 'Situação',
+            valor: _filtroStatus,
+            opcoes: const ['Ativo', 'Inativo'],
+            onSelecionado: (v) => setState(() => _filtroStatus = v),
+          ),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'Status financeiro',
             valor: _filtroStatusFin,
