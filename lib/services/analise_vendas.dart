@@ -10,6 +10,7 @@ class VendaMes {
   double valor; // soma de valorTotalReajustado
   int cotas; // contratos de cota fracionada
   int inteiros; // contratos de apartamento inteiro (Integral)
+  final List<Contrato> contratos = [];
   VendaMes(this.ano, this.mes,
       {this.valor = 0, this.cotas = 0, this.inteiros = 0});
 
@@ -27,6 +28,7 @@ List<VendaMes> vendasPorMes(List<Contrato> contratos) {
     if (d == null) continue;
     final vm = mapa.putIfAbsent('${d.year}-${d.month}', () => VendaMes(d.year, d.month));
     vm.valor += c.valorTotalReajustado;
+    vm.contratos.add(c);
     if (_ehIntegral(c)) {
       vm.inteiros++;
     } else {

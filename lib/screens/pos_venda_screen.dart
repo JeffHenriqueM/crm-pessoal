@@ -229,6 +229,8 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {
+            final cs = Theme.of(ctx).colorScheme;
+
             void aplicar(VoidCallback fn) {
               setState(fn);
               setSheet(() {});
@@ -236,9 +238,19 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
 
             ChoiceChip opc(String label, bool sel, VoidCallback onTap) =>
                 ChoiceChip(
-                  label: Text(label),
+                  label: Text(
+                    label,
+                    style: TextStyle(
+                      color: sel ? cs.onPrimary : cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   selected: sel,
                   showCheckmark: false,
+                  backgroundColor: cs.surfaceContainerHighest,
+                  selectedColor: cs.primary,
+                  side: BorderSide(
+                      color: sel ? Colors.transparent : cs.outlineVariant),
                   onSelected: (_) => aplicar(onTap),
                 );
 

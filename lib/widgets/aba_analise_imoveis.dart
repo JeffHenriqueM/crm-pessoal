@@ -146,7 +146,7 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
             1 => _SecaoCotas(resumo: r),
             2 => _SecaoVendas(resumo: r, contratos: contratos),
             3 => _SecaoSaude(resumo: r),
-            _ => _SecaoDados(resumo: r),
+            _ => _SecaoDados(resumo: r, contratos: contratos),
           },
         ),
       ],
@@ -257,6 +257,51 @@ int? _numeroDaCota(String label) {
 /// Rótulo padronizado de uma cota: 'Cota-06'.
 String _rotuloCota(int n) => 'Cota-${n.toString().padLeft(2, '0')}';
 
+/// Seção recolhível reutilizável (mantém o estado aberto/fechado ao rolar).
+class _Expansivel extends StatelessWidget {
+  final String chaveId;
+  final String titulo;
+  final String? resumo;
+  final bool inicial;
+  final EdgeInsetsGeometry childrenPadding;
+  final List<Widget> children;
+  const _Expansivel({
+    required this.chaveId,
+    required this.titulo,
+    this.resumo,
+    this.inicial = false,
+    this.childrenPadding = const EdgeInsets.fromLTRB(14, 0, 14, 12),
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        key: PageStorageKey(chaveId),
+        initiallyExpanded: inicial,
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(titulo,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            if (resumo != null)
+              Text(resumo!,
+                  style: tt.bodySmall?.copyWith(color: Colors.grey)),
+          ],
+        ),
+        childrenPadding: childrenPadding,
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // SEÇÃO 1 — ESPELHO DE VENDA
 // ════════════════════════════════════════════════════════════════════════════
@@ -285,7 +330,6 @@ class _SecaoEspelho extends StatelessWidget {
   }
 
   Widget _blocoView(BuildContext context, String bloco, List<AnaliseImovel> itens) {
-    final tt = Theme.of(context).textTheme;
     final nome = itens.first.imovel.blocoNome;
     final esgotados = itens.where((i) => i.situacao == SituacaoImovel.esgotado).length;
 
@@ -294,20 +338,14 @@ class _SecaoEspelho extends StatelessWidget {
       (porPav[a.imovel.pavimento] ??= []).add(a);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return _Expansivel(
+      chaveId: 'espelho-$bloco',
+      titulo: bloco == 'BANGALO' ? 'Bangalôs — $nome' : 'Bloco $bloco — $nome',
+      resumo: '${itens.length} un · $esgotados esg.',
+      inicial: bloco == 'B',
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 4),
-          child: Text('Bloco ${bloco == 'BANGALO' ? '' : '$bloco '}— $nome',
-              style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-        ),
-        Text('${itens.length} unidades · $esgotados esgotadas',
-            style: tt.bodySmall?.copyWith(color: Colors.grey)),
-        const SizedBox(height: 8),
         for (final pav in _ordemPavimentos)
           if (porPav[pav] != null) _pavimentoView(context, pav, porPav[pav]!),
-        const SizedBox(height: 12),
       ],
     );
   }
@@ -406,15 +444,17 @@ class _UnidadeChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Stack(
-            alignment: Alignment.center,
             children: [
-              // Número do apartamento ao centro.
-              Text(
-                a.imovel.numero,
-                style: const TextStyle(
-                    fontSize: 14, height: 1, fontWeight: FontWeight.w700),
+              // Número do apartamento — um pouco abaixo do centro.
+              Align(
+                alignment: const Alignment(0, 0.55),
+                child: Text(
+                  a.imovel.numero,
+                  style: const TextStyle(
+                      fontSize: 14, height: 1, fontWeight: FontWeight.w700),
+                ),
               ),
-              // Cotas vendidas no topo.
+              // Cotas vendidas no topo (um pouco maior).
               if (temVenda)
                 Positioned(
                   top: 3,
@@ -424,10 +464,10 @@ class _UnidadeChip extends StatelessWidget {
                     '${a.cotasVendidas}▲',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 9,
+                        fontSize: 11,
                         height: 1,
                         color: Colors.green.shade800,
-                        fontWeight: FontWeight.w600),
+                        fontWeight: FontWeight.w700),
                   ),
                 ),
               if (a.temAlerta)
@@ -742,24 +782,16 @@ class _CategoriaCotas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(titulo, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          for (final tier in _ordemTiers)
-            if (porTier[tier] != null) _BarraTier(rt: porTier[tier]!),
-        ],
-      ),
+    final vendidas = porTier.values.fold(0, (s, r) => s + r.cotasVendidas);
+    final total = porTier.values.fold(0, (s, r) => s + r.cotasTotal);
+    return _Expansivel(
+      chaveId: 'cotas-$titulo',
+      titulo: titulo,
+      resumo: '$vendidas/$total cotas',
+      children: [
+        for (final tier in _ordemTiers)
+          if (porTier[tier] != null) _BarraTier(rt: porTier[tier]!),
+      ],
     );
   }
 }
@@ -880,87 +912,184 @@ class _SecaoVendas extends StatelessWidget {
         ),
         const SizedBox(height: 20),
 
-        Text('Por bloco', style: tt.titleMedium),
-        const SizedBox(height: 8),
-        for (final bloco in _ordemBlocos)
-          if (r.porBloco[bloco] != null) _LinhaBloco(rb: r.porBloco[bloco]!),
+        // Por bloco (recolhível)
+        _Expansivel(
+          chaveId: 'vendas-porbloco',
+          titulo: 'Por bloco',
+          inicial: true,
+          children: [
+            for (final bloco in _ordemBlocos)
+              if (r.porBloco[bloco] != null) _LinhaBloco(rb: r.porBloco[bloco]!),
+          ],
+        ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
         Text('Vendas por mês', style: tt.titleMedium),
         const SizedBox(height: 4),
-        Text('Valor de contrato por mês (cotas + apartamentos inteiros).',
+        Text('Toque num mês para ver os contratos.',
             style: tt.bodySmall?.copyWith(color: Colors.grey)),
         const SizedBox(height: 8),
         if (anos.isEmpty)
           Text('Sem contratos com data.', style: tt.bodySmall),
-        for (final ano in anos) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 8, bottom: 4),
-            child: Text('$ano',
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        for (final ano in anos)
+          _Expansivel(
+            chaveId: 'vendas-ano-$ano',
+            titulo: '$ano',
+            resumo: _moedaCompacta
+                .format(porAno[ano]!.fold<double>(0, (s, m) => s + m.valor)),
+            inicial: ano == anos.first,
+            childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+            children: [_LinhaMeses(meses: porAno[ano]!)],
           ),
-          for (final vm in porAno[ano]!) _CardMes(vm: vm),
-        ],
 
-        const SizedBox(height: 20),
-        Row(
+        const SizedBox(height: 12),
+        _Expansivel(
+          chaveId: 'vendas-sempagamento',
+          titulo: 'Sem pagamento há tempo',
+          resumo: '${semPagamento.length}',
           children: [
-            const Icon(Icons.warning_amber_rounded, size: 18, color: Colors.deepOrange),
-            const SizedBox(width: 6),
-            Text('Sem pagamento há tempo', style: tt.titleMedium),
-            const Spacer(),
-            Text('${semPagamento.length}', style: tt.titleMedium),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Em atraso ou vencidos há 60+ dias.',
+                  style: tt.bodySmall?.copyWith(color: Colors.grey)),
+            ),
+            if (semPagamento.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('Nenhum contrato em atraso. 🎉', style: tt.bodySmall),
+              ),
+            for (final c in semPagamento.take(25)) _LinhaAtraso(contrato: c),
+            if (semPagamento.length > 25)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('… e mais ${semPagamento.length - 25} contrato(s).',
+                    style: tt.bodySmall?.copyWith(color: Colors.grey)),
+              ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text('Em atraso ou com vencimento vencido há 60+ dias.',
-            style: tt.bodySmall?.copyWith(color: Colors.grey)),
-        const SizedBox(height: 8),
-        if (semPagamento.isEmpty)
-          Text('Nenhum contrato em atraso. 🎉', style: tt.bodySmall),
-        for (final c in semPagamento.take(25)) _LinhaAtraso(contrato: c),
-        if (semPagamento.length > 25)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text('… e mais ${semPagamento.length - 25} contrato(s).',
-                style: tt.bodySmall?.copyWith(color: Colors.grey)),
-          ),
       ],
     );
   }
 }
 
-class _CardMes extends StatelessWidget {
+const _mesesCurto = [
+  '', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+];
+
+/// Linha horizontal de cards de mês (rolável), do mais recente ao mais antigo.
+class _LinhaMeses extends StatelessWidget {
+  final List<VendaMes> meses;
+  const _LinhaMeses({required this.meses});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [for (final vm in meses) _CardMesPequeno(vm: vm)],
+      ),
+    );
+  }
+}
+
+class _CardMesPequeno extends StatelessWidget {
   final VendaMes vm;
-  const _CardMes({required this.vm});
+  const _CardMesPequeno({required this.vm});
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final partes = <String>[
-      if (vm.cotas > 0) '${vm.cotas} cota${vm.cotas == 1 ? '' : 's'}',
-      if (vm.inteiros > 0)
-        '${vm.inteiros} inteiro${vm.inteiros == 1 ? '' : 's'}',
-    ];
     return Card(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(right: 8, bottom: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showModalBottomSheet(
+          context: context,
+          showDragHandle: true,
+          isScrollControlled: true,
+          builder: (_) => _DetalheMes(vm: vm),
+        ),
+        child: Container(
+          width: 116,
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_mesesCurto[vm.mes],
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(_moedaCompacta.format(vm.valor),
+                  style: tt.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(
+                '${vm.cotas} cota${vm.cotas == 1 ? '' : 's'}'
+                '${vm.inteiros > 0 ? ' · ${vm.inteiros} int.' : ''}',
+                style: tt.bodySmall?.copyWith(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DetalheMes extends StatelessWidget {
+  final VendaMes vm;
+  const _DetalheMes({required this.vm});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final contratos = [...vm.contratos]
+      ..sort((a, b) => b.valorTotalReajustado.compareTo(a.valorTotalReajustado));
+    return ConstrainedBox(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_meses[vm.mes],
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(partes.isEmpty ? '—' : partes.join(' · '),
-                      style: tt.bodySmall?.copyWith(color: Colors.grey)),
-                ],
+            Text('${_meses[vm.mes]} de ${vm.ano}', style: tt.titleLarge),
+            Text(
+                '${vm.total} contrato(s) · ${_moeda.format(vm.valor)}',
+                style: tt.bodySmall?.copyWith(color: Colors.grey)),
+            const Divider(),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: contratos.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final c = contratos[i];
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                        c.nomeComprador.isEmpty ? '(sem nome)' : c.nomeComprador,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                        '${c.cota.isEmpty ? '—' : c.cota} · ${c.bloco} ${c.imovel} · ${c.produto}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    trailing: Text(_moedaCompacta.format(c.valorTotalReajustado),
+                        style: const TextStyle(fontSize: 12)),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => FichaContratoScreen(contrato: c),
+                      ));
+                    },
+                  );
+                },
               ),
             ),
-            Text(_moeda.format(vm.valor),
-                style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
       ),
@@ -1157,27 +1286,216 @@ class _CardAlerta extends StatelessWidget {
 /// Painel de perguntas: cada item é uma métrica que, ao tocar, expande e mostra
 /// a resposta com o detalhamento. As perguntas serão definidas pelo usuário —
 /// começamos com algumas de exemplo (quantidade e valor vendido).
+Widget _linhaDado(BuildContext context, String rotulo, String valor) {
+  final tt = Theme.of(context).textTheme;
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Flexible(child: Text(rotulo, style: tt.bodyMedium)),
+        Text(valor, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
+}
+
+Widget _notaPendente(BuildContext context, String texto) {
+  return Align(
+    alignment: Alignment.centerLeft,
+    child: Text(texto,
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: Colors.grey, fontStyle: FontStyle.italic)),
+  );
+}
+
 class _SecaoDados extends StatelessWidget {
   final ResumoAnalise resumo;
-  const _SecaoDados({required this.resumo});
+  final List<Contrato> contratos;
+  const _SecaoDados({required this.resumo, required this.contratos});
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final r = resumo;
+
+    // (2) Apartamentos por andar e tipo.
+    final aptosPorAndarTipo = <String, Map<String, int>>{};
+    // (3) Por andar: vendidos x disponíveis.
+    final vendidosPorAndar = <String, int>{};
+    final dispPorAndar = <String, int>{};
+    // (4) Cotas vendidas por andar e categoria.
+    final cotasPorAndarCat = <String, Map<String, int>>{};
+    for (final a in r.imoveis) {
+      final pav = a.imovel.pavimento;
+      (aptosPorAndarTipo[pav] ??= {});
+      aptosPorAndarTipo[pav]![a.imovel.tipo] =
+          (aptosPorAndarTipo[pav]![a.imovel.tipo] ?? 0) + 1;
+      if (a.situacao == SituacaoImovel.indefinido) {
+        dispPorAndar[pav] = (dispPorAndar[pav] ?? 0) + 1;
+      } else {
+        vendidosPorAndar[pav] = (vendidosPorAndar[pav] ?? 0) + 1;
+      }
+      if (a.cotasVendidas > 0) {
+        (cotasPorAndarCat[pav] ??= {});
+        cotasPorAndarCat[pav]![a.imovel.tipo] =
+            (cotasPorAndarCat[pav]![a.imovel.tipo] ?? 0) + a.cotasVendidas;
+      }
+    }
+
+    // (6) Valor vendido; (9) Inadimplência.
+    final vendido = valorVendidoTotal(contratos);
+    final inadValor = contratos.fold<double>(0, (s, c) => s + c.valorAtrasado);
+    final inadCount = contratos.where((c) => c.valorAtrasado > 0).length;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        const Icon(Icons.query_stats_outlined, size: 48, color: Colors.grey),
-        const SizedBox(height: 12),
-        Text('Perguntas em definição',
-            textAlign: TextAlign.center, style: tt.titleMedium),
-        const SizedBox(height: 6),
-        Text(
-          'Me envie as perguntas/métricas que você quer ver aqui '
-          '(ex.: quantidade vendida, valor vendido) e eu adiciono cada uma '
-          'como um card com a resposta.',
-          textAlign: TextAlign.center,
-          style: tt.bodySmall?.copyWith(color: Colors.grey),
+        Text('Toque numa pergunta para ver a resposta.',
+            style: tt.bodySmall?.copyWith(color: Colors.grey)),
+        const SizedBox(height: 8),
+
+        // 1) Permuta (sem dado ainda)
+        _Expansivel(
+          chaveId: 'dados-permuta',
+          titulo: 'Quantos foram vendidos por permuta?',
+          resumo: 'a definir',
+          children: [
+            _notaPendente(context,
+                'Ainda não há marcação de permuta nos contratos (ex.: as do '
+                'Mateus Antônio Camilo). Me diga como identificar — por nome do '
+                'comprador, uma flag no Excel, etc. — que eu calculo aqui.'),
+          ],
+        ),
+
+        // 2) Apartamentos por andar e tipo
+        _Expansivel(
+          chaveId: 'dados-aptos-andar-tipo',
+          titulo: 'Quantos apartamentos por andar e tipo?',
+          resumo: '${r.totalUnidades}',
+          children: [
+            for (final pav in _ordemPavimentos)
+              if (aptosPorAndarTipo[pav] != null)
+                for (final e in aptosPorAndarTipo[pav]!.entries)
+                  _linhaDado(context,
+                      '${_pavimentoLabel(pav)} · ${_tituloCategoria(e.key)}',
+                      '${e.value}'),
+          ],
+        ),
+
+        // 3) Por andar: vendidos x disponíveis
+        _Expansivel(
+          chaveId: 'dados-andar-vend-disp',
+          titulo: 'Apartamentos por andar: vendidos e disponíveis',
+          resumo: '${r.totalComVenda}/${r.totalUnidades}',
+          children: [
+            for (final pav in _ordemPavimentos)
+              if (aptosPorAndarTipo[pav] != null)
+                _linhaDado(
+                    context,
+                    _pavimentoLabel(pav),
+                    '${vendidosPorAndar[pav] ?? 0} vend · ${dispPorAndar[pav] ?? 0} disp'),
+          ],
+        ),
+
+        // 4) Cotas vendidas por andar e tipo
+        _Expansivel(
+          chaveId: 'dados-cotas-andar-tipo',
+          titulo: 'Cotas vendidas por tipo e andar',
+          resumo: '${r.totalCotasVendidas}',
+          children: [
+            if (r.totalCotasVendidas == 0)
+              _notaPendente(context, 'Nenhuma cota vendida ainda.'),
+            for (final pav in _ordemPavimentos)
+              if (cotasPorAndarCat[pav] != null)
+                for (final e in cotasPorAndarCat[pav]!.entries)
+                  _linhaDado(context,
+                      '${_pavimentoLabel(pav)} · ${_tituloCategoria(e.key)}',
+                      '${e.value} cotas'),
+          ],
+        ),
+
+        // 5) VGV total (sem dado)
+        _Expansivel(
+          chaveId: 'dados-vgv',
+          titulo: 'VGV total da 1ª etapa',
+          resumo: 'a definir',
+          children: [
+            _notaPendente(context,
+                'Preciso do valor de tabela de cada unidade (ou o VGV total) '
+                'para calcular. Me envie a tabela de preços que eu somo aqui.'),
+          ],
+        ),
+
+        // 6) Valor vendido até o momento
+        _Expansivel(
+          chaveId: 'dados-valor-vendido',
+          titulo: 'Valor vendido até o momento',
+          resumo: _moedaCompacta.format(vendido),
+          children: [
+            _linhaDado(context, 'Total (todos os contratos)', _moeda.format(vendido)),
+            _linhaDado(context, 'Nº de contratos', '${contratos.length}'),
+          ],
+        ),
+
+        // 9) Inadimplência
+        _Expansivel(
+          chaveId: 'dados-inadimplencia',
+          titulo: 'Inadimplência (valor e contratos)',
+          resumo: _moedaCompacta.format(inadValor),
+          children: [
+            _linhaDado(context, 'Valor em atraso', _moeda.format(inadValor)),
+            _linhaDado(context, 'Contratos em atraso', '$inadCount'),
+          ],
+        ),
+
+        // 10) Distratos (sem dado)
+        _Expansivel(
+          chaveId: 'dados-distratos',
+          titulo: 'Número de distratos até o momento',
+          resumo: 'a definir',
+          children: [
+            _notaPendente(context,
+                'Não há marcação de distrato nos dados atuais. Me diga como o '
+                'distrato aparece no Excel (um status? uma data?) que eu conto.'),
+          ],
+        ),
+
+        // 12) Cronograma de obra (sem dado)
+        _Expansivel(
+          chaveId: 'dados-cronograma',
+          titulo: 'Cronograma de obra para finalizar',
+          resumo: 'a definir',
+          children: [
+            _notaPendente(context,
+                'Me envie o cronograma (marcos e datas) que eu exibo aqui.'),
+          ],
+        ),
+
+        // 13) Permutas por tipo (sem dado)
+        _Expansivel(
+          chaveId: 'dados-permutas-tipo',
+          titulo: 'Quantas permutas por tipo foram feitas',
+          resumo: 'a definir',
+          children: [
+            _notaPendente(context,
+                'Depende da marcação de permuta (item acima). Definido isso, '
+                'quebro por tipo de apartamento.'),
+          ],
+        ),
+
+        // 14) Descrição detalhada da 1ª etapa (sem dado)
+        _Expansivel(
+          chaveId: 'dados-descricao',
+          titulo: 'Descrição detalhada da 1ª etapa',
+          resumo: 'a definir',
+          children: [
+            _notaPendente(context,
+                'Blocos, área social e administrativo com fotos e projetos. '
+                'Me envie os textos e as imagens que eu monto a apresentação.'),
+          ],
         ),
       ],
     );
