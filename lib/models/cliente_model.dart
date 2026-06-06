@@ -42,6 +42,15 @@ class Cliente {
   // Valores: null | 'nao_enviada' | 'enviada_sem_resposta' | 'enviada_com_resposta'
   final String? statusMensagem;
 
+  // ── Engajamento (mantidos pelo servidor via FieldValue.increment) ─────────
+  // Lidos do Firestore mas NÃO serializados em toFirestore, para não
+  // sobrescrever os contadores atômicos num save normal do cliente.
+  final int interactionCount; // total de interações registradas
+  final int noResponseCount; // interações CONSECUTIVAS sem resposta (zera ao responder)
+  // Data do ÚLTIMO contato real (gravada pelo servidor ao lançar uma interação).
+  // Diferente de dataAtualizacao, que muda em qualquer edição do lead.
+  final DateTime? ultimoContato;
+
   // ── Fechamento ────────────────────────────────────────────────────────────
   final DateTime? dataFechamento;
   final double? valorVendido;
@@ -86,6 +95,9 @@ class Cliente {
     this.linerId,
     this.linerNome,
     this.statusMensagem,
+    this.interactionCount = 0,
+    this.noResponseCount = 0,
+    this.ultimoContato,
     this.dataFechamento,
     this.valorVendido,
     this.deletado = false,
@@ -192,6 +204,9 @@ class Cliente {
       linerId: data['linerId'],
       linerNome: data['linerNome'],
       statusMensagem: data['statusMensagem'] as String?,
+      interactionCount: (data['interaction_count'] as num?)?.toInt() ?? 0,
+      noResponseCount: (data['no_response_count'] as num?)?.toInt() ?? 0,
+      ultimoContato: (data['ultimoContato'] as Timestamp?)?.toDate(),
       dataFechamento: (data['dataFechamento'] as Timestamp?)?.toDate(),
       valorVendido: (data['valorVendido'] as num?)?.toDouble(),
       deletado: data['deletado'] == true,
