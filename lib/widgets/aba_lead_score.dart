@@ -2,20 +2,19 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
-import '../services/risco_silencio.dart';
+import '../services/lead_score.dart';
 import '../utils/acoes_lead.dart';
 
-/// Aba "Risco de Silêncio" — lista os leads ativos que estão esfriando
-/// (parando de responder / sem follow-up), priorizados por pontuação de risco.
+/// Aba "Potencial" — Lead Score: lista os leads ativos por propensão de
+/// fechamento (Quente / Morno / Frio), priorizando os mais quentes.
 ///
-/// A regra de risco vive em `services/risco_silencio.dart` (lógica pura,
-/// testada). Aqui é só apresentação + filtro por vendedor.
-class AbaRiscoSilencio extends StatefulWidget {
+/// A regra vive em `services/lead_score.dart` (lógica pura, testada).
+class AbaLeadScore extends StatefulWidget {
   final List<Cliente> clientes;
   final List<Usuario> todosVendedores;
   final String userProfile;
 
-  const AbaRiscoSilencio({
+  const AbaLeadScore({
     super.key,
     required this.clientes,
     this.todosVendedores = const [],
@@ -23,44 +22,43 @@ class AbaRiscoSilencio extends StatefulWidget {
   });
 
   @override
-  State<AbaRiscoSilencio> createState() => _AbaRiscoSilencioState();
+  State<AbaLeadScore> createState() => _AbaLeadScoreState();
 }
 
-class _RiscoItem {
+class _ScoreItem {
   final Cliente cliente;
-  final AvaliacaoRisco avaliacao;
-  const _RiscoItem(this.cliente, this.avaliacao);
+  final ScoreLead score;
+  const _ScoreItem(this.cliente, this.score);
 }
 
-class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
+class _AbaLeadScoreState extends State<AbaLeadScore> {
   String? _vendedorIdFiltro; // null = todos
-  NivelRisco? _nivelFiltro; // null = todos os níveis
+  TemperaturaLead? _tempFiltro; // null = todas
 
-  Color _corNivel(NivelRisco n, ColorScheme cs) {
-    switch (n) {
-      case NivelRisco.critico:
-        return cs.error;
-      case NivelRisco.esfriando:
+  Color _corTemp(TemperaturaLead t, ColorScheme cs) {
+    switch (t) {
+      case TemperaturaLead.quente:
         return Colors.deepOrange.shade700;
-      case NivelRisco.observar:
+      case TemperaturaLead.morno:
         return Colors.amber.shade800;
-      case NivelRisco.nenhum:
-        return Colors.green.shade700;
+      case TemperaturaLead.frio:
+        return Colors.blueGrey;
     }
   }
 
-  IconData _iconeNivel(NivelRisco n) {
-    switch (n) {
-      case NivelRisco.critico:
+  IconData _iconeTemp(TemperaturaLead t) {
+    switch (t) {
+      case TemperaturaLead.quente:
         return Icons.local_fire_department_rounded;
-      case NivelRisco.esfriando:
+      case TemperaturaLead.morno:
+        return Icons.wb_sunny_outlined;
+      case TemperaturaLead.frio:
         return Icons.ac_unit_rounded;
-      case NivelRisco.observar:
-        return Icons.visibility_outlined;
-      case NivelRisco.nenhum:
-        return Icons.check_circle_outline;
     }
   }
+
+  bool _temPerfilAdmin() =>
+      widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +67,6 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
     final mostrarFiltro =
         widget.todosVendedores.isNotEmpty && _temPerfilAdmin();
 
-    // Aplica filtro de vendedor (closer ou liner) quando selecionado.
     final base = _vendedorIdFiltro == null
         ? widget.clientes
         : widget.clientes
@@ -78,31 +75,26 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
                 c.linerId == _vendedorIdFiltro)
             .toList();
 
-    // Avalia e mantém só quem exige ação, ordenado por severidade e, dentro do
-    // mesmo nível, pelos que estão há mais tempo sem contato.
+    // Avalia, mantém só leads ativos, ordena por pontuação desc.
     final itens = base
-        .map((c) => _RiscoItem(c, avaliarRiscoCliente(c, agora: agora)))
-        .where((i) => i.avaliacao.exigeAcao)
+        .map((c) => _ScoreItem(c, avaliarLeadScoreCliente(c, agora: agora)))
+        .where((i) => i.score.ativo)
         .toList()
-      ..sort((a, b) {
-        final sev = b.avaliacao.nivel.severidade
-            .compareTo(a.avaliacao.nivel.severidade);
-        if (sev != 0) return sev;
-        return b.avaliacao.diasSemContato
-            .compareTo(a.avaliacao.diasSemContato);
-      });
+      ..sort((a, b) => b.score.pontuacao.compareTo(a.score.pontuacao));
 
-    final criticos =
-        itens.where((i) => i.avaliacao.nivel == NivelRisco.critico).length;
-    final esfriando =
-        itens.where((i) => i.avaliacao.nivel == NivelRisco.esfriando).length;
-    final observar =
-        itens.where((i) => i.avaliacao.nivel == NivelRisco.observar).length;
+    final quentes = itens
+        .where((i) => i.score.temperatura == TemperaturaLead.quente)
+        .length;
+    final mornos = itens
+        .where((i) => i.score.temperatura == TemperaturaLead.morno)
+        .length;
+    final frios = itens
+        .where((i) => i.score.temperatura == TemperaturaLead.frio)
+        .length;
 
-    // Lista exibida — respeita o filtro de nível ativo (clicando num KPI).
-    final visiveis = _nivelFiltro == null
+    final visiveis = _tempFiltro == null
         ? itens
-        : itens.where((i) => i.avaliacao.nivel == _nivelFiltro).toList();
+        : itens.where((i) => i.score.temperatura == _tempFiltro).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -115,14 +107,14 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Risco de Silêncio',
+                    Text('Potencial de Fechamento',
                         style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: cs.onSurface)),
                     const SizedBox(height: 2),
                     Text(
-                      'Leads ativos esfriando — priorize o resgate de cima para baixo',
+                      'Leads ativos por propensão — ataque os quentes primeiro',
                       style: TextStyle(fontSize: 12, color: cs.outline),
                     ),
                   ],
@@ -133,32 +125,29 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
           ),
           const SizedBox(height: 16),
 
-          // ── KPIs por nível (clicáveis: filtram a lista) ───────────────
           Row(
             children: [
               Expanded(
-                  child: _kpi(cs, 'Crítico', criticos, NivelRisco.critico)),
+                  child: _kpi(cs, 'Quente', quentes, TemperaturaLead.quente)),
               const SizedBox(width: 8),
               Expanded(
-                  child:
-                      _kpi(cs, 'Esfriando', esfriando, NivelRisco.esfriando)),
+                  child: _kpi(cs, 'Morno', mornos, TemperaturaLead.morno)),
               const SizedBox(width: 8),
-              Expanded(
-                  child: _kpi(cs, 'Observar', observar, NivelRisco.observar)),
+              Expanded(child: _kpi(cs, 'Frio', frios, TemperaturaLead.frio)),
             ],
           ),
-          if (_nivelFiltro != null) ...[
+          if (_tempFiltro != null) ...[
             const SizedBox(height: 10),
             Row(
               children: [
-                Text('Mostrando: ${_nivelFiltro!.rotulo}',
+                Text('Mostrando: ${_tempFiltro!.rotulo}',
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: cs.onSurfaceVariant)),
                 const SizedBox(width: 8),
                 InkWell(
-                  onTap: () => setState(() => _nivelFiltro = null),
+                  onTap: () => setState(() => _tempFiltro = null),
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -169,8 +158,8 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
                         Icon(Icons.close, size: 14, color: cs.primary),
                         const SizedBox(width: 2),
                         Text('limpar',
-                            style: TextStyle(
-                                fontSize: 12, color: cs.primary)),
+                            style:
+                                TextStyle(fontSize: 12, color: cs.primary)),
                       ],
                     ),
                   ),
@@ -183,9 +172,9 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
           if (itens.isEmpty)
             _estadoVazio(cs)
           else if (visiveis.isEmpty)
-            _semNoNivel(cs)
+            _semNaTemp(cs)
           else
-            ...visiveis.map((i) => _cardRisco(context, cs, i)),
+            ...visiveis.map((i) => _cardScore(context, cs, i)),
 
           const SizedBox(height: 16),
         ],
@@ -193,16 +182,13 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
     );
   }
 
-  bool _temPerfilAdmin() =>
-      widget.userProfile == 'admin' || widget.userProfile == 'super admin';
-
   Widget _filtroVendedor(ColorScheme cs) {
     final selecionado = _vendedorIdFiltro == null
         ? 'Todos'
         : widget.todosVendedores
             .firstWhere((u) => u.id == _vendedorIdFiltro,
-                orElse: () => Usuario(
-                    id: '', nome: 'Todos', email: '', perfil: ''))
+                orElse: () =>
+                    Usuario(id: '', nome: 'Todos', email: '', perfil: ''))
             .nome;
 
     return PopupMenuButton<String?>(
@@ -239,14 +225,13 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
     );
   }
 
-  Widget _kpi(ColorScheme cs, String titulo, int valor, NivelRisco nivel) {
-    final cor = _corNivel(nivel, cs);
-    final icone = _iconeNivel(nivel);
-    final selecionado = _nivelFiltro == nivel;
+  Widget _kpi(ColorScheme cs, String titulo, int valor, TemperaturaLead temp) {
+    final cor = _corTemp(temp, cs);
+    final icone = _iconeTemp(temp);
+    final selecionado = _tempFiltro == temp;
 
     return Card(
       margin: EdgeInsets.zero,
-      // Realça o card selecionado.
       color: selecionado ? cor.withValues(alpha: 0.12) : null,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -256,9 +241,8 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        // Clicar filtra a lista por este nível; clicar de novo limpa.
-        onTap: () => setState(
-            () => _nivelFiltro = selecionado ? null : nivel),
+        onTap: () =>
+            setState(() => _tempFiltro = selecionado ? null : temp),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           child: Column(
@@ -277,20 +261,6 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
     );
   }
 
-  Widget _semNoNivel(ColorScheme cs) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-        child: Center(
-          child: Text(
-            'Nenhum lead em "${_nivelFiltro?.rotulo}" no momento',
-            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _estadoVazio(ColorScheme cs) {
     return Card(
       child: Padding(
@@ -298,16 +268,11 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
         child: Center(
           child: Column(
             children: [
-              Icon(Icons.celebration_outlined,
-                  size: 40, color: Colors.green.shade600),
+              Icon(Icons.inbox_outlined, size: 40, color: cs.outline),
               const SizedBox(height: 12),
-              Text('Nenhum lead em risco de silêncio',
+              Text('Nenhum lead ativo para pontuar',
                   style: TextStyle(
                       fontWeight: FontWeight.w600, color: cs.onSurface)),
-              const SizedBox(height: 4),
-              Text('Carteira engajada — siga acompanhando os follow-ups.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: cs.outline)),
             ],
           ),
         ),
@@ -315,10 +280,22 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
     );
   }
 
-  Widget _cardRisco(BuildContext context, ColorScheme cs, _RiscoItem item) {
+  Widget _semNaTemp(ColorScheme cs) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+        child: Center(
+          child: Text('Nenhum lead "${_tempFiltro?.rotulo}" no momento',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+        ),
+      ),
+    );
+  }
+
+  Widget _cardScore(BuildContext context, ColorScheme cs, _ScoreItem item) {
     final c = item.cliente;
-    final a = item.avaliacao;
-    final cor = _corNivel(a.nivel, cs);
+    final s = item.score;
+    final cor = _corTemp(s.temperatura, cs);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -336,7 +313,8 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
                   CircleAvatar(
                     radius: 18,
                     backgroundColor: cor.withValues(alpha: 0.14),
-                    child: Icon(_iconeNivel(a.nivel), color: cor, size: 20),
+                    child: Icon(_iconeTemp(s.temperatura), color: cor,
+                        size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -365,29 +343,25 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
                           color: cor.withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(a.nivel.rotulo,
+                        child: Text(s.temperatura.rotulo,
                             style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: cor)),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                          a.diasSemContato == 0
-                              ? 'contato hoje'
-                              : '${a.diasSemContato}d sem contato',
-                          style:
-                              TextStyle(fontSize: 10, color: cs.outline)),
+                      Text('${s.pontuacao}/100',
+                          style: TextStyle(fontSize: 10, color: cs.outline)),
                     ],
                   ),
                 ],
               ),
-              if (a.motivos.isNotEmpty) ...[
+              if (s.sinais.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: a.motivos
+                  children: s.sinais
                       .map((m) => Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
@@ -397,7 +371,8 @@ class _AbaRiscoSilencioState extends State<AbaRiscoSilencio> {
                             ),
                             child: Text(m,
                                 style: TextStyle(
-                                    fontSize: 11, color: cs.onSurfaceVariant)),
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant)),
                           ))
                       .toList(),
                 ),
