@@ -76,6 +76,17 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     }).toList();
   }
 
+  /// Texto da contagem que reflete o filtro de situação:
+  /// "500 contratos ativos" · "12 contratos inativos" · "520 contratos".
+  String _textoContagem(int n) {
+    final base = n == 1 ? 'contrato' : 'contratos';
+    if (_filtroStatus == 'Ativo') return '$n $base ${n == 1 ? 'ativo' : 'ativos'}';
+    if (_filtroStatus == 'Inativo') {
+      return '$n $base ${n == 1 ? 'inativo' : 'inativos'}';
+    }
+    return '$n $base';
+  }
+
   List<String> get _produtos {
     return _todos.map((c) => c.produto).where((p) => p.isNotEmpty).toSet().toList()..sort();
   }
@@ -130,20 +141,28 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
             ],
           ),
         ),
-        // ── Chips de filtro ────────────────────────────────────────────────
-        _buildFiltros(),
-        // ── Contagem ───────────────────────────────────────────────────────
+        // ── Situação (no início, canto esquerdo) + contagem dinâmica ───────
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              Text(
-                '${filtrados.length} contrato${filtrados.length == 1 ? '' : 's'}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _FilterChip(
+              label: 'Situação',
+              valor: _filtroStatus,
+              opcoes: const ['Ativo', 'Inativo'],
+              onSelecionado: (v) => setState(() => _filtroStatus = v),
+            ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+          child: Text(
+            _textoContagem(filtrados.length),
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        // ── Demais filtros ─────────────────────────────────────────────────
+        _buildFiltros(),
         // ── Lista ──────────────────────────────────────────────────────────
         Expanded(
           child: _carregando
@@ -166,13 +185,6 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [
-          _FilterChip(
-            label: 'Situação',
-            valor: _filtroStatus,
-            opcoes: const ['Ativo', 'Inativo'],
-            onSelecionado: (v) => setState(() => _filtroStatus = v),
-          ),
-          const SizedBox(width: 8),
           _FilterChip(
             label: 'Status financeiro',
             valor: _filtroStatusFin,

@@ -410,7 +410,7 @@ class _UnidadeChip extends StatelessWidget {
 
     final tooltip = a.cotasTotal == null
         ? 'Apto ${a.imovel.numero} · disponível (sem cota definida)'
-        : 'Apto ${a.imovel.numero} · ${a.cotasVendidas} vendida(s) · ${a.disponiveis} disponível(is)';
+        : 'Apto ${a.imovel.numero} · ${a.cotasVendidas} cota(s) vendida(s)';
 
     return Tooltip(
       message: tooltip,
@@ -439,9 +439,9 @@ class _UnidadeChip extends StatelessWidget {
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Contagem de vendidas em cima.
+                  // Contagem de cotas vendidas em cima.
                   SizedBox(
-                    height: 11,
+                    height: 12,
                     child: temVenda
                         ? Text('${a.cotasVendidas}▲',
                             style: TextStyle(
@@ -454,18 +454,7 @@ class _UnidadeChip extends StatelessWidget {
                   Text(
                     a.imovel.numero,
                     style: const TextStyle(
-                        fontSize: 13, height: 1, fontWeight: FontWeight.w700),
-                  ),
-                  // Disponíveis embaixo.
-                  SizedBox(
-                    height: 11,
-                    child: (temVenda && a.disponiveis != null)
-                        ? Text('${a.disponiveis}▼',
-                            style: TextStyle(
-                                fontSize: 9,
-                                height: 1,
-                                color: Colors.grey.shade700))
-                        : null,
+                        fontSize: 14, height: 1, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -557,7 +546,7 @@ class _DetalheImovel extends StatelessWidget {
                   '${a.disponiveis} disponível(is) · ${_moeda.format(a.receita)} em contratos',
                   style: tt.bodySmall),
             ] else
-              Text('Sem cota vendida — tier definido na primeira venda',
+              Text('Sem cota vendida — cota definida na primeira venda',
                   style: tt.bodySmall),
             if (a.temAlerta) ...[
               const SizedBox(height: 8),
@@ -573,7 +562,7 @@ class _DetalheImovel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       [
-                        if (a.conflitoTier) 'Tiers misturados no mesmo imóvel',
+                        if (a.conflitoTier) 'Cotas misturadas no mesmo imóvel',
                         if (a.cotasDuplicadas.isNotEmpty)
                           'Cota duplicada: ${a.cotasDuplicadas.join(', ')}',
                       ].join(' · '),
@@ -629,8 +618,8 @@ class _DetalheImovel extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text(
-                'Nenhuma cota vendida ainda. O tier (bronze/prata/ouro/diamante) '
-                'será definido na primeira venda.'),
+                'Nenhuma cota vendida ainda. A cota (bronze/prata/ouro/diamante) '
+                'será definida na primeira venda.'),
           ),
         ];
       }
@@ -998,7 +987,7 @@ class _SecaoSaude extends StatelessWidget {
           cor: r.comAlerta.isEmpty ? Colors.green : Colors.red,
           titulo: '${r.comAlerta.length} imóveis com inconsistência',
           descricao:
-              'Tiers misturados no mesmo imóvel ou cota vendida em duplicidade.',
+              'Cotas misturadas no mesmo imóvel ou cota vendida em duplicidade.',
         ),
         for (final a in r.comAlerta)
           ListTile(
@@ -1006,7 +995,7 @@ class _SecaoSaude extends StatelessWidget {
             leading: const Icon(Icons.error, color: Colors.red, size: 18),
             title: Text('${a.imovel.bloco}-${a.imovel.numero}'),
             subtitle: Text([
-              if (a.conflitoTier) 'tiers misturados',
+              if (a.conflitoTier) 'cotas misturadas',
               if (a.cotasDuplicadas.isNotEmpty)
                 'cota duplicada (${a.cotasDuplicadas.join(', ')})',
             ].join(' · ')),
