@@ -144,6 +144,7 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
               _chipSecao(2, 'Vendas', Icons.attach_money_outlined),
               _chipSecao(3, 'Saúde dos dados', Icons.health_and_safety_outlined,
                   alerta: r.avulsos.isNotEmpty || r.comAlerta.isNotEmpty),
+              _chipSecao(4, 'Dados', Icons.query_stats_outlined),
             ],
           ),
         ),
@@ -153,7 +154,8 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
             0 => _SecaoEspelho(resumo: r, contratosPorId: contratosPorId),
             1 => _SecaoCotas(resumo: r),
             2 => _SecaoVendas(resumo: r),
-            _ => _SecaoSaude(resumo: r),
+            3 => _SecaoSaude(resumo: r),
+            _ => _SecaoDados(resumo: r),
           },
         ),
       ],
@@ -161,26 +163,28 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
   }
 
   Widget _chipSecao(int idx, String label, IconData icon, {bool alerta = false}) {
-    final selecionado = _secao == idx;
+    final cs = Theme.of(context).colorScheme;
+    final sel = _secao == idx;
+    final corConteudo = sel ? cs.onPrimary : cs.onSurface;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
-        avatar: Icon(icon,
-            size: 18,
-            color: selecionado
-                ? Theme.of(context).colorScheme.onSecondaryContainer
-                : null),
+        showCheckmark: false,
+        avatar: Icon(icon, size: 18, color: corConteudo),
         label: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label),
+            Text(label, style: TextStyle(color: corConteudo, fontWeight: FontWeight.w600)),
             if (alerta) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.error, size: 14, color: Colors.red),
+              Icon(Icons.error, size: 14, color: sel ? cs.onPrimary : Colors.red),
             ],
           ],
         ),
-        selected: selecionado,
+        selected: sel,
+        backgroundColor: cs.surfaceContainerHighest,
+        selectedColor: cs.primary,
+        side: BorderSide(color: sel ? Colors.transparent : cs.outlineVariant),
         onSelected: (_) => setState(() => _secao = idx),
       ),
     );
@@ -708,6 +712,24 @@ class _DetalheImovel extends StatelessWidget {
 // SEÇÃO 2 — COTAS (barras por tier)
 // ════════════════════════════════════════════════════════════════════════════
 
+const _ordemCategorias = [
+  'LUXO',
+  'LUXO PREMIUM',
+  'LUXO MASTER',
+  'VILLAMOR',
+  'VILLAMOR PREMIUM',
+  'VILLAMOR SUPER MASTER',
+  'BANGALO',
+];
+
+String _tituloCategoria(String tipo) {
+  if (tipo == 'BANGALO') return 'Bangalô';
+  return tipo
+      .split(' ')
+      .map((p) => p.isEmpty ? p : '${p[0]}${p.substring(1).toLowerCase()}')
+      .join(' ');
+}
+
 class _SecaoCotas extends StatelessWidget {
   final ResumoAnalise resumo;
   const _SecaoCotas({required this.resumo});
@@ -715,22 +737,68 @@ class _SecaoCotas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+
+    // Agrega cotas por categoria de apartamento e, dentro dela, por cota.
+    final porCategoria = <String, Map<TierCota, ResumoTier>>{};
+    for (final a in resumo.imoveis) {
+      if (a.tier == null || a.cotasTotal == null) continue;
+      final cat = porCategoria.putIfAbsent(a.imovel.tipo, () => {});
+      final rt = cat.putIfAbsent(a.tier!, () => ResumoTier(a.tier!));
+      rt.imoveis++;
+      rt.cotasVendidas += a.cotasVendidas;
+      rt.cotasTotal += a.cotasTotal!;
+    }
+
+    final categorias = [
+      ..._ordemCategorias.where(porCategoria.containsKey),
+      ...porCategoria.keys.where((c) => !_ordemCategorias.contains(c)),
+    ];
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       children: [
-        Text('Cotas por tier', style: tt.titleMedium),
+        Text('Cotas por categoria de apartamento', style: tt.titleMedium),
         const SizedBox(height: 4),
-        Text('Vendidas vs. disponíveis nos imóveis já definidos por tier.',
+        Text('Vendidas vs. disponíveis nos imóveis já definidos.',
             style: tt.bodySmall?.copyWith(color: Colors.grey)),
         const SizedBox(height: 16),
-        for (final tier in _ordemTiers)
-          if (resumo.porTier[tier] != null) _BarraTier(rt: resumo.porTier[tier]!),
-        if (resumo.porTier.isEmpty)
+        if (porCategoria.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 24),
             child: Center(child: Text('Nenhuma cota vendida ainda.')),
           ),
+        for (final cat in categorias)
+          _CategoriaCotas(titulo: _tituloCategoria(cat), porTier: porCategoria[cat]!),
       ],
+    );
+  }
+}
+
+class _CategoriaCotas extends StatelessWidget {
+  final String titulo;
+  final Map<TierCota, ResumoTier> porTier;
+  const _CategoriaCotas({required this.titulo, required this.porTier});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(titulo, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          for (final tier in _ordemTiers)
+            if (porTier[tier] != null) _BarraTier(rt: porTier[tier]!),
+        ],
+      ),
     );
   }
 }
@@ -967,6 +1035,153 @@ class _CardAlerta extends StatelessWidget {
         leading: Icon(icone, color: cor),
         title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(descricao),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEÇÃO 5 — DADOS (perguntas e respostas)
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Painel de perguntas: cada item é uma métrica que, ao tocar, expande e mostra
+/// a resposta com o detalhamento. As perguntas serão definidas pelo usuário —
+/// começamos com algumas de exemplo (quantidade e valor vendido).
+class _SecaoDados extends StatelessWidget {
+  final ResumoAnalise resumo;
+  const _SecaoDados({required this.resumo});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final r = resumo;
+
+    // Agregações por categoria de apartamento.
+    final cotasPorCat = <String, int>{};
+    final valorPorCat = <String, double>{};
+    for (final a in r.imoveis) {
+      cotasPorCat[a.imovel.tipo] = (cotasPorCat[a.imovel.tipo] ?? 0) + a.cotasVendidas;
+      valorPorCat[a.imovel.tipo] = (valorPorCat[a.imovel.tipo] ?? 0) + a.receita;
+    }
+    final categorias = [
+      ..._ordemCategorias.where((c) => (cotasPorCat[c] ?? 0) > 0),
+      ...cotasPorCat.keys
+          .where((c) => !_ordemCategorias.contains(c) && (cotasPorCat[c] ?? 0) > 0),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      children: [
+        Text('Toque numa pergunta para ver a resposta.',
+            style: tt.bodySmall?.copyWith(color: Colors.grey)),
+        const SizedBox(height: 8),
+
+        // 1) Quantidade vendida
+        _Pergunta(
+          icone: Icons.sell_outlined,
+          pergunta: 'Quantas cotas foram vendidas?',
+          respostaCurta: '${r.totalCotasVendidas}',
+          detalhes: [
+            for (final bloco in _ordemBlocos)
+              if (r.porBloco[bloco] != null)
+                (bloco == 'BANGALO' ? 'Bangalôs' : 'Bloco $bloco',
+                    '${r.porBloco[bloco]!.cotasVendidas}'),
+            for (final cat in categorias)
+              (_tituloCategoria(cat), '${cotasPorCat[cat]}'),
+          ],
+        ),
+
+        // 2) Valor vendido
+        _Pergunta(
+          icone: Icons.attach_money_outlined,
+          pergunta: 'Qual o valor vendido (em contratos)?',
+          respostaCurta: _moedaCompacta.format(r.receitaTotal),
+          detalhes: [
+            for (final bloco in _ordemBlocos)
+              if (r.porBloco[bloco] != null)
+                (bloco == 'BANGALO' ? 'Bangalôs' : 'Bloco $bloco',
+                    _moeda.format(r.porBloco[bloco]!.receita)),
+            for (final cat in categorias)
+              (_tituloCategoria(cat), _moeda.format(valorPorCat[cat] ?? 0)),
+          ],
+        ),
+
+        // 3) Situação das unidades
+        _Pergunta(
+          icone: Icons.apartment_outlined,
+          pergunta: 'Como estão as unidades?',
+          respostaCurta: '${r.totalComVenda}/${r.totalUnidades}',
+          detalhes: [
+            ('Com venda', '${r.totalComVenda}'),
+            ('Esgotadas', '${r.totalEsgotados}'),
+            ('Sem cota (disponíveis)', '${r.totalUnidades - r.totalComVenda}'),
+            ('Total de unidades', '${r.totalUnidades}'),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+        Card(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          child: const Padding(
+            padding: EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Icon(Icons.add_comment_outlined),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Em breve: mais perguntas. Me envie as métricas que quer ver '
+                    'aqui e eu adiciono cada uma como um card.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Pergunta extends StatelessWidget {
+  final IconData icone;
+  final String pergunta;
+  final String respostaCurta;
+  final List<(String, String)> detalhes;
+  const _Pergunta({
+    required this.icone,
+    required this.pergunta,
+    required this.respostaCurta,
+    required this.detalhes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        leading: Icon(icone, color: cs.primary),
+        title: Text(pergunta, style: const TextStyle(fontWeight: FontWeight.w600)),
+        trailing: Text(respostaCurta,
+            style: tt.titleMedium?.copyWith(
+                color: cs.primary, fontWeight: FontWeight.w700)),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          for (final (rotulo, valor) in detalhes)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(rotulo, style: tt.bodyMedium),
+                  Text(valor,
+                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
