@@ -9,6 +9,7 @@ import '../widgets/aba_estatisticas.dart';
 import '../widgets/aba_financeiro.dart';
 import '../widgets/aba_metas.dart';
 import '../widgets/aba_motivos_perda.dart';
+import '../widgets/aba_lead_score.dart';
 import '../widgets/aba_relatorios.dart';
 import '../widgets/aba_risco_silencio.dart';
 
@@ -77,7 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 8 : 4,
+      length: isAdmin ? 9 : 5,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -101,6 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
             Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
             Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
+            Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
           ],
         ),
       ),
@@ -145,6 +147,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
+              // 8 — Potencial (Lead Score)
+              AbaLeadScore(
+                clientes: todos,
+                todosVendedores: _todosVendedores,
+                userProfile: _userProfile,
+              ),
             ],
           );
         },
@@ -167,6 +175,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
             Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
             Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
+            Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
           ],
         ),
       ),
@@ -187,6 +196,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               AbaRelatorios(clientes: clientes),
               AbaMotivosPerda(clientes: clientes),
               AbaRiscoSilencio(
+                clientes: clientes,
+                userProfile: _userProfile,
+              ),
+              AbaLeadScore(
                 clientes: clientes,
                 userProfile: _userProfile,
               ),
