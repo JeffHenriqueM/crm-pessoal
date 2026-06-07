@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/contrato_model.dart';
 import '../models/interacao_model.dart';
@@ -30,6 +31,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   // Estado local dos marcos de upgrade (a tela não faz stream do contrato).
   late bool _upgradeOferecido = widget.contrato.upgradeOferecido;
   late bool _upgradeRealizado = widget.contrato.upgradeRealizado;
+  late String? _linkPdf = widget.contrato.linkContratoDrive;
 
   StreamSubscription<List<Interacao>>? _interSub;
 
@@ -90,6 +92,9 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
             upgradeRealizado: _upgradeRealizado,
             onOfereceuUpgrade: _ofereceuUpgrade,
             onFezUpgrade: _fezUpgrade,
+            linkPdf: _linkPdf,
+            onAbrirPdf: _abrirPdf,
+            onEditarLinkPdf: _editarLinkPdf,
           ),
           _InteracoesTab(
             interacoes: _interacoes,
@@ -104,6 +109,57 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
               child: const Icon(Icons.add_comment_outlined),
             )
           : null,
+    );
+  }
+
+  // ── Contrato em PDF (Drive) ────────────────────────────────────────────────
+
+  Future<void> _abrirPdf() async {
+    final url = _linkPdf;
+    if (url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir o link.')),
+      );
+    }
+  }
+
+  Future<void> _editarLinkPdf() async {
+    final ctrl = TextEditingController(text: _linkPdf ?? '');
+    final novo = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Link do contrato (PDF)'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            hintText: 'Cole o link do Drive (PDF)…',
+            prefixIcon: Icon(Icons.link),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (novo == null) return; // cancelado
+    await _fs.salvarLinkContrato(widget.contrato.localizador, novo);
+    if (!mounted) return;
+    setState(() => _linkPdf = novo.isEmpty ? null : novo);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(novo.isEmpty ? 'Link removido.' : 'Link salvo.')),
     );
   }
 
@@ -221,6 +277,9 @@ class _DadosTab extends StatelessWidget {
   final bool upgradeRealizado;
   final VoidCallback onOfereceuUpgrade;
   final VoidCallback onFezUpgrade;
+  final String? linkPdf;
+  final VoidCallback onAbrirPdf;
+  final VoidCallback onEditarLinkPdf;
 
   const _DadosTab({
     required this.contrato,
@@ -230,6 +289,9 @@ class _DadosTab extends StatelessWidget {
     required this.upgradeRealizado,
     required this.onOfereceuUpgrade,
     required this.onFezUpgrade,
+    required this.linkPdf,
+    required this.onAbrirPdf,
+    required this.onEditarLinkPdf,
   });
 
   @override
@@ -262,6 +324,37 @@ class _DadosTab extends StatelessWidget {
             )
           else
             _campo('Status de Assinatura', c.statusAssinatura.label),
+        ]),
+        const SizedBox(height: 8),
+
+        // Contrato em PDF (Google Drive)
+        _secao('Contrato (PDF)', [
+          if (linkPdf != null && linkPdf!.isNotEmpty)
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onAbrirPdf,
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    label: const Text('Abrir contrato'),
+                  ),
+                ),
+                if (isAdmin)
+                  IconButton(
+                    tooltip: 'Editar link',
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: onEditarLinkPdf,
+                  ),
+              ],
+            )
+          else if (isAdmin)
+            OutlinedButton.icon(
+              onPressed: onEditarLinkPdf,
+              icon: const Icon(Icons.add_link, size: 18),
+              label: const Text('Adicionar link do PDF'),
+            )
+          else
+            _campo('Contrato', 'Nenhum PDF vinculado'),
         ]),
         const SizedBox(height: 8),
 

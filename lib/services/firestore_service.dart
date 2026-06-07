@@ -1059,6 +1059,14 @@ class FirestoreService {
     }
   }
 
+  /// Salva (ou remove, se vazio) o link do PDF do contrato no Drive.
+  Future<void> salvarLinkContrato(String localizador, String? url) async {
+    final limpo = url?.trim();
+    await _db.collection(_colContratos).doc(localizador).set({
+      'linkContratoDrive': (limpo == null || limpo.isEmpty) ? null : limpo,
+    }, SetOptions(merge: true));
+  }
+
   /// Registra uma interação na subcoleção do contrato.
   Future<void> adicionarInteracaoContrato(
     String contratoId,

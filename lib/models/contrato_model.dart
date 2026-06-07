@@ -122,6 +122,10 @@ class Contrato {
   final DateTime? upgradeOferecidoEm;
   final DateTime? upgradeRealizadoEm;
 
+  /// Link do PDF do contrato no Google Drive. Definido manualmente; não é
+  /// serializado no toFirestore para sobreviver ao re-import por merge.
+  final String? linkContratoDrive;
+
   const Contrato({
     required this.localizador,
     required this.localizadorAtendimento,
@@ -173,6 +177,7 @@ class Contrato {
     this.interacoesPorMes = const {},
     this.upgradeOferecidoEm,
     this.upgradeRealizadoEm,
+    this.linkContratoDrive,
   });
 
   bool get temAtrasos => valorAtrasado > 0;
@@ -247,6 +252,7 @@ class Contrato {
           const {},
       upgradeOferecidoEm: (d['upgradeOferecidoEm'] as Timestamp?)?.toDate(),
       upgradeRealizadoEm: (d['upgradeRealizadoEm'] as Timestamp?)?.toDate(),
+      linkContratoDrive: d['linkContratoDrive'] as String?,
     );
   }
 
@@ -313,6 +319,7 @@ class Contrato {
 
   Contrato copyWith({
     StatusAssinatura? statusAssinatura,
+    String? linkContratoDrive,
   }) {
     return Contrato(
       localizador: localizador,
@@ -362,6 +369,7 @@ class Contrato {
       statusAssinatura: statusAssinatura ?? this.statusAssinatura,
       criadoEm: criadoEm,
       atualizadoEm: atualizadoEm,
+      linkContratoDrive: linkContratoDrive ?? this.linkContratoDrive,
     );
   }
 
