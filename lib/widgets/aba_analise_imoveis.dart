@@ -1000,9 +1000,13 @@ class _LinhaMeses extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
+    // Altura fixa: a faixa rola na horizontal dentro de uma lista vertical,
+    // então precisa de altura limitada (senão estoura o layout = caixa cinza).
+    return SizedBox(
+      height: 98,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
         children: [for (final vm in meses) _CardMesPequeno(vm: vm)],
       ),
     );
