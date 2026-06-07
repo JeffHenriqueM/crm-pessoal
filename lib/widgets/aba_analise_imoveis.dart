@@ -926,8 +926,15 @@ class _SecaoVendas extends StatelessWidget {
         const SizedBox(height: 12),
         Text('Vendas por mês', style: tt.titleMedium),
         const SizedBox(height: 4),
-        Text('Toque num mês para ver os contratos.',
-            style: tt.bodySmall?.copyWith(color: Colors.grey)),
+        Builder(builder: (context) {
+          final todosMeses = porAno.values.expand((l) => l);
+          final totCotas = todosMeses.fold<int>(0, (s, m) => s + m.cotas);
+          final totInt = todosMeses.fold<int>(0, (s, m) => s + m.inteiros);
+          return Text(
+            'Total: ${_contagemCotas(totCotas, totInt)}. Toque num mês para ver os contratos.',
+            style: tt.bodySmall?.copyWith(color: Colors.grey),
+          );
+        }),
         const SizedBox(height: 8),
         if (anos.isEmpty)
           Text('Sem contratos com data.', style: tt.bodySmall),
@@ -977,6 +984,15 @@ const _mesesCurto = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
 
+/// "7 cotas · 1 integral" (omite a parte com zero, exceto cotas).
+String _contagemCotas(int cotas, int integrais) {
+  final partes = <String>['$cotas cota${cotas == 1 ? '' : 's'}'];
+  if (integrais > 0) {
+    partes.add('$integrais integral${integrais == 1 ? '' : 'is'}');
+  }
+  return partes.join(' · ');
+}
+
 /// Linha horizontal de cards de mês (rolável), do mais recente ao mais antigo.
 class _LinhaMeses extends StatelessWidget {
   final List<VendaMes> meses;
@@ -1011,7 +1027,7 @@ class _CardMesPequeno extends StatelessWidget {
           builder: (_) => _DetalheMes(vm: vm),
         ),
         child: Container(
-          width: 116,
+          width: 136,
           padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1025,8 +1041,8 @@ class _CardMesPequeno extends StatelessWidget {
                       fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
               Text(
-                '${vm.cotas} cota${vm.cotas == 1 ? '' : 's'}'
-                '${vm.inteiros > 0 ? ' · ${vm.inteiros} int.' : ''}',
+                _contagemCotas(vm.cotas, vm.inteiros),
+                maxLines: 2,
                 style: tt.bodySmall?.copyWith(color: Colors.grey),
               ),
             ],
@@ -1057,7 +1073,7 @@ class _DetalheMes extends StatelessWidget {
           children: [
             Text('${_meses[vm.mes]} de ${vm.ano}', style: tt.titleLarge),
             Text(
-                '${vm.total} contrato(s) · ${_moeda.format(vm.valor)}',
+                '${_contagemCotas(vm.cotas, vm.inteiros)} · ${_moeda.format(vm.valor)}',
                 style: tt.bodySmall?.copyWith(color: Colors.grey)),
             const Divider(),
             Flexible(
