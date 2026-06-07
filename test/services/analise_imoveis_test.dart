@@ -13,6 +13,9 @@ Contrato _contrato({
   String nome = 'Comprador Teste',
   double valor = 50000,
   String statusFinanceiro = 'Em andamento',
+  String status = 'Ativo',
+  bool revertido = false,
+  String? origemReversao,
 }) {
   return Contrato(
     localizador: localizador,
@@ -24,10 +27,42 @@ Contrato _contrato({
     cota: cota,
     valorTotalReajustado: valor,
     statusFinanceiro: statusFinanceiro,
+    status: status,
+    revertido: revertido,
+    origemReversao: origemReversao,
   );
 }
 
 void main() {
+  group('contratosEfetivos', () {
+    test('mantém só status Ativo (case/espaço-insensível)', () {
+      final cs = [
+        _contrato(localizador: '1', status: 'Ativo'),
+        _contrato(localizador: '2', status: ' ativo '),
+        _contrato(localizador: '3', status: 'Cancelado'),
+        _contrato(localizador: '4', status: 'Revertido'),
+        _contrato(localizador: '5', status: 'Não efetivado'),
+        _contrato(localizador: '6', status: 'Pendente'),
+      ];
+      final ef = contratosEfetivos(cs);
+      expect(ef.map((c) => c.localizador), ['1', '2']);
+    });
+
+    test('cancelado/revertido não viram cota', () {
+      final cs = [
+        _contrato(localizador: '1', imovel: '101', cota: 'Cota-01'),
+        _contrato(
+            localizador: '2',
+            imovel: '101',
+            cota: 'Cota-02',
+            status: 'Cancelado'),
+      ];
+      final mapa = projetarCotas(contratosEfetivos(cs));
+      expect(mapa['B-101'], hasLength(1));
+      expect(mapa['B-101']!.first.numero, 'Cota-01');
+    });
+  });
+
   group('inventário da 1ª etapa', () {
     final inv = inventarioPrimeiraEtapa();
 
@@ -241,6 +276,100 @@ void main() {
       final a = r.imoveis.firstWhere((i) => i.imovel.id == 'B-107');
       expect(a.receita, 50000);
       expect(r.porBloco['B']!.receita, 50000);
+    });
+  });
+
+  group('produtoProjetoAntigo', () {
+    test('minúsculo/misto = antigo; caixa-alta = novo', () {
+      expect(produtoProjetoAntigo('Luxo Prata 1/2/3'), isTrue);
+      expect(produtoProjetoAntigo('Villamor Diamante 1°/2°'), isTrue);
+      expect(produtoProjetoAntigo('LUXO MASTER PRATA 1º / 2º / 3º'), isFalse);
+      expect(produtoProjetoAntigo('LUXO PRATA T'), isFalse);
+      expect(produtoProjetoAntigo(''), isFalse);
+    });
+  });
+
+  group('analisarReversao', () {
+    test('status errado crítico: Ativo já revertido, substituto não-Ativo', () {
+      final r = analisarReversao([
+        // Antigo, Ativo, foi substituído por um contrato Revertido.
+        _contrato(localizador: '199', produto: 'Villamor Diamante 1°/2°'),
+        _contrato(
+            localizador: '3754',
+            produto: 'VILLAMOR DIAMANTE T',
+            status: 'Revertido',
+            origemReversao: '199'),
+      ]);
+      expect(r.statusErradoCritico.map((c) => c.localizador), ['199']);
+      expect(r.statusErradoVerificar, isEmpty);
+      expect(r.substitutosPorLocalizador['199']!.map((c) => c.localizador),
+          ['3754']);
+    });
+
+    test('status errado a verificar: substituto também Ativo (cadeia)', () {
+      final r = analisarReversao([
+        _contrato(localizador: '4258', produto: 'LUXO PRATA 1° / 2° / 3º'),
+        _contrato(
+            localizador: '4364',
+            produto: 'LUXO BRONZE 1° / 2° / 3º',
+            origemReversao: '4258'), // substituto Ativo
+      ]);
+      expect(r.statusErradoVerificar.map((c) => c.localizador), ['4258']);
+      expect(r.statusErradoCritico, isEmpty);
+    });
+
+    test('pendente não-revertido: antigo + Ativo + sem origem + REVERTIDO=Não',
+        () {
+      final r = analisarReversao([
+        _contrato(localizador: '1551', produto: 'Luxo Prata 1/2/3'),
+      ]);
+      expect(r.pendentesNaoRevertidos.map((c) => c.localizador), ['1551']);
+      expect(r.pendentesAmbiguos, isEmpty);
+      expect(r.statusErrado, isEmpty);
+    });
+
+    test('pendente ambíguo: antigo + Ativo + REVERTIDO=Sim mas sem ser origem',
+        () {
+      final r = analisarReversao([
+        _contrato(
+            localizador: '2626',
+            produto: 'Luxo Diamante 1/2/3',
+            revertido: true,
+            origemReversao: '327'),
+        // 327 existe mas é Cancelado — não afeta a classificação do 2626.
+        _contrato(localizador: '327', status: 'Cancelado'),
+      ]);
+      expect(r.pendentesAmbiguos.map((c) => c.localizador), ['2626']);
+      expect(r.pendentesNaoRevertidos, isEmpty);
+    });
+
+    test('produto novo (caixa-alta) sem origem NÃO entra em pendentes', () {
+      final r = analisarReversao([
+        _contrato(localizador: 'N1', produto: 'LUXO MASTER PRATA 1º / 2º / 3º'),
+      ]);
+      expect(r.pendentes, isEmpty);
+      expect(r.statusErrado, isEmpty);
+    });
+
+    test('origem "0"/vazio é ignorada como origem', () {
+      final r = analisarReversao([
+        _contrato(localizador: 'A', origemReversao: '0'),
+        _contrato(localizador: 'B', origemReversao: ''),
+      ]);
+      expect(r.substitutosPorLocalizador, isEmpty);
+      expect(r.statusErrado, isEmpty);
+    });
+
+    test('contrato não-Ativo nunca é status errado nem pendente', () {
+      final r = analisarReversao([
+        _contrato(
+            localizador: 'X',
+            produto: 'Luxo Prata 1/2/3',
+            status: 'Revertido'),
+        _contrato(localizador: 'Y', origemReversao: 'X'),
+      ]);
+      expect(r.statusErrado, isEmpty);
+      expect(r.pendentes, isEmpty);
     });
   });
 }

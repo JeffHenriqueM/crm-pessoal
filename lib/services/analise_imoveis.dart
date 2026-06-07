@@ -183,6 +183,16 @@ String? imovelIdDoContrato(Contrato c) {
   return '$bloco-$n';
 }
 
+/// Um contrato só representa uma venda vigente quando o STATUS é "Ativo".
+/// Cancelado, Revertido, Não efetivado, Pendente etc. NÃO contam para estoque
+/// (cotas/espelho), vendas ou metas — entram no banco, mas ficam de fora da
+/// análise. A lista de contratos (aba Contratos) ainda mostra todos via filtro.
+bool contratoEfetivo(Contrato c) => c.status.trim().toLowerCase() == 'ativo';
+
+/// Filtra apenas os contratos vigentes (ver [contratoEfetivo]).
+List<Contrato> contratosEfetivos(List<Contrato> contratos) =>
+    contratos.where(contratoEfetivo).toList();
+
 /// Deriva o tier da cota a partir do nome do produto e do campo `cota`.
 /// 'Integral' tem prioridade; senão lê BRONZE/PRATA/OURO/DIAMANTE do produto.
 TierCota? tierDoProduto(String produto, String cota) {
@@ -424,5 +434,122 @@ ResumoAnalise analisarEmpreendimento(
     avulsos: avulsos,
     porTier: porTier,
     porBloco: porBloco,
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ANÁLISE DE REVERSÃO (projeto antigo → atual)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Contexto: contratos do projeto antigo foram refeitos no projeto atual. O
+// contrato novo recebe em ORIGEM REVERSÃO o localizador do contrato antigo que
+// substituiu. Logo, todo localizador que aparece como origem de reversão já foi
+// revertido — não deveria seguir "Ativo".
+//
+// Produto do projeto ANTIGO = nome NÃO em caixa-alta (ex.: "Luxo Prata 1/2/3").
+// Projeto atual usa caixa-alta (ex.: "LUXO MASTER PRATA 1º / 2º / 3º").
+
+/// True se o produto é do projeto antigo (texto não totalmente em maiúsculo).
+bool produtoProjetoAntigo(String produto) {
+  final p = produto.trim();
+  return p.isNotEmpty && p != p.toUpperCase();
+}
+
+/// Normaliza o valor de origem reversão: "0"/vazio → null.
+String? _origemValida(Contrato c) {
+  final o = (c.origemReversao ?? '').trim();
+  if (o.isEmpty || o == '0') return null;
+  return o;
+}
+
+/// Resultado da análise de reversão de uma carteira de contratos.
+class AnaliseReversao {
+  /// Ativos cujo localizador aparece como origem de reversão E o(s)
+  /// substituto(s) NÃO está(ão) mais Ativo(s): reversão concluída, então o
+  /// contrato deveria ter saído de Ativo. Caso crítico.
+  final List<Contrato> statusErradoCritico;
+
+  /// Ativos cujo localizador aparece como origem, mas algum substituto também
+  /// está Ativo (cadeia de troca / duplicidade) — exige verificação manual.
+  final List<Contrato> statusErradoVerificar;
+
+  /// Produto antigo + Ativo + ainda NÃO revertido (não aparece como origem e
+  /// REVERTIDO=Não): pendentes de reversão.
+  final List<Contrato> pendentesNaoRevertidos;
+
+  /// Produto antigo + Ativo + REVERTIDO=Sim, mas o rótulo do produto continua
+  /// em minúsculo: provavelmente só falta atualizar o produto para caixa-alta.
+  final List<Contrato> pendentesAmbiguos;
+
+  /// Mapa localizador → contratos que o referenciam como origem (substitutos).
+  final Map<String, List<Contrato>> substitutosPorLocalizador;
+
+  const AnaliseReversao({
+    required this.statusErradoCritico,
+    required this.statusErradoVerificar,
+    required this.pendentesNaoRevertidos,
+    required this.pendentesAmbiguos,
+    required this.substitutosPorLocalizador,
+  });
+
+  List<Contrato> get statusErrado =>
+      [...statusErradoCritico, ...statusErradoVerificar];
+
+  List<Contrato> get pendentes =>
+      [...pendentesNaoRevertidos, ...pendentesAmbiguos];
+
+  bool get temAlerta => statusErrado.isNotEmpty || pendentes.isNotEmpty;
+}
+
+/// Analisa reversões na carteira COMPLETA de contratos (precisa de todos os
+/// status — Revertido/Cancelado entram no conjunto de origens). Ver
+/// [AnaliseReversao].
+AnaliseReversao analisarReversao(List<Contrato> todos) {
+  // origem → substitutos que a referenciam
+  final substitutos = <String, List<Contrato>>{};
+  for (final c in todos) {
+    final o = _origemValida(c);
+    if (o != null) (substitutos[o] ??= []).add(c);
+  }
+
+  bool ativo(Contrato c) => contratoEfetivo(c);
+  bool jaRevertido(Contrato c) => substitutos.containsKey(c.localizador);
+
+  final critico = <Contrato>[];
+  final verificar = <Contrato>[];
+  final pendNao = <Contrato>[];
+  final pendAmb = <Contrato>[];
+
+  for (final c in todos) {
+    if (!ativo(c)) continue;
+
+    if (jaRevertido(c)) {
+      // Já foi substituído: se algum substituto segue Ativo é cadeia/troca a
+      // verificar; se todos saíram de Ativo, é status errado crítico.
+      final subs = substitutos[c.localizador]!;
+      if (subs.any(ativo)) {
+        verificar.add(c);
+      } else {
+        critico.add(c);
+      }
+      continue;
+    }
+
+    // Não foi revertido ainda: só interessa quando o produto é do antigo.
+    if (produtoProjetoAntigo(c.produto)) {
+      if (c.revertido) {
+        pendAmb.add(c);
+      } else {
+        pendNao.add(c);
+      }
+    }
+  }
+
+  return AnaliseReversao(
+    statusErradoCritico: critico,
+    statusErradoVerificar: verificar,
+    pendentesNaoRevertidos: pendNao,
+    pendentesAmbiguos: pendAmb,
+    substitutosPorLocalizador: substitutos,
   );
 }

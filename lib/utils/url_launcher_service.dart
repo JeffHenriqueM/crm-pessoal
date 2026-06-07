@@ -3,7 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 class UrlLauncherService {
   Future<void> abrirWhatsApp(String telefone, {String? mensagem}) async {
-    final numero = telefone.replaceAll(RegExp(r'[^0-9]'), '');
+    var numero = telefone.replaceAll(RegExp(r'[^0-9]'), '');
+    // Normaliza para o padrão internacional do Brasil: números locais
+    // (DDD + 8/9 dígitos = 10 ou 11) recebem o prefixo 55.
+    if (!numero.startsWith('55') && (numero.length == 10 || numero.length == 11)) {
+      numero = '55$numero';
+    }
     final mensagemCodificada = Uri.encodeComponent(mensagem ?? '');
     final uri = Uri.parse('https://wa.me/$numero?text=$mensagemCodificada');
 

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
+import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
 
 // ── Tipos de meta disponíveis ─────────────────────────────────────────────────
@@ -201,8 +202,10 @@ class _MetaMensalCardState extends State<MetaMensalCard> {
     final captados = _tiposDisponiveis.any((t) => t.isCaptacao)
         ? await _service.getClientesCaptados(widget.userId)
         : const <Cliente>[];
-    final contratos =
-        _ehPosVenda ? await _service.getContratos() : const <dynamic>[];
+    // Meta de pós-venda só considera contratos vigentes (Ativo).
+    final contratos = _ehPosVenda
+        ? contratosEfetivos(await _service.getContratos())
+        : const <dynamic>[];
     final usuario = _ehPosVenda ? await _service.getUsuario(widget.userId) : null;
     if (mounted) {
       setState(() {

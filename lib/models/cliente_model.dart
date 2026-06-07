@@ -55,6 +55,11 @@ class Cliente {
   final DateTime? dataFechamento;
   final double? valorVendido;
 
+  /// Vínculo com o contrato fechado (coleção `contratos`). Preenchido ao mover
+  /// o lead para a fase Fechado. `contratoVinculadoId` é o localizador.
+  final String? contratoVinculadoId;
+  final String? contratoVinculadoNome;
+
   // ── Soft-delete (#19) ─────────────────────────────────────────────────────
   final bool deletado;
   final String? excluidoPorId;
@@ -100,6 +105,8 @@ class Cliente {
     this.ultimoContato,
     this.dataFechamento,
     this.valorVendido,
+    this.contratoVinculadoId,
+    this.contratoVinculadoNome,
     this.deletado = false,
     this.excluidoPorId,
     this.excluidoPorNome,
@@ -143,6 +150,8 @@ class Cliente {
       'statusMensagem': statusMensagem,
       'dataFechamento': dataFechamento != null ? Timestamp.fromDate(dataFechamento!) : null,
       'valorVendido': valorVendido,
+      if (contratoVinculadoId != null) 'contratoVinculadoId': contratoVinculadoId,
+      if (contratoVinculadoNome != null) 'contratoVinculadoNome': contratoVinculadoNome,
       // soft-delete: só serializa se true para não poluir docs normais
       if (deletado) 'deletado': true,
       if (excluidoPorId != null) 'excluidoPorId': excluidoPorId,
@@ -209,6 +218,8 @@ class Cliente {
       ultimoContato: (data['ultimoContato'] as Timestamp?)?.toDate(),
       dataFechamento: (data['dataFechamento'] as Timestamp?)?.toDate(),
       valorVendido: (data['valorVendido'] as num?)?.toDouble(),
+      contratoVinculadoId: data['contratoVinculadoId'] as String?,
+      contratoVinculadoNome: data['contratoVinculadoNome'] as String?,
       deletado: data['deletado'] == true,
       excluidoPorId: data['excluidoPorId'] as String?,
       excluidoPorNome: data['excluidoPorNome'] as String?,

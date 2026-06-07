@@ -32,6 +32,18 @@ void main() {
       expect(c.dataContrato?.day, 20);
     });
 
+    test('captura o CÓDIGO (número do contrato) sem confundir com STATUS CRC', () {
+      const csv = 'LOCALIZADOR,CÓDIGO,CESSIONÁRIO 1,STATUS CRC\n'
+          'LOC-1,LMP-1590-320/Cota-15,Maria,OK\n'
+          'LOC-2,,João,OK\n';
+
+      final cs = parsearCsvContratos(csv);
+
+      expect(cs[0].codigoContrato, 'LMP-1590-320/Cota-15');
+      // Sem CÓDIGO → null (não string vazia).
+      expect(cs[1].codigoContrato, isNull);
+    });
+
     test('ignora linhas de rodapé "Qtd:" e cabeçalho sem dados', () {
       const csv = 'LOCALIZADOR,CESSIONÁRIO 1\n'
           'LOC-1,Ana\n'

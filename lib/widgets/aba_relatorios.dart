@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../screens/lista_clientes_screen.dart';
+import 'secao_recolhivel.dart';
 
 class AbaRelatorios extends StatelessWidget {
   final List<Cliente> clientes;
@@ -74,74 +75,95 @@ class AbaRelatorios extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Funil de conversão ────────────────────────────────────────
-          _sectionTitle(context, 'Funil de Conversão'),
-          const SizedBox(height: 4),
-          Text(
-            'Distribuição atual dos leads — toque para ver a lista',
-            style: TextStyle(fontSize: 12, color: cs.outline),
+          SecaoRecolhivel(
+            id: 'rel_funil',
+            titulo: 'Funil de Conversão',
+            icone: Icons.filter_alt_outlined,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Distribuição atual dos leads — toque para ver a lista',
+                  style: TextStyle(fontSize: 12, color: cs.outline),
+                ),
+                const SizedBox(height: 16),
+                _buildFunil(context, cs, fasesFunil, contagem, totalFunil),
+                const SizedBox(height: 16),
+                _buildTaxaAvanco(cs, taxaAvanco, avancaram, totalPipeline),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          _buildFunil(context, cs, fasesFunil, contagem, totalFunil),
-
-          // ── Taxa de avanço ────────────────────────────────────────────
-          const SizedBox(height: 16),
-          _buildTaxaAvanco(cs, taxaAvanco, avancaram, totalPipeline),
 
           // ── Saúde da carteira ─────────────────────────────────────────
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Saúde da Carteira'),
-          const SizedBox(height: 12),
-          _saudeCard(
-            cs,
-            icon: Icons.calendar_today_outlined,
-            cor: Colors.orange.shade700,
-            titulo: 'Sem próximo contato agendado',
-            valor: semContato,
-            descricao: 'leads ativos sem data de follow-up',
-          ),
-          _saudeCard(
-            cs,
-            icon: Icons.alarm_outlined,
-            cor: cs.error,
-            titulo: 'Contato vencido',
-            valor: contatoVencido,
-            descricao: 'leads com follow-up em atraso',
-          ),
-          _saudeCard(
-            cs,
-            icon: Icons.warning_amber_rounded,
-            cor: Colors.amber.shade700,
-            titulo: 'Em risco de esfriar',
-            valor: emRisco,
-            descricao: 'sem atualização há 7 dias ou mais',
+          const SizedBox(height: 24),
+          SecaoRecolhivel(
+            id: 'rel_saude',
+            titulo: 'Saúde da Carteira',
+            icone: Icons.health_and_safety_outlined,
+            child: Column(
+              children: [
+                _saudeCard(
+                  cs,
+                  icon: Icons.calendar_today_outlined,
+                  cor: Colors.orange.shade700,
+                  titulo: 'Sem próximo contato agendado',
+                  valor: semContato,
+                  descricao: 'leads ativos sem data de follow-up',
+                ),
+                _saudeCard(
+                  cs,
+                  icon: Icons.alarm_outlined,
+                  cor: cs.error,
+                  titulo: 'Contato vencido',
+                  valor: contatoVencido,
+                  descricao: 'leads com follow-up em atraso',
+                ),
+                _saudeCard(
+                  cs,
+                  icon: Icons.warning_amber_rounded,
+                  cor: Colors.amber.shade700,
+                  titulo: 'Em risco de esfriar',
+                  valor: emRisco,
+                  descricao: 'sem atualização há 7 dias ou mais',
+                ),
+              ],
+            ),
           ),
 
           // ── Leads esquecidos ──────────────────────────────────────────
           if (esquecidos.isNotEmpty) ...[
-            const SizedBox(height: 28),
-            _sectionTitle(context, 'Leads Esquecidos'),
-            const SizedBox(height: 4),
-            Text(
-              'Leads ativos sem interação há 14 dias ou mais',
-              style: TextStyle(fontSize: 12, color: cs.outline),
-            ),
-            const SizedBox(height: 12),
-            ...esquecidos
-                .take(10)
-                .map((c) => _esquecidoCard(context, cs, c, hoje)),
-            if (esquecidos.length > 10)
-              Center(
-                child: TextButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ListaClientesScreen()),
+            const SizedBox(height: 24),
+            SecaoRecolhivel(
+              id: 'rel_esquecidos',
+              titulo: 'Leads Esquecidos',
+              icone: Icons.hourglass_empty_outlined,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Leads ativos sem interação há 14 dias ou mais',
+                    style: TextStyle(fontSize: 12, color: cs.outline),
                   ),
-                  icon: const Icon(Icons.open_in_new, size: 14),
-                  label: Text(
-                      'Ver todos os ${esquecidos.length} esquecidos'),
-                ),
+                  const SizedBox(height: 12),
+                  ...esquecidos
+                      .take(10)
+                      .map((c) => _esquecidoCard(context, cs, c, hoje)),
+                  if (esquecidos.length > 10)
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ListaClientesScreen()),
+                        ),
+                        icon: const Icon(Icons.open_in_new, size: 14),
+                        label: Text(
+                            'Ver todos os ${esquecidos.length} esquecidos'),
+                      ),
+                    ),
+                ],
               ),
+            ),
           ],
 
           const SizedBox(height: 16),
@@ -437,12 +459,4 @@ class AbaRelatorios extends StatelessWidget {
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String title) => Text(
-        title,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-      );
 }

@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
+import '../models/contato_embaixador_model.dart';
 import '../models/contrato_model.dart';
 import '../models/cota_model.dart';
 import '../models/fase_enum.dart';
 import '../models/imovel_model.dart';
 import '../models/interacao_model.dart';
+import '../models/modelo_mensagem_model.dart';
 import '../models/negociacao_model.dart';
 import '../models/notificacao_inapp_model.dart';
 import '../models/produto_model.dart';
@@ -21,6 +23,8 @@ class FirestoreService {
   final FirebaseAuth _auth;
   static const _colClientes = 'clientes';
   static const _colContratos = 'contratos';
+  static const _colContatosEmbaixador = 'contatos_embaixador';
+  static const _colModelosMensagem = 'modelos_mensagem';
 
   /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
   /// instâncias reais do Firebase (comportamento de produção inalterado).
@@ -255,6 +259,16 @@ class FirestoreService {
         id, 'Fase alterada para: ${novaFase.nomeDisplay}');
     // Snapshot de histórico (#19)
     await _salvarSnapshotCliente(id, dados, tipo: 'mudanca_fase');
+  }
+
+  /// Vincula (ou desvincula, passando null) um lead a um contrato fechado.
+  /// Usado ao mover o lead para a fase Fechado.
+  Future<void> vincularContratoACliente(
+      String clienteId, String? contratoId, String? contratoNome) async {
+    await _db.collection(_colClientes).doc(clienteId).set({
+      'contratoVinculadoId': contratoId,
+      'contratoVinculadoNome': contratoNome,
+    }, SetOptions(merge: true));
   }
 
   Future<void> atualizarClienteDetalhes(
@@ -1094,6 +1108,121 @@ class FirestoreService {
     }
   }
 
+  // ── Contatos do embaixador (Recepção) ─────────────────────────────────────
+
+  /// Stream de todos os contatos do embaixador, mais recentes primeiro.
+  Stream<List<ContatoEmbaixador>> getContatosEmbaixadorStream() {
+    return _db
+        .collection(_colContatosEmbaixador)
+        .orderBy('criadoEm', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map(ContatoEmbaixador.fromFirestore).toList());
+  }
+
+  /// Cria um novo contato do embaixador. Retorna o id criado.
+  Future<String> criarContatoEmbaixador(ContatoEmbaixador c) async {
+    final dados = _flagTeste({
+      ...c.toFirestore(),
+      'criadoPorId': _currentUserId,
+      'criadoPorNome': _currentUserName,
+    });
+    final ref = await _db.collection(_colContatosEmbaixador).add(dados);
+    return ref.id;
+  }
+
+  /// Inclui vários contatos de uma vez (importação / adicionar em lote).
+  Future<void> criarContatosEmbaixadorLote(
+      List<ContatoEmbaixador> contatos) async {
+    final batch = _db.batch();
+    for (final c in contatos) {
+      final ref = _db.collection(_colContatosEmbaixador).doc();
+      batch.set(
+        ref,
+        _flagTeste({
+          ...c.toFirestore(),
+          'criadoPorId': _currentUserId,
+          'criadoPorNome': _currentUserName,
+        }),
+      );
+    }
+    await batch.commit();
+  }
+
+  /// Atualiza os dados editáveis de um contato (nome, esposa, telefone, obs,
+  /// responsável pelo próximo contato).
+  Future<void> atualizarContatoEmbaixador(ContatoEmbaixador c) async {
+    await _db.collection(_colContatosEmbaixador).doc(c.id).set({
+      'nome': c.nome,
+      'nomeEsposa': c.nomeEsposa,
+      'telefone': c.telefone,
+      'observacao': c.observacao,
+      'responsavel': c.responsavel,
+    }, SetOptions(merge: true));
+  }
+
+
+  /// Regrava a lista completa de tentativas de um contato (append/edição da
+  /// resposta de uma tentativa específica é feita via read-modify-write).
+  Future<void> salvarTentativasContato(
+      String contatoId, List<Tentativa> tentativas) async {
+    await _db.collection(_colContatosEmbaixador).doc(contatoId).set({
+      'tentativas': tentativas.map((t) => t.toMap()).toList(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Exclui um contato do embaixador.
+  Future<void> deletarContatoEmbaixador(String contatoId) async {
+    await _db.collection(_colContatosEmbaixador).doc(contatoId).delete();
+  }
+
+  // ── Modelos de mensagem (WhatsApp) ─────────────────────────────────────────
+
+  /// Stream de todos os modelos de mensagem (padrão + individuais). A filtragem
+  /// "padrão ou meus" é feita na UI, pois a coleção é pequena.
+  Stream<List<ModeloMensagem>> getModelosMensagemStream() {
+    return _db
+        .collection(_colModelosMensagem)
+        .orderBy('titulo')
+        .snapshots()
+        .map((s) => s.docs.map(ModeloMensagem.fromFirestore).toList());
+  }
+
+  /// Busca única dos modelos de mensagem (para o seletor ao abrir o WhatsApp).
+  Future<List<ModeloMensagem>> getModelosMensagem() async {
+    try {
+      final snap = await _db.collection(_colModelosMensagem).get();
+      return snap.docs.map(ModeloMensagem.fromFirestore).toList();
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar modelos de mensagem: $e');
+      return [];
+    }
+  }
+
+  /// Cria um modelo de mensagem. Retorna o id criado.
+  Future<String> criarModeloMensagem(ModeloMensagem m) async {
+    final dados = _flagTeste({
+      ...m.toFirestore(),
+      'criadoPorId': _currentUserId,
+      'criadoPorNome': _currentUserName,
+    });
+    final ref = await _db.collection(_colModelosMensagem).add(dados);
+    return ref.id;
+  }
+
+  /// Atualiza título, texto e flag padrão de um modelo de mensagem.
+  Future<void> atualizarModeloMensagem(ModeloMensagem m) async {
+    await _db.collection(_colModelosMensagem).doc(m.id).set({
+      'titulo': m.titulo,
+      'texto': m.texto,
+      'padrao': m.padrao,
+    }, SetOptions(merge: true));
+  }
+
+  /// Exclui um modelo de mensagem.
+  Future<void> deletarModeloMensagem(String id) async {
+    await _db.collection(_colModelosMensagem).doc(id).delete();
+  }
+
   /// Exclui uma interação da subcoleção de um contrato.
   Future<void> deletarInteracaoContrato(
     String contratoId,
@@ -1265,7 +1394,10 @@ class FirestoreService {
   Future<({int imoveisAfetados, int cotas, int avulsos})>
       sincronizarCotas() async {
     final snap = await _db.collection(_colContratos).get();
-    final contratos = snap.docs.map(Contrato.fromFirestore).toList();
+    // Só contratos vigentes (Ativo) viram cota; cancelados/revertidos ficam
+    // apenas na coleção `contratos`.
+    final contratos =
+        contratosEfetivos(snap.docs.map(Contrato.fromFirestore).toList());
 
     final mapa = projetarCotas(contratos);
     final avulsos = contratosAvulsos(contratos).length;

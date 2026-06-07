@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import 'filtro_periodo.dart';
+import 'secao_recolhivel.dart';
 
 class AbaMotivosPerda extends StatefulWidget {
   final List<Cliente> clientes;
@@ -138,24 +139,28 @@ class _AbaMotivosPerdaState extends State<AbaMotivosPerda> {
           const SizedBox(height: 24),
 
           // ── Gráfico de pizza (donut) ───────────────────────────────────
-          _secTitle(context, 'Distribuição por motivo'),
-          const SizedBox(height: 4),
-          Text(
-            'Toque em um segmento para ver o percentual',
-            style: TextStyle(fontSize: 12, color: cs.outline),
-          ),
-          const SizedBox(height: 12),
-
-          if (total == 0)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Text('Nenhum cliente perdido registrado.',
-                    style: TextStyle(color: cs.outline)),
-              ),
-            )
-          else
-            Card(
+          SecaoRecolhivel(
+            id: 'perdas_distribuicao',
+            titulo: 'Distribuição por motivo',
+            icone: Icons.pie_chart_outline,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Toque em um segmento para ver o percentual',
+                  style: TextStyle(fontSize: 12, color: cs.outline),
+                ),
+                const SizedBox(height: 12),
+                if (total == 0)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text('Nenhum cliente perdido registrado.',
+                          style: TextStyle(color: cs.outline)),
+                    ),
+                  )
+                else
+                  Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -277,19 +282,29 @@ class _AbaMotivosPerdaState extends State<AbaMotivosPerda> {
                 ),
               ),
             ),
+              ],
+            ),
+          ),
 
           const SizedBox(height: 24),
 
           // ── Detalhes por categoria ─────────────────────────────────────
-          _secTitle(context, 'Detalhamento por categoria'),
-          const SizedBox(height: 12),
-          ...ordenado.map((e) => _categoriaExpandida(
-                context,
-                e.key,
-                porCategoria[e.key] ?? [],
-                AbaMotivosPerda._cores[e.key] ?? Colors.grey,
-                cs,
-              )),
+          SecaoRecolhivel(
+            id: 'perdas_detalhamento',
+            titulo: 'Detalhamento por categoria',
+            icone: Icons.list_alt_outlined,
+            child: Column(
+              children: ordenado
+                  .map((e) => _categoriaExpandida(
+                        context,
+                        e.key,
+                        porCategoria[e.key] ?? [],
+                        AbaMotivosPerda._cores[e.key] ?? Colors.grey,
+                        cs,
+                      ))
+                  .toList(),
+            ),
+          ),
           const SizedBox(height: 16),
         ],
       ),
@@ -297,15 +312,6 @@ class _AbaMotivosPerdaState extends State<AbaMotivosPerda> {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  Widget _secTitle(BuildContext context, String title) => Text(
-        title,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-      );
-
   Widget _kpi(ColorScheme cs, String valor, String label, IconData icon,
       Color cor) {
     return Expanded(

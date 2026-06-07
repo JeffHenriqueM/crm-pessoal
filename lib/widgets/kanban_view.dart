@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../services/firestore_service.dart';
+import 'vincular_contrato_dialog.dart';
 
 // ── Kanban com drag-and-drop ──────────────────────────────────────────────────
 class KanbanView extends StatelessWidget {
@@ -109,6 +110,28 @@ class _KanbanColumnState extends State<_KanbanColumn> {
       await _mostrarDialogoPerdido(cliente);
     } else {
       await _service.atualizarFaseCliente(cliente.id!, widget.fase);
+      // Ao fechar o lead, oferece vincular ao contrato correspondente.
+      if (widget.fase == FaseCliente.fechado && mounted) {
+        await _vincularContratoAoFechar(cliente);
+      }
+    }
+  }
+
+  Future<void> _vincularContratoAoFechar(Cliente cliente) async {
+    final contrato = await VincularContratoDialog.mostrar(
+      context,
+      nome: cliente.nome,
+      telefone: cliente.telefoneContato ?? cliente.telefone2 ?? '',
+      fs: _service,
+    );
+    if (contrato == null) return;
+    await _service.vincularContratoACliente(
+        cliente.id!, contrato.localizador, contrato.nomeComprador);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lead vinculado ao contrato de '
+            '${contrato.nomeComprador}.')),
+      );
     }
   }
 

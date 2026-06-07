@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
+import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
 
 /// Meta padrão de contatos do pós-venda (% dos contratos no mês).
@@ -52,7 +53,8 @@ class _AbaMetasState extends State<AbaMetas> {
   }
 
   Future<void> _carregarContratos() async {
-    final contratos = await _service.getContratos();
+    // Só contratos vigentes (Ativo) contam para a meta de pós-venda.
+    final contratos = contratosEfetivos(await _service.getContratos());
     if (!mounted) return;
     setState(() {
       _contratosTotal = contratos.length;

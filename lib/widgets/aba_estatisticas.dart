@@ -5,6 +5,7 @@ import '../models/fase_enum.dart';
 import '../screens/lista_clientes_screen.dart';
 import '../widgets/filtro_periodo.dart';
 import '../widgets/meta_mensal_card.dart';
+import '../widgets/secao_recolhivel.dart';
 
 class AbaEstatisticas extends StatefulWidget {
   final List<Cliente> clientes;
@@ -62,59 +63,74 @@ class _AbaEstatisticasState extends State<AbaEstatisticas> {
           ),
           const SizedBox(height: 20),
 
-          _sectionTitle(context, 'Resumo Geral'),
-          const SizedBox(height: 12),
-          Row(children: [
-            _kpiCard('Total Leads', '$total', Icons.people_outline, cs.primary, cs),
-            _kpiCard('Visitas', '$visitasAgendadas', Icons.location_on_outlined, Colors.orange.shade700, cs),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            _kpiCard('Fechados', '$fechados', Icons.check_circle_outline, Colors.green.shade700, cs),
-            _kpiCard('Perdidos', '$perdidos', Icons.cancel_outlined, cs.error, cs),
-          ]),
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Origem dos Clientes'),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 220,
-            child: PieChart(PieChartData(
-              sectionsSpace: 3,
-              centerSpaceRadius: 48,
-              sections: _gerarDadosPizza(clientes, cs),
-            )),
+          SecaoRecolhivel(
+            id: 'estat_resumo',
+            titulo: 'Resumo Geral',
+            icone: Icons.insights_outlined,
+            child: Column(children: [
+              Row(children: [
+                _kpiCard('Total Leads', '$total', Icons.people_outline,
+                    cs.primary, cs),
+                _kpiCard('Visitas', '$visitasAgendadas',
+                    Icons.location_on_outlined, Colors.orange.shade700, cs),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                _kpiCard('Fechados', '$fechados', Icons.check_circle_outline,
+                    Colors.green.shade700, cs),
+                _kpiCard('Perdidos', '$perdidos', Icons.cancel_outlined,
+                    cs.error, cs),
+              ]),
+            ]),
           ),
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Motivos de Perda'),
-          const SizedBox(height: 4),
-          Text(
-            'Apenas motivos classificados via dropdown',
-            style: TextStyle(fontSize: 12, color: cs.outline),
+          const SizedBox(height: 24),
+          SecaoRecolhivel(
+            id: 'estat_origem',
+            titulo: 'Origem dos Clientes',
+            icone: Icons.pie_chart_outline,
+            child: SizedBox(
+              height: 220,
+              child: PieChart(PieChartData(
+                sectionsSpace: 3,
+                centerSpaceRadius: 48,
+                sections: _gerarDadosPizza(clientes, cs),
+              )),
+            ),
           ),
-          const SizedBox(height: 16),
-          _buildBarChartMotivos(clientes, cs),
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Funil de Vendas'),
-          const SizedBox(height: 12),
-          ...FaseCliente.values
-              .where((f) => f != FaseCliente.atendimento)
-              .map(
-                (fase) => _itemFunil(context, fase,
-                    clientes.where((c) => c.fase == fase).length, total, cs),
-              ),
+          const SizedBox(height: 24),
+          SecaoRecolhivel(
+            id: 'estat_motivos',
+            titulo: 'Motivos de Perda',
+            icone: Icons.do_not_disturb_alt_outlined,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Apenas motivos classificados via dropdown',
+                  style: TextStyle(fontSize: 12, color: cs.outline),
+                ),
+                const SizedBox(height: 16),
+                _buildBarChartMotivos(clientes, cs),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          SecaoRecolhivel(
+            id: 'estat_funil',
+            titulo: 'Funil de Vendas',
+            icone: Icons.filter_alt_outlined,
+            child: Column(
+              children: FaseCliente.values
+                  .where((f) => f != FaseCliente.atendimento)
+                  .map(
+                    (fase) => _itemFunil(context, fase,
+                        clientes.where((c) => c.fase == fase).length, total, cs),
+                  )
+                  .toList(),
+            ),
+          ),
           const SizedBox(height: 16),
         ],
-      ),
-    );
-  }
-
-  Widget _sectionTitle(BuildContext context, String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-        color: Theme.of(context).colorScheme.onSurface,
       ),
     );
   }

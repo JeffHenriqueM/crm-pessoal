@@ -8,7 +8,9 @@ import '../models/contrato_model.dart';
 import '../models/interacao_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../utils/whatsapp_interacao.dart';
 import '../widgets/ficha/ficha_timeline_tab.dart';
+import '../widgets/interacao_form_dialog.dart';
 
 class FichaContratoScreen extends StatefulWidget {
   final Contrato contrato;
@@ -203,7 +205,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   // ── Interações ─────────────────────────────────────────────────────────────
 
   void _novaInteracao() {
-    _InteracaoFormDialog.show(
+    InteracaoFormDialog.show(
       context,
       onSalvar: (i) async {
         await _fs.adicionarInteracaoContrato(
@@ -303,6 +305,38 @@ class _DadosTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Alerta de reajuste pendente (correção no sistema de origem).
+        if (c.precisaReajuste)
+          Card(
+            color: Colors.orange.shade50,
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Contrato precisa de reajuste',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        if (c.motivoReajuste != null &&
+                            c.motivoReajuste!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(c.motivoReajuste!),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         // Assinatura
         _secao('Processo de Assinatura', [
           if (isAdmin)
@@ -462,6 +496,22 @@ class _DadosTab extends StatelessWidget {
           if (c.emailComprador.isNotEmpty) _campo('E-mail', c.emailComprador),
           if (c.telefoneComprador.isNotEmpty)
             _campo('Telefone', c.telefoneComprador),
+          if (c.telefoneComprador.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => abrirWhatsAppERegistrarInteracao(
+                  context,
+                  contratoId: c.localizador,
+                  telefone: c.telefoneComprador,
+                  nomeContato: c.nomeComprador,
+                  esposaContato: c.nomeComprador2,
+                ),
+                icon: const Icon(Icons.chat_rounded,
+                    color: Color(0xFF25D366), size: 18),
+                label: const Text('WhatsApp'),
+              ),
+            ),
           if (c.dataNascimentoComprador != null)
             _campo(
               'Data de nascimento',
@@ -479,6 +529,22 @@ class _DadosTab extends StatelessWidget {
               _campo('E-mail', c.emailComprador2!),
             if (c.telefoneComprador2 != null && c.telefoneComprador2!.isNotEmpty)
               _campo('Telefone', c.telefoneComprador2!),
+            if (c.telefoneComprador2 != null &&
+                c.telefoneComprador2!.isNotEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => abrirWhatsAppERegistrarInteracao(
+                    context,
+                    contratoId: c.localizador,
+                    telefone: c.telefoneComprador2!,
+                    nomeContato: c.nomeComprador2,
+                  ),
+                  icon: const Icon(Icons.chat_rounded,
+                      color: Color(0xFF25D366), size: 18),
+                  label: const Text('WhatsApp'),
+                ),
+              ),
             if (c.dataNascimentoComprador2 != null)
               _campo(
                 'Data de nascimento',
@@ -490,6 +556,8 @@ class _DadosTab extends StatelessWidget {
 
         // Produto
         _secao('Produto', [
+          if (c.codigoContrato != null && c.codigoContrato!.isNotEmpty)
+            _campo('Nº do contrato', c.codigoContrato!),
           _campo('Produto', c.produto),
           _campo('Cota', c.cota),
           _campo('Bloco', c.bloco),
@@ -606,166 +674,5 @@ class _InteracoesTabState extends State<_InteracoesTab> {
       isNovo: false,
       onItemTap: widget.onItemTap,
     );
-  }
-}
-
-// ── Dialog de nova interação ──────────────────────────────────────────────────
-
-class _InteracaoFormDialog extends StatefulWidget {
-  final Future<void> Function(Interacao) onSalvar;
-
-  const _InteracaoFormDialog({required this.onSalvar});
-
-  static void show(
-    BuildContext context, {
-    required Future<void> Function(Interacao) onSalvar,
-  }) {
-    showDialog(
-      context: context,
-      builder: (_) => _InteracaoFormDialog(onSalvar: onSalvar),
-    );
-  }
-
-  @override
-  State<_InteracaoFormDialog> createState() => _InteracaoFormDialogState();
-}
-
-class _InteracaoFormDialogState extends State<_InteracaoFormDialog> {
-  Canal _canal = Canal.whatsapp;
-  Modalidade _modalidade = Modalidade.online;
-  bool _houveResposta = false;
-  final _tituloCtrl = TextEditingController();
-  final _notaCtrl = TextEditingController();
-  final _combinamosCtrl = TextEditingController();
-  bool _salvando = false;
-
-  @override
-  void dispose() {
-    _tituloCtrl.dispose();
-    _notaCtrl.dispose();
-    _combinamosCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Nova Interação'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Canal
-            DropdownButtonFormField<Canal>(
-              value: _canal,
-              decoration: const InputDecoration(labelText: 'Canal'),
-              items: Canal.values
-                  .where((c) => c != Canal.sistema)
-                  .map((c) => DropdownMenuItem(
-                        value: c,
-                        child: Row(
-                          children: [
-                            Icon(c.icone, size: 16, color: c.cor),
-                            const SizedBox(width: 8),
-                            Text(c.nome),
-                          ],
-                        ),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _canal = v!),
-            ),
-            const SizedBox(height: 12),
-            // Modalidade
-            DropdownButtonFormField<Modalidade>(
-              value: _modalidade,
-              decoration: const InputDecoration(labelText: 'Modalidade'),
-              items: Modalidade.values
-                  .map((m) => DropdownMenuItem(
-                      value: m, child: Text(m.nome)))
-                  .toList(),
-              onChanged: (v) => setState(() => _modalidade = v!),
-            ),
-            const SizedBox(height: 12),
-            // Houve resposta
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Houve resposta?',
-                  style: TextStyle(fontSize: 14)),
-              value: _houveResposta,
-              onChanged: (v) => setState(() => _houveResposta = v),
-            ),
-            const SizedBox(height: 4),
-            TextFormField(
-              controller: _tituloCtrl,
-              decoration:
-                  const InputDecoration(labelText: 'Título (opcional)'),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _notaCtrl,
-              decoration: const InputDecoration(labelText: 'Observações'),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _combinamosCtrl,
-              decoration:
-                  const InputDecoration(labelText: 'O que combinamos?'),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: _salvando ? null : _salvar,
-          child: _salvando
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Salvar'),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _salvar() async {
-    final titulo = _tituloCtrl.text.trim();
-    final nota = _notaCtrl.text.trim();
-    if (nota.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Insira uma nota para a interação.')),
-      );
-      return;
-    }
-
-    setState(() => _salvando = true);
-    final combinamos = _combinamosCtrl.text.trim();
-    final interacao = Interacao(
-      titulo: titulo.isEmpty ? null : titulo,
-      nota: _notaCtrl.text.trim(),
-      dataInteracao: DateTime.now(),
-      canal: _canal,
-      modalidade: _modalidade,
-      houveResposta: _houveResposta,
-      oQueCombinamos: combinamos.isEmpty ? null : combinamos,
-    );
-
-    try {
-      await widget.onSalvar(interacao);
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      setState(() => _salvando = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e')),
-        );
-      }
-    }
   }
 }

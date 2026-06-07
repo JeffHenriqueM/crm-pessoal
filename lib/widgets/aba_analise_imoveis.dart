@@ -59,12 +59,21 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
         return StreamBuilder<List<Contrato>>(
           stream: _fs.getContratosStream(),
           builder: (context, snapContratos) {
-            final contratos = snapContratos.data ?? [];
+            // Só contratos vigentes entram na análise de estoque/vendas;
+            // cancelados/revertidos ficam de fora (ver contratosEfetivos).
+            final todosContratos = snapContratos.data ?? [];
+            final contratos = contratosEfetivos(todosContratos);
             final resumo = analisarEmpreendimento(imoveis, contratos);
+            // Reversão usa a carteira COMPLETA (origens incluem Revertidos).
+            final reversao = analisarReversao(todosContratos);
             final contratosPorId = {
               for (final c in contratos) c.localizador: c,
             };
-            return _buildConteudo(context, resumo, contratos, contratosPorId);
+            final todosPorId = {
+              for (final c in todosContratos) c.localizador: c,
+            };
+            return _buildConteudo(context, resumo, contratos, contratosPorId,
+                reversao, todosPorId);
           },
         );
       },
@@ -110,6 +119,8 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
     ResumoAnalise r,
     List<Contrato> contratos,
     Map<String, Contrato> contratosPorId,
+    AnaliseReversao reversao,
+    Map<String, Contrato> todosPorId,
   ) {
     final tt = Theme.of(context).textTheme;
     return Column(
@@ -134,7 +145,9 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
               _chipSecao(1, 'Cotas', Icons.pie_chart_outline),
               _chipSecao(2, 'Vendas', Icons.attach_money_outlined),
               _chipSecao(3, 'Saúde dos dados', Icons.health_and_safety_outlined,
-                  alerta: r.avulsos.isNotEmpty || r.comAlerta.isNotEmpty),
+                  alerta: r.avulsos.isNotEmpty ||
+                      r.comAlerta.isNotEmpty ||
+                      reversao.temAlerta),
               _chipSecao(4, 'Dados', Icons.query_stats_outlined),
             ],
           ),
@@ -144,8 +157,9 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
           child: switch (_secao) {
             0 => _SecaoEspelho(resumo: r, contratosPorId: contratosPorId),
             1 => _SecaoCotas(resumo: r),
-            2 => _SecaoVendas(resumo: r, contratos: contratos),
-            3 => _SecaoSaude(resumo: r),
+            2 => _SecaoVendas(
+                resumo: r, contratos: contratos, todosPorId: todosPorId),
+            3 => _SecaoSaude(resumo: r, reversao: reversao),
             _ => _SecaoDados(resumo: r, contratos: contratos),
           },
         ),
@@ -865,7 +879,11 @@ const _meses = [
 class _SecaoVendas extends StatelessWidget {
   final ResumoAnalise resumo;
   final List<Contrato> contratos;
-  const _SecaoVendas({required this.resumo, required this.contratos});
+  final Map<String, Contrato> todosPorId;
+  const _SecaoVendas(
+      {required this.resumo,
+      required this.contratos,
+      required this.todosPorId});
 
   @override
   Widget build(BuildContext context) {
@@ -874,7 +892,8 @@ class _SecaoVendas extends StatelessWidget {
 
     final aReceber = valorAReceber(contratos);
     final atualizado = dataAtualizacaoDados(contratos);
-    final porAno = vendasPorAno(contratos);
+    // Reversões são re-datadas para a data do contrato original (raiz).
+    final porAno = vendasPorAnoAjustado(contratos, todosPorId);
     final anos = porAno.keys.toList()..sort((a, b) => b.compareTo(a));
     final semPagamento =
         contratosSemPagamento(contratos, agora: DateTime.now());
@@ -931,7 +950,8 @@ class _SecaoVendas extends StatelessWidget {
           final totCotas = todosMeses.fold<int>(0, (s, m) => s + m.cotas);
           final totInt = todosMeses.fold<int>(0, (s, m) => s + m.inteiros);
           return Text(
-            'Total: ${_contagemCotas(totCotas, totInt)}. Toque num mês para ver os contratos.',
+            'Total: ${_contagemCotas(totCotas, totInt)}. Toque num mês para ver os contratos. '
+            'Reversões contam na data do contrato original; upgrades lançam só o ganho na data nova.',
             style: tt.bodySmall?.copyWith(color: Colors.grey),
           );
         }),
@@ -1048,6 +1068,15 @@ class _CardMesPequeno extends StatelessWidget {
                 maxLines: 2,
                 style: tt.bodySmall?.copyWith(color: Colors.grey),
               ),
+              if (vm.upgrades > 0)
+                Text(
+                  '+${vm.upgrades} upgrade${vm.upgrades == 1 ? '' : 's'} · ${_moedaCompacta.format(vm.ganhoUpgrade)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.tertiary,
+                      fontWeight: FontWeight.w600),
+                ),
             ],
           ),
         ),
@@ -1212,17 +1241,97 @@ class _LinhaBloco extends StatelessWidget {
 
 class _SecaoSaude extends StatelessWidget {
   final ResumoAnalise resumo;
-  const _SecaoSaude({required this.resumo});
+  final AnaliseReversao reversao;
+  const _SecaoSaude({required this.resumo, required this.reversao});
+
+  Widget _tileContrato(BuildContext context, Contrato c, String subtitulo,
+      {Color? corIcone, IconData icone = Icons.description_outlined}) {
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icone, size: 18, color: corIcone),
+      title: Text(
+        '${c.localizador} · ${c.nomeComprador.isEmpty ? '(sem nome)' : c.nomeComprador}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(subtitulo, maxLines: 2),
+      trailing: const Icon(Icons.chevron_right, size: 18),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => FichaContratoScreen(contrato: c),
+      )),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final r = resumo;
+    final rev = reversao;
     final avulsos = [...r.avulsos]
       ..sort((a, b) => a.nomeComprador.compareTo(b.nomeComprador));
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       children: [
+        // ── Reversão: status errado ───────────────────────────────────────
+        _CardAlerta(
+          icone: Icons.report_problem_outlined,
+          cor: rev.statusErrado.isEmpty ? Colors.green : Colors.red,
+          titulo: '${rev.statusErrado.length} Ativos referenciados como origem',
+          descricao:
+              'Contratos Ativos cujo localizador já aparece como ORIGEM REVERSÃO '
+              '(já foram substituídos). ${rev.statusErradoCritico.length} crítico(s) '
+              '(substituto não-Ativo) e ${rev.statusErradoVerificar.length} a verificar '
+              '(substituto também Ativo).',
+        ),
+        for (final c in rev.statusErradoCritico)
+          _tileContrato(
+            context,
+            c,
+            'CRÍTICO · ${c.produto} · substituído por '
+            '${rev.substitutosPorLocalizador[c.localizador]?.map((s) => s.localizador).join(', ') ?? '—'} '
+            '(não-Ativo) → não deveria estar Ativo',
+            corIcone: Colors.red,
+            icone: Icons.error,
+          ),
+        for (final c in rev.statusErradoVerificar)
+          _tileContrato(
+            context,
+            c,
+            'VERIFICAR · ${c.produto} · substituído por '
+            '${rev.substitutosPorLocalizador[c.localizador]?.map((s) => s.localizador).join(', ') ?? '—'} '
+            '(também Ativo)',
+            corIcone: Colors.orange,
+            icone: Icons.help_outline,
+          ),
+        const Divider(height: 24),
+        // ── Reversão: pendentes ───────────────────────────────────────────
+        _CardAlerta(
+          icone: Icons.history_toggle_off,
+          cor: rev.pendentes.isEmpty ? Colors.green : Colors.orange,
+          titulo: '${rev.pendentes.length} pendentes de reversão',
+          descricao:
+              'Produto do projeto antigo + Ativo. '
+              '${rev.pendentesNaoRevertidos.length} ainda não revertido(s) e '
+              '${rev.pendentesAmbiguos.length} marcado(s) REVERTIDO=Sim '
+              '(só falta atualizar o produto p/ caixa-alta).',
+        ),
+        for (final c in rev.pendentesNaoRevertidos)
+          _tileContrato(
+            context,
+            c,
+            'PENDENTE · ${c.produto} · ${c.bloco}/${c.imovel}/${c.cota}',
+            icone: Icons.pending_outlined,
+          ),
+        for (final c in rev.pendentesAmbiguos)
+          _tileContrato(
+            context,
+            c,
+            'AMBÍGUO (REVERTIDO=Sim) · ${c.produto} · origem ${c.origemReversao ?? '—'}',
+            corIcone: Colors.orange,
+            icone: Icons.published_with_changes,
+          ),
+        const Divider(height: 24),
         _CardAlerta(
           icone: Icons.link_off,
           cor: r.avulsos.isEmpty ? Colors.green : Colors.orange,

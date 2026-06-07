@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/theme_controller.dart';
+import 'modelos_mensagem_screen.dart';
 
 class ConfiguracoesScreen extends StatelessWidget {
   const ConfiguracoesScreen({super.key});
@@ -48,6 +49,30 @@ class ConfiguracoesScreen extends StatelessWidget {
                 ],
               );
             },
+          ),
+
+          const SizedBox(height: 32),
+
+          // ── Mensagens (WhatsApp) ──────────────────────────────────────────
+          _secaoTitulo(context, 'Mensagens', Icons.message_outlined),
+          const SizedBox(height: 8),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: ListTile(
+              leading: Icon(Icons.chat_outlined, color: cs.primary),
+              title: const Text('Modelos de mensagem'),
+              subtitle: const Text(
+                  'Crie mensagens prontas para o WhatsApp (padrão e individuais)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const ModelosMensagemScreen()),
+              ),
+            ),
           ),
 
           const SizedBox(height: 32),

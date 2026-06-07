@@ -49,6 +49,65 @@ void main() {
       expect(lido.statusAssinatura, StatusAssinatura.naoAssinado);
     });
 
+    test('codigoContrato faz round-trip', () async {
+      final db = FakeFirebaseFirestore();
+      final c = Contrato(
+        localizador: 'LOC9',
+        localizadorAtendimento: '',
+        nomeComprador: 'Zé',
+        codigoContrato: 'LMP-1590-320/Cota-15',
+      );
+      await db.collection('contratos').doc(c.localizador).set(c.toFirestore());
+      final lido = Contrato.fromFirestore(
+          await db.collection('contratos').doc(c.localizador).get());
+      expect(lido.codigoContrato, 'LMP-1590-320/Cota-15');
+    });
+
+    test('revertido e origemReversao fazem round-trip', () async {
+      final db = FakeFirebaseFirestore();
+      final c = Contrato(
+        localizador: 'LOC7',
+        localizadorAtendimento: '',
+        nomeComprador: 'Rev',
+        revertido: true,
+        origemReversao: '199',
+      );
+      await db.collection('contratos').doc(c.localizador).set(c.toFirestore());
+      final lido = Contrato.fromFirestore(
+          await db.collection('contratos').doc(c.localizador).get());
+      expect(lido.revertido, isTrue);
+      expect(lido.origemReversao, '199');
+    });
+
+    test('precisaReajuste/motivoReajuste: round-trip e NÃO no toFirestore',
+        () async {
+      final db = FakeFirebaseFirestore();
+      // Grava direto o doc com o alerta (anotação interna).
+      await db.collection('contratos').doc('LOC8').set({
+        'nomeComprador': 'Alerta',
+        'precisaReajuste': true,
+        'motivoReajuste': 'Ajustar status',
+      });
+      final lido = Contrato.fromFirestore(
+          await db.collection('contratos').doc('LOC8').get());
+      expect(lido.precisaReajuste, isTrue);
+      expect(lido.motivoReajuste, 'Ajustar status');
+      // Não é serializado (sobrevive ao re-import por merge).
+      expect(lido.toFirestore().containsKey('precisaReajuste'), isFalse);
+      expect(lido.toFirestore().containsKey('motivoReajuste'), isFalse);
+    });
+
+    test('toFirestore NÃO serializa statusAssinatura (preserva no re-import)',
+        () {
+      final c = Contrato(
+        localizador: 'LOC1',
+        localizadorAtendimento: '',
+        nomeComprador: 'X',
+        statusAssinatura: StatusAssinatura.assinado,
+      );
+      expect(c.toFirestore().containsKey('statusAssinatura'), isFalse);
+    });
+
     test('temAtrasos e estaQuitado refletem os valores', () {
       expect(_contratoBase(valorAtrasado: 0).temAtrasos, isFalse);
       expect(_contratoBase(valorAtrasado: 10).temAtrasos, isTrue);
@@ -118,6 +177,25 @@ void main() {
               'criação original. salvarContrato/salvarContratosLote gravam '
               'criadoEm: serverTimestamp() com merge em todo save.',
         );
+      },
+    );
+
+    test(
+      'reimportar um contrato preserva o statusAssinatura existente',
+      () async {
+        final db = FakeFirebaseFirestore();
+        // Contrato já existe e foi marcado como assinado no banco.
+        await _servico(db).salvarContrato(_contratoBase());
+        await _servico(db)
+            .atualizarStatusAssinatura('LOC1', StatusAssinatura.assinado);
+
+        // Reimportação (a planilha não traz coluna de assinatura).
+        await _servico(db).salvarContrato(_contratoBase());
+
+        final doc = await db.collection('contratos').doc('LOC1').get();
+        expect(doc.data()?['statusAssinatura'], 'assinado',
+            reason:
+                'toFirestore não deve gravar statusAssinatura no re-import.');
       },
     );
   });

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
+import 'secao_recolhivel.dart';
 
 enum _PeriodoCaptacao { semana, mes, tudo }
 
@@ -125,26 +126,30 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
           const SizedBox(height: 28),
 
           // ── Gráfico por dia da semana ────────────────────────────────
-          _sectionTitle(context, 'Captações por Dia da Semana'),
-          const SizedBox(height: 16),
-          _buildGraficoDias(cs, porDia, maxY),
-          const SizedBox(height: 28),
+          SecaoRecolhivel(
+            id: 'capt_dias',
+            titulo: 'Captações por Dia da Semana',
+            icone: Icons.calendar_view_week_outlined,
+            child: _buildGraficoDias(cs, porDia, maxY),
+          ),
+          const SizedBox(height: 24),
 
           // ── Ranking de captadores ────────────────────────────────────
-          _sectionTitle(context, 'Ranking de Captadores'),
-          const SizedBox(height: 12),
-          if (ranking.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Nenhum dado de captação neste período.',
-                  style: TextStyle(color: cs.outline),
-                ),
-              ),
-            )
-          else
-            Card(
+          SecaoRecolhivel(
+            id: 'capt_ranking',
+            titulo: 'Ranking de Captadores',
+            icone: Icons.emoji_events_outlined,
+            child: ranking.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Nenhum dado de captação neste período.',
+                        style: TextStyle(color: cs.outline),
+                      ),
+                    ),
+                  )
+                : Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -223,6 +228,7 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
                 ),
               ),
             ),
+          ),
 
           const SizedBox(height: 16),
         ],
@@ -410,12 +416,4 @@ class _AbaCaptacaoState extends State<AbaCaptacao> {
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String title) => Text(
-        title,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-      );
 }

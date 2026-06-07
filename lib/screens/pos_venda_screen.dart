@@ -66,7 +66,11 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           c.localizador.contains(q) ||
           c.cidade.toLowerCase().contains(q);
 
-      final statusOk = _filtroStatus == null || c.status == _filtroStatus;
+      // "Ativo" = status Ativo; "Inativo" = qualquer outro (Cancelado,
+      // Revertido, Não efetivado, Pendente…); null = todos.
+      final ativo = c.status.trim().toLowerCase() == 'ativo';
+      final statusOk = _filtroStatus == null ||
+          (_filtroStatus == 'Ativo' ? ativo : !ativo);
       final finOk =
           _filtroStatusFin == null || c.statusFinanceiro == _filtroStatusFin;
       final assOk =
