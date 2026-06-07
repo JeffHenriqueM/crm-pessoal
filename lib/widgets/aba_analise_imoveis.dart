@@ -1000,15 +1000,13 @@ class _LinhaMeses extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Altura fixa: a faixa rola na horizontal dentro de uma lista vertical,
-    // então precisa de altura limitada (senão estoura o layout = caixa cinza).
-    return SizedBox(
-      height: 98,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
-        children: [for (final vm in meses) _CardMesPequeno(vm: vm)],
-      ),
+    // Wrap: quebra em linhas conforme a largura (sem depender de altura,
+    // evitando o erro de layout que aparecia como caixa cinza). Em telas
+    // largas os meses ficam na mesma linha.
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [for (final vm in meses) _CardMesPequeno(vm: vm)],
     );
   }
 }
@@ -1021,7 +1019,7 @@ class _CardMesPequeno extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     return Card(
-      margin: const EdgeInsets.only(right: 8, bottom: 4),
+      margin: EdgeInsets.zero,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => showModalBottomSheet(
@@ -1034,6 +1032,7 @@ class _CardMesPequeno extends StatelessWidget {
           width: 136,
           padding: const EdgeInsets.all(10),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(_mesesCurto[vm.mes],
