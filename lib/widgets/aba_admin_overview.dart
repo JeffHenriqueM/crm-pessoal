@@ -3,6 +3,7 @@ import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../screens/lista_clientes_screen.dart';
+import 'secao_recolhivel.dart';
 
 // ── Modelo interno de stats por vendedor ────────────────────────────────────
 class _VendedorStats {
@@ -156,28 +157,40 @@ class _AbaAdminOverviewState extends State<AbaAdminOverview> {
             _buildFiltroVendedor(cs),
 
           // ── KPIs Gerais ────────────────────────────────────────────────
-          _sectionTitle(context, 'Resumo da Equipe'),
-          const SizedBox(height: 12),
-          _kpiRow(context, cs, totalLeads, totalAtrasados, totalNegociacao,
-              totalFechados),
+          SecaoRecolhivel(
+            id: 'equipe_resumo',
+            titulo: 'Resumo da Equipe',
+            icone: Icons.groups_outlined,
+            child: _kpiRow(context, cs, totalLeads, totalAtrasados,
+                totalNegociacao, totalFechados),
+          ),
 
           // ── Alerta: Contatos Atrasados ─────────────────────────────────
           if (statsComAtrasados.isNotEmpty) ...[
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
             _alertaAtrasados(context, cs, statsComAtrasados),
           ],
 
           // ── Ranking de Fechamentos ────────────────────────────────────
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Ranking de Fechamentos'),
-          const SizedBox(height: 12),
-          _rankingFechamentos(context, cs, rankingFechados),
+          const SizedBox(height: 20),
+          SecaoRecolhivel(
+            id: 'equipe_ranking',
+            titulo: 'Ranking de Fechamentos',
+            icone: Icons.emoji_events_outlined,
+            child: _rankingFechamentos(context, cs, rankingFechados),
+          ),
 
           // ── Cards por Vendedor ─────────────────────────────────────────
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Situação por Vendedor'),
-          const SizedBox(height: 12),
-          ...stats.map((s) => _vendedorCard(context, cs, s)),
+          const SizedBox(height: 20),
+          SecaoRecolhivel(
+            id: 'equipe_vendedores',
+            titulo: 'Situação por Vendedor',
+            icone: Icons.badge_outlined,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: stats.map((s) => _vendedorCard(context, cs, s)).toList(),
+            ),
+          ),
 
           const SizedBox(height: 16),
         ],
@@ -874,14 +887,4 @@ class _AbaAdminOverviewState extends State<AbaAdminOverview> {
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-        color: Theme.of(context).colorScheme.onSurface,
-      ),
-    );
-  }
 }

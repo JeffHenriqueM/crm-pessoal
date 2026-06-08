@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/contrato_model.dart';
+import '../services/analise_imoveis.dart';
 import '../services/aniversariantes_pos_venda.dart';
 import '../services/firestore_service.dart';
+import '../utils/whatsapp_interacao.dart';
 
 final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 final _moedaCompacta = NumberFormat.compactCurrency(
@@ -26,7 +27,8 @@ class AbaPosVenda extends StatelessWidget {
         if (snap.hasError) {
           return Center(child: Text('Erro: ${snap.error}'));
         }
-        return _buildConteudo(context, snap.data ?? []);
+        // Visão geral considera apenas contratos vigentes (Ativo).
+        return _buildConteudo(context, contratosEfetivos(snap.data ?? []));
       },
     );
   }
@@ -168,12 +170,6 @@ class _BotaoAniversariantes extends StatelessWidget {
 
   const _BotaoAniversariantes({required this.aniversariantes});
 
-  static String _urlWhatsApp(String telefone) {
-    final digitos = telefone.replaceAll(RegExp(r'\D'), '');
-    final numero = digitos.startsWith('55') ? digitos : '55$digitos';
-    return 'https://wa.me/$numero';
-  }
-
   void _abrirBottomSheet(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
@@ -230,10 +226,12 @@ class _BotaoAniversariantes extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.chat_rounded),
                           color: const Color(0xFF25D366),
-                          tooltip: 'Abrir no WhatsApp',
-                          onPressed: () => launchUrl(
-                            Uri.parse(_urlWhatsApp(a.telefone)),
-                            mode: LaunchMode.externalApplication,
+                          tooltip: 'Abrir no WhatsApp e registrar interação',
+                          onPressed: () => abrirWhatsAppERegistrarInteracao(
+                            context,
+                            contratoId: a.localizador,
+                            telefone: a.telefone,
+                            nomeContato: a.nome,
                           ),
                         ),
                     ],

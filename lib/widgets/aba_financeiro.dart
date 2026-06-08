@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import 'filtro_periodo.dart';
+import 'secao_recolhivel.dart';
 
 class AbaFinanceiro extends StatefulWidget {
   final List<Cliente> clientes;
@@ -54,36 +55,49 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
           const SizedBox(height: 24),
 
           // ── KPI cards ────────────────────────────────────────────────
-          _sectionTitle(context, 'Visão do Pipeline'),
-          const SizedBox(height: 12),
-          Row(children: [
-            _kpiCard(context, 'Negociação', emNegociacao,
-                Icons.handshake_outlined, Colors.orange.shade700, cs),
-            _kpiCard(context, 'Visita', emVisita,
-                Icons.location_on_outlined, cs.primary, cs),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            _kpiCard(context, 'Fechados', fechados,
-                Icons.check_circle_outline, Colors.green.shade700, cs),
-            _kpiCard(context, 'Perdidos', perdidos,
-                Icons.cancel_outlined, cs.error, cs),
-          ]),
-
-          // ── Taxa de fechamento ────────────────────────────────────────
-          const SizedBox(height: 20),
-          _buildTaxaCard(fechados, perdidos, emNegociacao + emVisita, cs),
+          SecaoRecolhivel(
+            id: 'fin_pipeline',
+            titulo: 'Visão do Pipeline',
+            icone: Icons.account_balance_outlined,
+            child: Column(
+              children: [
+                Row(children: [
+                  _kpiCard(context, 'Negociação', emNegociacao,
+                      Icons.handshake_outlined, Colors.orange.shade700, cs),
+                  _kpiCard(context, 'Visita', emVisita,
+                      Icons.location_on_outlined, cs.primary, cs),
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _kpiCard(context, 'Fechados', fechados,
+                      Icons.check_circle_outline, Colors.green.shade700, cs),
+                  _kpiCard(context, 'Perdidos', perdidos,
+                      Icons.cancel_outlined, cs.error, cs),
+                ]),
+                const SizedBox(height: 20),
+                _buildTaxaCard(fechados, perdidos, emNegociacao + emVisita, cs),
+              ],
+            ),
+          ),
 
           // ── Gráfico: fechamentos por mês ──────────────────────────────
-          const SizedBox(height: 28),
-          _sectionTitle(context, 'Fechamentos — Últimos 12 Meses'),
-          const SizedBox(height: 4),
-          Text(
-            'Baseado na data de atualização dos leads fechados',
-            style: TextStyle(fontSize: 11, color: cs.outline),
+          const SizedBox(height: 24),
+          SecaoRecolhivel(
+            id: 'fin_fechamentos',
+            titulo: 'Fechamentos — Últimos 12 Meses',
+            icone: Icons.bar_chart_rounded,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Baseado na data de atualização dos leads fechados',
+                  style: TextStyle(fontSize: 11, color: cs.outline),
+                ),
+                const SizedBox(height: 16),
+                _buildFechamentosPorMes(cs),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          _buildFechamentosPorMes(cs),
 
           const SizedBox(height: 16),
         ],
@@ -286,12 +300,4 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String title) => Text(
-        title,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-      );
 }

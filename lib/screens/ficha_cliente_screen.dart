@@ -12,6 +12,7 @@ import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/url_launcher_service.dart';
+import '../utils/whatsapp_modelos.dart';
 import '../widgets/aba_negociacoes.dart';
 import '../widgets/ficha/ficha_dados_tab.dart';
 import '../widgets/ficha/ficha_timeline_tab.dart';
@@ -753,8 +754,16 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   }
 
   Future<void> _abrirWhatsApp(String tel) async {
+    // Pergunta se quer ir com mensagem pronta (modelo) ou sem.
+    final escolha = await escolherMensagemWhatsApp(
+      context,
+      nome: _nomeCtrl.text.trim(),
+      esposa: _nomeParceiroCtrl.text.trim(),
+    );
+    if (escolha == null) return; // cancelou
     try {
-      await UrlLauncherService().abrirWhatsApp(tel);
+      await UrlLauncherService().abrirWhatsApp(tel,
+          mensagem: escolha.texto.isEmpty ? null : escolha.texto);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)

@@ -107,6 +107,18 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // ── Contatos do embaixador (Recepção → Contatos/Tentativas) ───────────────
+    // Leitura/escrita: qualquer autenticado (quem acessa a Recepção).
+    match /contatos_embaixador/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // ── Modelos de mensagem (WhatsApp) ────────────────────────────────────────
+    // Leitura/escrita: qualquer autenticado (modelos padrão + individuais).
+    match /modelos_mensagem/{docId} {
+      allow read, write: if isAuth();
+    }
+
     // ── Tickets de suporte ────────────────────────────────────────────────────
     match /tickets/{ticketId} {
       allow read, write: if isAuth();
@@ -117,12 +129,44 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // ── Imóveis (inventário do empreendimento) e suas cotas ───────────────────
+    // Leitura: qualquer autenticado (aba Análise da Pós-Venda).
+    // Escrita: gestores — admin/super admin geram o inventário (seed) e a
+    // sincronização de cotas roda no fluxo de importação da pós-venda.
+    match /imoveis/{docId} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && isGestor();
+    }
+
+    match /imoveis/{imovelId}/cotas/{docId} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && isGestor();
+    }
+
     // ── Produtos ──────────────────────────────────────────────────────────────
     // Leitura: qualquer autenticado (necessário para negociações e apresentações).
     // Escrita: exclusivo de super admin.
     match /produtos/{docId} {
       allow read:          if isAuth();
       allow create, update, delete: if isAuth() && isSuperAdmin();
+    }
+
+    // ── Leads do site/quiosque (Villamor Tambaba) ───────────────────────────
+    // Gravados por páginas públicas (sem login) → 'create' liberado COM validação.
+    // Leitura/edição só para gestores autenticados; exclusão só super admin.
+    match /leads_website/{docId} {
+      function leadValido() {
+        let d = request.resource.data;
+        return d.nome is string && d.nome.size() >= 2 && d.nome.size() <= 120
+            && d.whatsapp is string && d.whatsapp.size() >= 8 && d.whatsapp.size() <= 30
+            && d.origem is string && d.origem.size() <= 40
+            && d.status == 'novo'
+            && d.createdAt == request.time          // impede timestamp forjado
+            && d.keys().size() <= 20;               // bloqueia payload gigante
+      }
+      allow create: if leadValido();
+      allow read, update: if isAuth() && isGestor();
+      allow delete:       if isAuth() && isSuperAdmin();
     }
   }
 }

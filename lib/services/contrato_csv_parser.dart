@@ -94,6 +94,8 @@ List<Contrato> parsearCsvContratos(String conteudo) {
       Contrato(
         localizador: localizador,
         localizadorAtendimento: cel(idx('LOCALIZADOR ATENDIMENTO')),
+        codigoContrato:
+            cel(idxExato('CÓDIGO')).isEmpty ? null : cel(idxExato('CÓDIGO')),
         dataContrato: parseData(idxExato('DATA')),
         nomeComprador: cel(idx('CESSIONÁRIO 1')),
         cpfComprador: cel(idx('CPF/CNPJ cessionário 1')),

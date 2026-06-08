@@ -50,6 +50,11 @@ enum StatusAssinatura {
 class Contrato {
   final String localizador;
   final String localizadorAtendimento;
+
+  /// Número/código do contrato (ex.: "LMP-1590-320/Cota-15"). Vem da coluna
+  /// CÓDIGO da Central de Contratos e é a chave que casa com o PDF no Drive.
+  final String? codigoContrato;
+
   final DateTime? dataContrato;
 
   // Comprador principal
@@ -87,6 +92,12 @@ class Contrato {
   final String cota;
   final String status;
 
+  /// Reversão de projeto antigo → atual. `origemReversao` é o localizador do
+  /// contrato anterior que este substituiu (vazio/"0" quando não houve). Vêm da
+  /// Central de Contratos (colunas REVERTIDO e ORIGEM REVERSÃO).
+  final bool revertido;
+  final String? origemReversao;
+
   // Financeiro
   final String statusFinanceiro;
   final DateTime? dataQuitacao;
@@ -122,9 +133,20 @@ class Contrato {
   final DateTime? upgradeOferecidoEm;
   final DateTime? upgradeRealizadoEm;
 
+  /// Link do PDF do contrato no Google Drive. Definido manualmente; não é
+  /// serializado no toFirestore para sobreviver ao re-import por merge.
+  final String? linkContratoDrive;
+
+  /// Alerta de que o contrato precisa de reajuste de dados (ex.: status/produto
+  /// a corrigir, pendente de acerto no sistema de origem). Anotação interna do
+  /// CRM; não é serializada no toFirestore (sobrevive ao re-import por merge).
+  final bool precisaReajuste;
+  final String? motivoReajuste;
+
   const Contrato({
     required this.localizador,
     required this.localizadorAtendimento,
+    this.codigoContrato,
     this.dataContrato,
     required this.nomeComprador,
     this.cpfComprador = '',
@@ -153,6 +175,8 @@ class Contrato {
     this.produto = '',
     this.cota = '',
     this.status = 'Ativo',
+    this.revertido = false,
+    this.origemReversao,
     this.statusFinanceiro = 'Em andamento',
     this.dataQuitacao,
     this.entrada = 0,
@@ -173,6 +197,9 @@ class Contrato {
     this.interacoesPorMes = const {},
     this.upgradeOferecidoEm,
     this.upgradeRealizadoEm,
+    this.linkContratoDrive,
+    this.precisaReajuste = false,
+    this.motivoReajuste,
   });
 
   bool get temAtrasos => valorAtrasado > 0;
@@ -193,6 +220,7 @@ class Contrato {
     return Contrato(
       localizador: doc.id,
       localizadorAtendimento: d['localizadorAtendimento'] as String? ?? '',
+      codigoContrato: d['codigoContrato'] as String?,
       dataContrato: (d['dataContrato'] as Timestamp?)?.toDate(),
       nomeComprador: d['nomeComprador'] as String? ?? '',
       cpfComprador: d['cpfComprador'] as String? ?? '',
@@ -223,6 +251,8 @@ class Contrato {
       produto: d['produto'] as String? ?? '',
       cota: d['cota'] as String? ?? '',
       status: d['status'] as String? ?? 'Ativo',
+      revertido: d['revertido'] as bool? ?? false,
+      origemReversao: d['origemReversao'] as String?,
       statusFinanceiro: d['statusFinanceiro'] as String? ?? 'Em andamento',
       dataQuitacao: (d['dataQuitacao'] as Timestamp?)?.toDate(),
       entrada: _toDouble(d['entrada']),
@@ -247,6 +277,9 @@ class Contrato {
           const {},
       upgradeOferecidoEm: (d['upgradeOferecidoEm'] as Timestamp?)?.toDate(),
       upgradeRealizadoEm: (d['upgradeRealizadoEm'] as Timestamp?)?.toDate(),
+      linkContratoDrive: d['linkContratoDrive'] as String?,
+      precisaReajuste: d['precisaReajuste'] as bool? ?? false,
+      motivoReajuste: d['motivoReajuste'] as String?,
     );
   }
 
@@ -254,6 +287,7 @@ class Contrato {
     return {
       'localizador': localizador,
       'localizadorAtendimento': localizadorAtendimento,
+      if (codigoContrato != null) 'codigoContrato': codigoContrato,
       if (dataContrato != null)
         'dataContrato': Timestamp.fromDate(dataContrato!),
       'nomeComprador': nomeComprador,
@@ -290,6 +324,8 @@ class Contrato {
       'produto': produto,
       'cota': cota,
       'status': status,
+      'revertido': revertido,
+      if (origemReversao != null) 'origemReversao': origemReversao,
       'statusFinanceiro': statusFinanceiro,
       if (dataQuitacao != null)
         'dataQuitacao': Timestamp.fromDate(dataQuitacao!),
@@ -306,17 +342,21 @@ class Contrato {
       'captador': captador,
       'vendedorLiner': vendedorLiner,
       'pontoCapatcao': pontoCapatcao,
-      'statusAssinatura': statusAssinatura.value,
+      // statusAssinatura NÃO é serializado aqui: é mantido apenas via
+      // atualizarStatusAssinatura(), para sobreviver ao re-import por merge.
       'atualizadoEm': FieldValue.serverTimestamp(),
     };
   }
 
   Contrato copyWith({
     StatusAssinatura? statusAssinatura,
+    String? linkContratoDrive,
+    String? codigoContrato,
   }) {
     return Contrato(
       localizador: localizador,
       localizadorAtendimento: localizadorAtendimento,
+      codigoContrato: codigoContrato ?? this.codigoContrato,
       dataContrato: dataContrato,
       nomeComprador: nomeComprador,
       cpfComprador: cpfComprador,
@@ -345,6 +385,8 @@ class Contrato {
       produto: produto,
       cota: cota,
       status: status,
+      revertido: revertido,
+      origemReversao: origemReversao,
       statusFinanceiro: statusFinanceiro,
       dataQuitacao: dataQuitacao,
       entrada: entrada,
@@ -362,6 +404,9 @@ class Contrato {
       statusAssinatura: statusAssinatura ?? this.statusAssinatura,
       criadoEm: criadoEm,
       atualizadoEm: atualizadoEm,
+      linkContratoDrive: linkContratoDrive ?? this.linkContratoDrive,
+      precisaReajuste: precisaReajuste,
+      motivoReajuste: motivoReajuste,
     );
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../screens/ficha_cliente_screen.dart';
 import 'url_launcher_service.dart';
+import 'whatsapp_modelos.dart';
 
 /// Menu de ações ao tocar num lead (usado nas abas de analytics):
 /// "Ver lead" (abre a ficha) ou "Enviar mensagem" (abre o WhatsApp).
@@ -77,8 +78,15 @@ void mostrarAcoesLead(
 Future<void> _enviarWhatsApp(BuildContext context, Cliente c) async {
   final tel = (c.telefoneContato ?? '').trim();
   if (tel.isEmpty) return;
+  final escolha = await escolherMensagemWhatsApp(
+    context,
+    nome: c.nome,
+    esposa: c.nomeEsposa,
+  );
+  if (escolha == null) return; // cancelou
   try {
-    await UrlLauncherService().abrirWhatsApp(tel);
+    await UrlLauncherService().abrirWhatsApp(tel,
+        mensagem: escolha.texto.isEmpty ? null : escolha.texto);
   } catch (_) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

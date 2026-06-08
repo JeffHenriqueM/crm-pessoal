@@ -4,20 +4,27 @@ import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
+import '../models/contato_embaixador_model.dart';
 import '../models/contrato_model.dart';
+import '../models/cota_model.dart';
 import '../models/fase_enum.dart';
+import '../models/imovel_model.dart';
 import '../models/interacao_model.dart';
+import '../models/modelo_mensagem_model.dart';
 import '../models/negociacao_model.dart';
 import '../models/notificacao_inapp_model.dart';
 import '../models/produto_model.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
+import 'analise_imoveis.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
   static const _colClientes = 'clientes';
   static const _colContratos = 'contratos';
+  static const _colContatosEmbaixador = 'contatos_embaixador';
+  static const _colModelosMensagem = 'modelos_mensagem';
 
   /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
   /// instâncias reais do Firebase (comportamento de produção inalterado).
@@ -252,6 +259,16 @@ class FirestoreService {
         id, 'Fase alterada para: ${novaFase.nomeDisplay}');
     // Snapshot de histórico (#19)
     await _salvarSnapshotCliente(id, dados, tipo: 'mudanca_fase');
+  }
+
+  /// Vincula (ou desvincula, passando null) um lead a um contrato fechado.
+  /// Usado ao mover o lead para a fase Fechado.
+  Future<void> vincularContratoACliente(
+      String clienteId, String? contratoId, String? contratoNome) async {
+    await _db.collection(_colClientes).doc(clienteId).set({
+      'contratoVinculadoId': contratoId,
+      'contratoVinculadoNome': contratoNome,
+    }, SetOptions(merge: true));
   }
 
   Future<void> atualizarClienteDetalhes(
@@ -1056,6 +1073,14 @@ class FirestoreService {
     }
   }
 
+  /// Salva (ou remove, se vazio) o link do PDF do contrato no Drive.
+  Future<void> salvarLinkContrato(String localizador, String? url) async {
+    final limpo = url?.trim();
+    await _db.collection(_colContratos).doc(localizador).set({
+      'linkContratoDrive': (limpo == null || limpo.isEmpty) ? null : limpo,
+    }, SetOptions(merge: true));
+  }
+
   /// Registra uma interação na subcoleção do contrato.
   Future<void> adicionarInteracaoContrato(
     String contratoId,
@@ -1081,6 +1106,121 @@ class FirestoreService {
       debugPrint('[Firestore] Erro ao buscar contratos: $e');
       return [];
     }
+  }
+
+  // ── Contatos do embaixador (Recepção) ─────────────────────────────────────
+
+  /// Stream de todos os contatos do embaixador, mais recentes primeiro.
+  Stream<List<ContatoEmbaixador>> getContatosEmbaixadorStream() {
+    return _db
+        .collection(_colContatosEmbaixador)
+        .orderBy('criadoEm', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map(ContatoEmbaixador.fromFirestore).toList());
+  }
+
+  /// Cria um novo contato do embaixador. Retorna o id criado.
+  Future<String> criarContatoEmbaixador(ContatoEmbaixador c) async {
+    final dados = _flagTeste({
+      ...c.toFirestore(),
+      'criadoPorId': _currentUserId,
+      'criadoPorNome': _currentUserName,
+    });
+    final ref = await _db.collection(_colContatosEmbaixador).add(dados);
+    return ref.id;
+  }
+
+  /// Inclui vários contatos de uma vez (importação / adicionar em lote).
+  Future<void> criarContatosEmbaixadorLote(
+      List<ContatoEmbaixador> contatos) async {
+    final batch = _db.batch();
+    for (final c in contatos) {
+      final ref = _db.collection(_colContatosEmbaixador).doc();
+      batch.set(
+        ref,
+        _flagTeste({
+          ...c.toFirestore(),
+          'criadoPorId': _currentUserId,
+          'criadoPorNome': _currentUserName,
+        }),
+      );
+    }
+    await batch.commit();
+  }
+
+  /// Atualiza os dados editáveis de um contato (nome, esposa, telefone, obs,
+  /// responsável pelo próximo contato).
+  Future<void> atualizarContatoEmbaixador(ContatoEmbaixador c) async {
+    await _db.collection(_colContatosEmbaixador).doc(c.id).set({
+      'nome': c.nome,
+      'nomeEsposa': c.nomeEsposa,
+      'telefone': c.telefone,
+      'observacao': c.observacao,
+      'responsavel': c.responsavel,
+    }, SetOptions(merge: true));
+  }
+
+
+  /// Regrava a lista completa de tentativas de um contato (append/edição da
+  /// resposta de uma tentativa específica é feita via read-modify-write).
+  Future<void> salvarTentativasContato(
+      String contatoId, List<Tentativa> tentativas) async {
+    await _db.collection(_colContatosEmbaixador).doc(contatoId).set({
+      'tentativas': tentativas.map((t) => t.toMap()).toList(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Exclui um contato do embaixador.
+  Future<void> deletarContatoEmbaixador(String contatoId) async {
+    await _db.collection(_colContatosEmbaixador).doc(contatoId).delete();
+  }
+
+  // ── Modelos de mensagem (WhatsApp) ─────────────────────────────────────────
+
+  /// Stream de todos os modelos de mensagem (padrão + individuais). A filtragem
+  /// "padrão ou meus" é feita na UI, pois a coleção é pequena.
+  Stream<List<ModeloMensagem>> getModelosMensagemStream() {
+    return _db
+        .collection(_colModelosMensagem)
+        .orderBy('titulo')
+        .snapshots()
+        .map((s) => s.docs.map(ModeloMensagem.fromFirestore).toList());
+  }
+
+  /// Busca única dos modelos de mensagem (para o seletor ao abrir o WhatsApp).
+  Future<List<ModeloMensagem>> getModelosMensagem() async {
+    try {
+      final snap = await _db.collection(_colModelosMensagem).get();
+      return snap.docs.map(ModeloMensagem.fromFirestore).toList();
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar modelos de mensagem: $e');
+      return [];
+    }
+  }
+
+  /// Cria um modelo de mensagem. Retorna o id criado.
+  Future<String> criarModeloMensagem(ModeloMensagem m) async {
+    final dados = _flagTeste({
+      ...m.toFirestore(),
+      'criadoPorId': _currentUserId,
+      'criadoPorNome': _currentUserName,
+    });
+    final ref = await _db.collection(_colModelosMensagem).add(dados);
+    return ref.id;
+  }
+
+  /// Atualiza título, texto e flag padrão de um modelo de mensagem.
+  Future<void> atualizarModeloMensagem(ModeloMensagem m) async {
+    await _db.collection(_colModelosMensagem).doc(m.id).set({
+      'titulo': m.titulo,
+      'texto': m.texto,
+      'padrao': m.padrao,
+    }, SetOptions(merge: true));
+  }
+
+  /// Exclui um modelo de mensagem.
+  Future<void> deletarModeloMensagem(String id) async {
+    await _db.collection(_colModelosMensagem).doc(id).delete();
   }
 
   /// Exclui uma interação da subcoleção de um contrato.
@@ -1202,6 +1342,91 @@ class FirestoreService {
     final doc = await _db.collection(_colClientes).doc(clienteId).get();
     if (!doc.exists) return null;
     return Cliente.fromFirestore(doc);
+  }
+
+  // ── IMÓVEIS E COTAS (Análise da Pós-Venda) ───────────────────────────────
+
+  static const _colImoveis = 'imoveis';
+
+  /// Stream do inventário de imóveis (228 unidades da 1ª etapa).
+  Stream<List<Imovel>> getImoveisStream() {
+    return _db
+        .collection(_colImoveis)
+        .snapshots()
+        .map((s) => s.docs.map(Imovel.fromFirestore).toList());
+  }
+
+  /// Stream das cotas (vendidas) de um imóvel específico — usado no detalhe.
+  Stream<List<Cota>> getCotasDoImovel(String imovelId) {
+    return _db
+        .collection(_colImoveis)
+        .doc(imovelId)
+        .collection('cotas')
+        .snapshots()
+        .map((s) => s.docs.map(Cota.fromFirestore).toList());
+  }
+
+  /// Semeia/atualiza o inventário da 1ª etapa (idempotente, merge). Cria os
+  /// 228 documentos de `imoveis` a partir das plantas. Seguro rodar de novo.
+  Future<void> semearInventario() async {
+    final imoveis = inventarioPrimeiraEtapa();
+    const lote = 400;
+    for (var i = 0; i < imoveis.length; i += lote) {
+      final fatia = imoveis.skip(i).take(lote);
+      final batch = _db.batch();
+      for (final im in fatia) {
+        batch.set(
+          _db.collection(_colImoveis).doc(im.id),
+          _flagTeste(im.toFirestore()),
+          SetOptions(merge: true),
+        );
+      }
+      await batch.commit();
+    }
+  }
+
+  /// Projeta os contratos linkáveis nas subcoleções `imoveis/{id}/cotas`.
+  /// Reconciliação: grava as cotas atuais e remove as órfãs (cotas cujo
+  /// contrato deixou de apontar para aquele rótulo). Contratos que não casam
+  /// com a 1ª etapa ficam apenas em `contratos` (avulsos), sem virar cota.
+  ///
+  /// Retorna um resumo da sincronização.
+  Future<({int imoveisAfetados, int cotas, int avulsos})>
+      sincronizarCotas() async {
+    final snap = await _db.collection(_colContratos).get();
+    // Só contratos vigentes (Ativo) viram cota; cancelados/revertidos ficam
+    // apenas na coleção `contratos`.
+    final contratos =
+        contratosEfetivos(snap.docs.map(Contrato.fromFirestore).toList());
+
+    final mapa = projetarCotas(contratos);
+    final avulsos = contratosAvulsos(contratos).length;
+    var totalCotas = 0;
+
+    for (final entry in mapa.entries) {
+      final col =
+          _db.collection(_colImoveis).doc(entry.key).collection('cotas');
+
+      // Dedup por rótulo (cota duplicada não pode gerar 2 writes no mesmo doc).
+      final porNumero = <String, Cota>{};
+      for (final c in entry.value) {
+        porNumero[c.numero] = c;
+      }
+
+      final existentes = await col.get();
+      final batch = _db.batch();
+      for (final doc in existentes.docs) {
+        if (!porNumero.containsKey(doc.id)) batch.delete(doc.reference);
+      }
+      for (final c in porNumero.values) {
+        batch.set(col.doc(c.numero), _flagTeste(c.toFirestore()),
+            SetOptions(merge: true));
+      }
+      await batch.commit();
+      totalCotas += porNumero.length;
+    }
+
+    return (imoveisAfetados: mapa.length, cotas: totalCotas, avulsos: avulsos);
   }
 
   // --- PRODUTOS ---

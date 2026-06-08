@@ -11,6 +11,7 @@ import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../services/ficha_pdf.dart';
 import '../services/firestore_service.dart';
+import '../widgets/contatos_embaixador_tab.dart';
 import 'ficha_cliente_screen.dart';
 
 // ── Máscara de telefone ───────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ class RecepcaoShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -70,6 +71,7 @@ class RecepcaoShell extends StatelessWidget {
             tabs: const [
               Tab(icon: Icon(Icons.add_circle_outline), text: 'Registrar'),
               Tab(icon: Icon(Icons.people_outline), text: 'Meus Leads'),
+              Tab(icon: Icon(Icons.contacts_outlined), text: 'Contatos'),
             ],
             indicatorColor: cs.primary,
             labelColor: cs.primary,
@@ -77,7 +79,11 @@ class RecepcaoShell extends StatelessWidget {
           ),
         ),
         body: const TabBarView(
-          children: [RecepcaoScreen(), _RecepcaoLeadsTab()],
+          children: [
+            RecepcaoScreen(),
+            _RecepcaoLeadsTab(),
+            ContatosEmbaixadorTab(),
+          ],
         ),
       ),
     );

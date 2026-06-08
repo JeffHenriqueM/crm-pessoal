@@ -22,9 +22,13 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   final _fs = FirestoreService();
 
   String _busca = '';
+  // Situação do contrato: por padrão mostra só os Ativos (null = ambos).
+  String? _filtroStatus = 'Ativo';
   String? _filtroStatusFin;
   String? _filtroAssinatura;
   String? _filtroProduto;
+  // Ordenação: 'nome' | 'imovel' | 'valorVendido' | 'aReceber'.
+  String _ordenacao = 'nome';
 
   List<Contrato> _todos = [];
   bool _carregando = true;
@@ -62,6 +66,11 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           c.localizador.contains(q) ||
           c.cidade.toLowerCase().contains(q);
 
+      // "Ativo" = status Ativo; "Inativo" = qualquer outro (Cancelado,
+      // Revertido, Não efetivado, Pendente…); null = todos.
+      final ativo = c.status.trim().toLowerCase() == 'ativo';
+      final statusOk = _filtroStatus == null ||
+          (_filtroStatus == 'Ativo' ? ativo : !ativo);
       final finOk =
           _filtroStatusFin == null || c.statusFinanceiro == _filtroStatusFin;
       final assOk =
@@ -69,8 +78,50 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           c.statusAssinatura.value == _filtroAssinatura;
       final prodOk = _filtroProduto == null || c.produto == _filtroProduto;
 
-      return buscaOk && finOk && assOk && prodOk;
-    }).toList();
+      return buscaOk && statusOk && finOk && assOk && prodOk;
+    }).toList()
+      ..sort(_comparar);
+  }
+
+  int _comparar(Contrato a, Contrato b) {
+    switch (_ordenacao) {
+      case 'imovel':
+        final cmpBloco = a.bloco.compareTo(b.bloco);
+        if (cmpBloco != 0) return cmpBloco;
+        return (int.tryParse(a.imovel) ?? 0).compareTo(int.tryParse(b.imovel) ?? 0);
+      case 'valorVendido':
+        return b.valorTotalReajustado.compareTo(a.valorTotalReajustado);
+      case 'aReceber':
+        return b.saldoRestante.compareTo(a.saldoRestante);
+      default:
+        return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
+    }
+  }
+
+  /// Quantos filtros (além da busca) estão ativos — para o badge do botão.
+  int get _filtrosAtivos => [
+        _filtroStatus,
+        _filtroStatusFin,
+        _filtroAssinatura,
+        _filtroProduto,
+      ].where((f) => f != null).length;
+
+  static const _labelsOrdenacao = {
+    'nome': 'Nome (A–Z)',
+    'imovel': 'Nº do imóvel',
+    'valorVendido': 'Valor vendido',
+    'aReceber': 'Valor a receber',
+  };
+
+  /// Texto da contagem que reflete o filtro de situação:
+  /// "500 contratos ativos" · "12 contratos inativos" · "520 contratos".
+  String _textoContagem(int n) {
+    final base = n == 1 ? 'contrato' : 'contratos';
+    if (_filtroStatus == 'Ativo') return '$n $base ${n == 1 ? 'ativo' : 'ativos'}';
+    if (_filtroStatus == 'Inativo') {
+      return '$n $base ${n == 1 ? 'inativo' : 'inativos'}';
+    }
+    return '$n $base';
   }
 
   List<String> get _produtos {
@@ -116,6 +167,16 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                   onChanged: (v) => setState(() => _busca = v),
                 ),
               ),
+              const SizedBox(width: 4),
+              Badge(
+                isLabelVisible: _filtrosAtivos > 0,
+                label: Text('$_filtrosAtivos'),
+                child: IconButton.filledTonal(
+                  icon: const Icon(Icons.tune),
+                  tooltip: 'Filtrar e ordenar',
+                  onPressed: () => _abrirFiltros(context),
+                ),
+              ),
               if (_podeImportar) ...[
                 const SizedBox(width: 4),
                 IconButton(
@@ -127,16 +188,23 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
             ],
           ),
         ),
-        // ── Chips de filtro ────────────────────────────────────────────────
-        _buildFiltros(),
-        // ── Contagem ───────────────────────────────────────────────────────
+        // ── Contagem (reflete o filtro) + ordenação atual ──────────────────
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: Row(
             children: [
+              Expanded(
+                child: Text(
+                  _textoContagem(filtrados.length),
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
               Text(
-                '${filtrados.length} contrato${filtrados.length == 1 ? '' : 's'}',
-                style: Theme.of(context).textTheme.bodySmall,
+                'ordenado por ${_labelsOrdenacao[_ordenacao]}',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -157,35 +225,128 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     );
   }
 
-  Widget _buildFiltros() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        children: [
-          _FilterChip(
-            label: 'Status financeiro',
-            valor: _filtroStatusFin,
-            opcoes: const ['Em andamento', 'Quitado'],
-            onSelecionado: (v) => setState(() => _filtroStatusFin = v),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Assinatura',
-            valor: _filtroAssinatura,
-            opcoes: StatusAssinatura.values.map((s) => s.value).toList(),
-            labels: StatusAssinatura.values.map((s) => s.label).toList(),
-            onSelecionado: (v) => setState(() => _filtroAssinatura = v),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Produto',
-            valor: _filtroProduto,
-            opcoes: _produtos,
-            onSelecionado: (v) => setState(() => _filtroProduto = v),
-          ),
-        ],
-      ),
+  void _abrirFiltros(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final cs = Theme.of(ctx).colorScheme;
+
+            void aplicar(VoidCallback fn) {
+              setState(fn);
+              setSheet(() {});
+            }
+
+            ChoiceChip opc(String label, bool sel, VoidCallback onTap) =>
+                ChoiceChip(
+                  label: Text(
+                    label,
+                    style: TextStyle(
+                      color: sel ? cs.onPrimary : cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  selected: sel,
+                  showCheckmark: false,
+                  backgroundColor: cs.surfaceContainerHighest,
+                  selectedColor: cs.primary,
+                  side: BorderSide(
+                      color: sel ? Colors.transparent : cs.outlineVariant),
+                  onSelected: (_) => aplicar(onTap),
+                );
+
+            Widget grupo(String titulo, List<Widget> chips) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14, bottom: 6),
+                      child: Text(titulo,
+                          style: Theme.of(ctx).textTheme.titleSmall),
+                    ),
+                    Wrap(spacing: 8, runSpacing: 8, children: chips),
+                  ],
+                );
+
+            return SafeArea(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('Filtrar e ordenar',
+                              style: Theme.of(ctx).textTheme.titleLarge),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => aplicar(() {
+                              _filtroStatus = 'Ativo';
+                              _filtroStatusFin = null;
+                              _filtroAssinatura = null;
+                              _filtroProduto = null;
+                              _ordenacao = 'nome';
+                            }),
+                            child: const Text('Limpar'),
+                          ),
+                        ],
+                      ),
+                      grupo('Ordenar por', [
+                        for (final e in _labelsOrdenacao.entries)
+                          opc(e.value, _ordenacao == e.key,
+                              () => _ordenacao = e.key),
+                      ]),
+                      grupo('Situação', [
+                        opc('Todos', _filtroStatus == null,
+                            () => _filtroStatus = null),
+                        opc('Ativo', _filtroStatus == 'Ativo',
+                            () => _filtroStatus = 'Ativo'),
+                        opc('Inativo', _filtroStatus == 'Inativo',
+                            () => _filtroStatus = 'Inativo'),
+                      ]),
+                      grupo('Status financeiro', [
+                        opc('Todos', _filtroStatusFin == null,
+                            () => _filtroStatusFin = null),
+                        opc('Em andamento', _filtroStatusFin == 'Em andamento',
+                            () => _filtroStatusFin = 'Em andamento'),
+                        opc('Quitado', _filtroStatusFin == 'Quitado',
+                            () => _filtroStatusFin = 'Quitado'),
+                      ]),
+                      grupo('Assinatura', [
+                        opc('Todas', _filtroAssinatura == null,
+                            () => _filtroAssinatura = null),
+                        for (final s in StatusAssinatura.values)
+                          opc(s.label, _filtroAssinatura == s.value,
+                              () => _filtroAssinatura = s.value),
+                      ]),
+                      grupo('Produto', [
+                        opc('Todos', _filtroProduto == null,
+                            () => _filtroProduto = null),
+                        for (final p in _produtos)
+                          opc(p, _filtroProduto == p, () => _filtroProduto = p),
+                      ]),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: Text('Ver ${_filtrados.length} contrato(s)'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -406,79 +567,6 @@ class _ContratoCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ── Chip de filtro ────────────────────────────────────────────────────────────
-
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final String? valor;
-  final List<String> opcoes;
-  final List<String>? labels;
-  final ValueChanged<String?> onSelecionado;
-
-  const _FilterChip({
-    required this.label,
-    required this.valor,
-    required this.opcoes,
-    this.labels,
-    required this.onSelecionado,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ativo = valor != null;
-    final cs = Theme.of(context).colorScheme;
-    return FilterChip(
-      label: Text(
-        ativo
-            ? (labels != null
-                  ? labels![opcoes.indexOf(valor!)]
-                  : valor!)
-            : label,
-        style: TextStyle(fontSize: 12, color: ativo ? cs.onPrimary : cs.onSurface),
-      ),
-      selected: ativo,
-      onSelected: (_) => _mostrarMenu(context),
-      backgroundColor: cs.surfaceContainerHighest,
-      selectedColor: cs.primary,
-      checkmarkColor: cs.onPrimary,
-      side: BorderSide(color: ativo ? Colors.transparent : cs.outlineVariant),
-    );
-  }
-
-  void _mostrarMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => ListView(
-        shrinkWrap: true,
-        children: [
-          ListTile(
-            title: Text('Todos ($label)'),
-            leading: valor == null
-                ? const Icon(Icons.check, color: Colors.green)
-                : const SizedBox(width: 24),
-            onTap: () {
-              onSelecionado(null);
-              Navigator.pop(ctx);
-            },
-          ),
-          ...opcoes.asMap().entries.map(
-            (e) => ListTile(
-              title: Text(labels != null ? labels![e.key] : e.value),
-              leading: valor == e.value
-                  ? const Icon(Icons.check, color: Colors.green)
-                  : const SizedBox(width: 24),
-              onTap: () {
-                onSelecionado(e.value);
-                Navigator.pop(ctx);
-              },
-            ),
-          ),
-        ],
       ),
     );
   }
