@@ -293,6 +293,11 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
         for (final q in entry.value) {
           final o = ocupacaoEfetiva(q, assocs);
           if (o == null || o.ocupante.isEmpty) continue;
+          final tipoLinha = assocs[q.numero]?.tipo ??
+              tipoEventoFesta(
+                  socio: o.tier != null,
+                  pct: o.pct ?? 0,
+                  atrasado: o.atrasado);
           linhas.add((
             numero: q.numero,
             ocupante: o.ocupante,
@@ -300,6 +305,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
             pct: o.pct,
             origem: assocs[q.numero]?.origem,
             obs: assocs[q.numero]?.observacao,
+            tipo: tipoLinha,
           ));
         }
         if (linhas.isNotEmpty) {

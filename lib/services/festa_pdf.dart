@@ -18,6 +18,7 @@ typedef LinhaQuarto = ({
   int? pct,
   String? origem,
   String? obs,
+  String? tipo, // 'pagante' | 'voucher'
 });
 typedef GrupoCategoria = ({String categoria, List<LinhaQuarto> linhas});
 typedef LinhaEspera = ({
@@ -164,23 +165,26 @@ class FestaPdf {
       border: pw.TableBorder.symmetric(
           inside: const pw.BorderSide(color: _divisor, width: .5)),
       columnWidths: const {
-        0: pw.FixedColumnWidth(42),
-        1: pw.FlexColumnWidth(1.3),
-        2: pw.FixedColumnWidth(80),
-        3: pw.FixedColumnWidth(52),
-        4: pw.FlexColumnWidth(1.2),
+        0: pw.FixedColumnWidth(40),
+        1: pw.FlexColumnWidth(1.2),
+        2: pw.FixedColumnWidth(74),
+        3: pw.FixedColumnWidth(54),
+        4: pw.FixedColumnWidth(48),
+        5: pw.FlexColumnWidth(1.0),
       },
       children: [
-        _linhaCab(['Quarto', 'Hóspede', 'Cota / %', 'Origem', 'Obs.']),
+        _linhaCab(
+            ['Quarto', 'Hóspede', 'Cota / %', 'Tipo', 'Origem', 'Obs.']),
         for (final l in linhas)
           pw.TableRow(children: [
             _cel(l.numero, bold: true),
-            _cel(l.ocupante),
+            _celHospede(l.ocupante),
             _cel(l.tier == null
-                ? '—'
+                ? ''
                 : '${l.tier!.toUpperCase()}${l.pct != null ? ' · ${l.pct}%' : ''}'),
-            _cel(l.origem != null ? 'veio do ${l.origem}' : '—'),
-            _cel((l.obs ?? '').isEmpty ? '—' : l.obs!),
+            _celTipo(l.tipo),
+            _cel(l.origem != null ? 'veio do ${l.origem}' : ''),
+            _cel(l.obs ?? ''),
           ]),
       ],
     );
@@ -213,12 +217,12 @@ class FestaPdf {
         for (final e in espera)
           pw.TableRow(children: [
             _cel(e.categoria, bold: true),
-            _cel(e.ocupante),
+            _cel(_semAsterisco(e.ocupante)),
             _cel(e.tier == null
-                ? '—'
+                ? ''
                 : '${e.tier!.toUpperCase()}${e.pct != null ? ' · ${e.pct}%' : ''}'),
-            _cel(e.origem != null ? 'quarto ${e.origem}' : '—'),
-            _cel(e.quartoDesejado ?? '—', bold: e.quartoDesejado != null),
+            _cel(e.origem != null ? 'quarto ${e.origem}' : ''),
+            _cel(e.quartoDesejado ?? '', bold: e.quartoDesejado != null),
           ]),
       ],
     );
@@ -246,4 +250,51 @@ class FestaPdf {
                 fontSize: 10,
                 fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
       );
+
+  static const _tealVoucher = PdfColor(0, 0.54, 0.48); // teal700
+  static const _laranjaPagante = PdfColor(0.90, 0.32, 0); // laranja800
+
+  /// Célula da classificação no evento (Voucher = teal, Pagante = laranja).
+  static pw.Widget _celTipo(String? tipo) {
+    if (tipo == null) return _cel('');
+    final voucher = tipo == 'voucher';
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: pw.Text(voucher ? 'Voucher' : 'Pagante',
+          style: pw.TextStyle(
+              fontSize: 10,
+              fontWeight: pw.FontWeight.bold,
+              color: voucher ? _tealVoucher : _laranjaPagante)),
+    );
+  }
+
+  /// Remove o marcador interno "*" (prefixo de nome do mapa-base).
+  static String _semAsterisco(String s) => s.replaceAll('*', '').trim();
+
+  /// Célula do hóspede: separa cada casal (split por " + ") em sua própria
+  /// linha e, quando há mais de um, mostra a contagem de casais. Remove o "*".
+  static pw.Widget _celHospede(String ocupante) {
+    final nomes = ocupante
+        .split('+')
+        .map((s) => s.replaceAll('*', '').trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (nomes.length <= 1) return _cel(nomes.isEmpty ? '' : nomes.first);
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          for (final n in nomes)
+            pw.Text(n, style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 1),
+          pw.Text('${nomes.length} casais',
+              style: pw.TextStyle(
+                  fontSize: 8,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _cinzaTexto)),
+        ],
+      ),
+    );
+  }
 }
