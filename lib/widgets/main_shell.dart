@@ -7,6 +7,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/fluxo_cliente_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
+import '../screens/hospedagem_screen.dart';
 import '../screens/lista_clientes_screen.dart';
 import '../screens/pos_venda_screen.dart';
 import '../screens/recepcao_screen.dart';
@@ -87,6 +88,13 @@ class _MainShellState extends State<MainShell> {
     label: 'Fluxo',
   );
 
+  // ── Item de hospedagem — admin/super admin e pós-venda ───────────────────
+  static const _hospedagemItem = _NavItem(
+    icon: Icons.hotel_outlined,
+    activeIcon: Icons.hotel,
+    label: 'Hospedagem',
+  );
+
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
     // ── Admin: Dashboard primeiro ─────────────────────────────────
@@ -97,6 +105,7 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
         _NavItem(icon: Icons.description_outlined,      activeIcon: Icons.description,           label: 'Pós-Venda'),
+        _hospedagemItem,
         _apresentacaoItem,
         _ticketsItem,
         _fluxoItem,
@@ -118,6 +127,7 @@ class _MainShellState extends State<MainShell> {
     if (_isPosVenda) {
       return const [
         _NavItem(icon: Icons.description_outlined,     activeIcon: Icons.description,          label: 'Pós-Venda'),
+        _hospedagemItem,
         _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,     label: 'Agenda'),
         _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
         _apresentacaoItem,
@@ -144,6 +154,7 @@ class _MainShellState extends State<MainShell> {
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
       const CampanhasScreen(),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
+      HospedagemScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const FluxoClienteScreen(),
@@ -157,6 +168,7 @@ class _MainShellState extends State<MainShell> {
       const RecepcaoShell(),
     ] else if (_isPosVenda) ...[
       _PosVendaHomeScreen(userProfile: widget.userProfile),
+      HospedagemScreen(userProfile: widget.userProfile),
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),

@@ -61,6 +61,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
   late final TextEditingController _telefone2Ctrl;
   late final TextEditingController _motivoPerdaDescCtrl;
   late final TextEditingController _brindeCtrl;
+  late final TextEditingController _observacaoCtrl;
 
   String _tipo = 'Casal';
   FaseCliente _fase = FaseCliente.prospeccao;
@@ -95,6 +96,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _telefone2Ctrl = TextEditingController(text: c?.telefone2 ?? '');
     _motivoPerdaDescCtrl = TextEditingController(text: c?.motivoNaoVenda ?? '');
     _brindeCtrl = TextEditingController(text: c?.brinde ?? '');
+    _observacaoCtrl = TextEditingController(text: c?.observacao ?? '');
     _tipo = c?.tipo ?? 'Casal';
     _fase = c?.fase ?? FaseCliente.prospeccao;
     _origem =
@@ -110,7 +112,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
 
     // Detectar alterações não salvas na aba Dados
     for (final c in [_nomeCtrl, _nomeParceiroCtrl, _telefone1Ctrl,
-                     _telefone2Ctrl, _motivoPerdaDescCtrl, _brindeCtrl]) {
+                     _telefone2Ctrl, _motivoPerdaDescCtrl, _brindeCtrl,
+                     _observacaoCtrl]) {
       c.addListener(_marcarAlterado);
     }
 
@@ -169,6 +172,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     _telefone2Ctrl.dispose();
     _motivoPerdaDescCtrl.dispose();
     _brindeCtrl.dispose();
+    _observacaoCtrl.dispose();
     _intSub?.cancel();
     _negSub?.cancel();
     super.dispose();
@@ -596,6 +600,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           motivoNaoVenda: _fase == FaseCliente.perdido
               ? _motivoPerdaDescCtrl.text.trim()
               : null,
+          observacao: _observacaoCtrl.text.trim().isEmpty
+              ? null
+              : _observacaoCtrl.text.trim(),
           dataFechamento: _dataFechamento,
           valorVendido: _valorVendido,
         );
@@ -654,6 +661,9 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               : null,
           'valorVendido': _valorVendido,
           'brinde': _brindeCtrl.text.trim().isEmpty ? null : _brindeCtrl.text.trim(),
+          'observacao': _observacaoCtrl.text.trim().isEmpty
+              ? null
+              : _observacaoCtrl.text.trim(),
           'atualizadoPorId': user?.uid,
         };
         await _service.atualizarClienteDetalhes(_clienteId!, dados);
@@ -1288,6 +1298,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             telefone2Ctrl: _telefone2Ctrl,
             motivoPerdaDescCtrl: _motivoPerdaDescCtrl,
             brindeCtrl: _brindeCtrl,
+            observacaoCtrl: _observacaoCtrl,
             tipo: _tipo,
             fase: _fase,
             origem: _origem,

@@ -8,6 +8,9 @@ import '../models/contato_embaixador_model.dart';
 import '../models/contrato_model.dart';
 import '../models/cota_model.dart';
 import '../models/fase_enum.dart';
+import '../models/festa_associacao.dart';
+import '../models/festa_espera.dart';
+import '../models/festa_validacao.dart';
 import '../models/imovel_model.dart';
 import '../models/interacao_model.dart';
 import '../models/modelo_mensagem_model.dart';
@@ -25,6 +28,9 @@ class FirestoreService {
   static const _colContratos = 'contratos';
   static const _colContatosEmbaixador = 'contatos_embaixador';
   static const _colModelosMensagem = 'modelos_mensagem';
+  static const _colFestaValidacoes = 'festa_socios_validacoes';
+  static const _colFestaAssociacoes = 'festa_socios_associacoes';
+  static const _colFestaEspera = 'festa_socios_espera';
 
   /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
   /// instâncias reais do Firebase (comportamento de produção inalterado).
@@ -51,6 +57,156 @@ class FirestoreService {
       ),
     };
   }
+
+  // --- FESTA DOS SÓCIOS: validação de trocas de quarto ---
+
+  /// Stream das validações de troca, indexadas pelo número do quarto.
+  Stream<Map<String, FestaValidacao>> getValidacoesFestaStream() {
+    return _db.collection(_colFestaValidacoes).snapshots().map((snap) {
+      final m = <String, FestaValidacao>{};
+      for (final d in snap.docs) {
+        m[d.id] = FestaValidacao.fromMap(d.data());
+      }
+      return m;
+    });
+  }
+
+  /// Registra (ou limpa) a decisão de troca de um quarto.
+  /// [status] = 'aprovada' | 'recusada'; null remove a validação (volta a pendente).
+  Future<void> setValidacaoFesta(String numeroQuarto, String? status) async {
+    final ref = _db.collection(_colFestaValidacoes).doc(numeroQuarto);
+    if (status == null) {
+      await ref.delete();
+      return;
+    }
+    await ref.set(
+      _flagTeste({
+        'status': status,
+        'validadoPorId': _currentUserId,
+        'validadoPorNome': _currentUserName,
+        'validadoEm': FieldValue.serverTimestamp(),
+      }),
+    );
+  }
+
+  /// Stream das associações manuais (quarto → contrato), por número do quarto.
+  Stream<Map<String, FestaAssociacao>> getAssociacoesFestaStream() {
+    return _db.collection(_colFestaAssociacoes).snapshots().map((snap) {
+      final m = <String, FestaAssociacao>{};
+      for (final d in snap.docs) {
+        m[d.id] = FestaAssociacao.fromMap(d.data());
+      }
+      return m;
+    });
+  }
+
+  /// Vincula (ou remove) manualmente um quarto a um contrato/sócio.
+  Future<void> setAssociacaoFesta(
+      String numeroQuarto, FestaAssociacao? assoc) async {
+    final ref = _db.collection(_colFestaAssociacoes).doc(numeroQuarto);
+    if (assoc == null) {
+      await ref.delete();
+      return;
+    }
+    await ref.set(_flagTeste({
+      ...assoc.toMap(),
+      'validadoPorNome': _currentUserName,
+      'validadoPorId': _currentUserId,
+      'associadoEm': FieldValue.serverTimestamp(),
+    }));
+  }
+
+  /// Move (manualmente) o ocupante de [origem] para [destino].
+  /// Grava o ocupante em [destino] (já com `origem` preenchida) e, salvo se
+  /// [esvaziarOrigem] for falso (caso de "juntar" no mesmo quarto de destino),
+  /// marca o quarto [origem] como vago.
+  Future<void> moverOcupanteFesta({
+    required String origem,
+    required String destino,
+    required FestaAssociacao ocupanteDestino,
+    bool esvaziarOrigem = true,
+  }) async {
+    final batch = _db.batch();
+    batch.set(
+      _db.collection(_colFestaAssociacoes).doc(destino),
+      _flagTeste({
+        ...ocupanteDestino.toMap(),
+        'validadoPorNome': _currentUserName,
+        'validadoPorId': _currentUserId,
+        'associadoEm': FieldValue.serverTimestamp(),
+      }),
+    );
+    if (esvaziarOrigem && origem != destino) {
+      batch.set(
+        _db.collection(_colFestaAssociacoes).doc(origem),
+        _flagTeste({
+          ...const FestaAssociacao(ocupante: '', vago: true).toMap(),
+          'validadoPorNome': _currentUserName,
+          'validadoPorId': _currentUserId,
+          'associadoEm': FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    await batch.commit();
+  }
+
+  // --- LISTA DE ESPERA DA FESTA ---
+
+  Stream<List<FestaEspera>> getEsperaFestaStream() {
+    return _db.collection(_colFestaEspera).snapshots().map((snap) =>
+        snap.docs.map((d) => FestaEspera.fromMap(d.id, d.data())).toList());
+  }
+
+  /// Tira o ocupante do quarto [origem] (deixa vago) e o coloca na lista de
+  /// espera da categoria.
+  Future<void> enviarParaEsperaFesta({
+    required String origem,
+    required FestaEspera espera,
+  }) async {
+    final batch = _db.batch();
+    batch.set(
+      _db.collection(_colFestaEspera).doc(),
+      _flagTeste({
+        ...espera.toMap(),
+        'adicionadoPorNome': _currentUserName,
+        'adicionadoPorId': _currentUserId,
+        'adicionadoEm': FieldValue.serverTimestamp(),
+      }),
+    );
+    batch.set(
+      _db.collection(_colFestaAssociacoes).doc(origem),
+      _flagTeste({
+        ...const FestaAssociacao(ocupante: '', vago: true).toMap(),
+        'validadoPorNome': _currentUserName,
+        'validadoPorId': _currentUserId,
+        'associadoEm': FieldValue.serverTimestamp(),
+      }),
+    );
+    await batch.commit();
+  }
+
+  /// Coloca alguém da lista de espera em [destino] e o remove da espera.
+  Future<void> colocarDaEsperaFesta({
+    required String esperaId,
+    required String destino,
+    required FestaAssociacao ocupanteDestino,
+  }) async {
+    final batch = _db.batch();
+    batch.set(
+      _db.collection(_colFestaAssociacoes).doc(destino),
+      _flagTeste({
+        ...ocupanteDestino.toMap(),
+        'validadoPorNome': _currentUserName,
+        'validadoPorId': _currentUserId,
+        'associadoEm': FieldValue.serverTimestamp(),
+      }),
+    );
+    batch.delete(_db.collection(_colFestaEspera).doc(esperaId));
+    await batch.commit();
+  }
+
+  Future<void> removerEsperaFesta(String esperaId) =>
+      _db.collection(_colFestaEspera).doc(esperaId).delete();
 
   // --- CLIENTES ---
 

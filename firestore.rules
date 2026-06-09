@@ -151,6 +151,23 @@ service cloud.firestore {
       allow create, update, delete: if isAuth() && isSuperAdmin();
     }
 
+    // ── Festa dos Sócios: validação de trocas de quarto ──────────────────────
+    // Decisão humana (aprovar/recusar a troca sugerida). Apenas gestores
+    // (admin/super admin/pós-venda/financeiro/recepção) leem e escrevem.
+    match /festa_socios_validacoes/{numeroQuarto} {
+      allow read, write: if isAuth() && isGestor();
+    }
+
+    // Associação manual de quarto → contrato (sócio).
+    match /festa_socios_associacoes/{numeroQuarto} {
+      allow read, write: if isAuth() && isGestor();
+    }
+
+    // Lista de espera por categoria (hóspedes aguardando vaga).
+    match /festa_socios_espera/{esperaId} {
+      allow read, write: if isAuth() && isGestor();
+    }
+
     // ── Leads do site/quiosque (Villamor Tambaba) ───────────────────────────
     // Gravados por páginas públicas (sem login) → 'create' liberado COM validação.
     // Leitura/edição só para gestores autenticados; exclusão só super admin.
