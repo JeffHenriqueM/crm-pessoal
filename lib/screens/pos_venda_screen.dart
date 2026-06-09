@@ -73,9 +73,11 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           (_filtroStatus == 'Ativo' ? ativo : !ativo);
       final finOk =
           _filtroStatusFin == null || c.statusFinanceiro == _filtroStatusFin;
-      final assOk =
-          _filtroAssinatura == null ||
-          c.statusAssinatura.value == _filtroAssinatura;
+      final assOk = _filtroAssinatura == null ||
+          (_filtroAssinatura!.startsWith('grupo:')
+              ? c.statusAssinatura.grupo.name ==
+                  _filtroAssinatura!.substring('grupo:'.length)
+              : c.statusAssinatura.value == _filtroAssinatura);
       final prodOk = _filtroProduto == null || c.produto == _filtroProduto;
 
       return buscaOk && statusOk && finOk && assOk && prodOk;
@@ -318,9 +320,12 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                         opc('Quitado', _filtroStatusFin == 'Quitado',
                             () => _filtroStatusFin = 'Quitado'),
                       ]),
-                      grupo('Assinatura', [
+                      grupo('Formalização', [
                         opc('Todas', _filtroAssinatura == null,
                             () => _filtroAssinatura = null),
+                        for (final g in GrupoFormalizacao.values)
+                          opc('Grupo: ${g.label}', _filtroAssinatura == 'grupo:${g.name}',
+                              () => _filtroAssinatura = 'grupo:${g.name}'),
                         for (final s in StatusAssinatura.values)
                           opc(s.label, _filtroAssinatura == s.value,
                               () => _filtroAssinatura = s.value),
@@ -439,12 +444,12 @@ class _ContratoCard extends StatelessWidget {
     final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
     Color statusColor;
-    switch (c.statusAssinatura) {
-      case StatusAssinatura.assinado:
+    switch (c.statusAssinatura.grupo) {
+      case GrupoFormalizacao.formalizado:
         statusColor = Colors.green;
-      case StatusAssinatura.emAndamento:
+      case GrupoFormalizacao.emAndamento:
         statusColor = Colors.orange;
-      case StatusAssinatura.naoAssinado:
+      case GrupoFormalizacao.pendente:
         statusColor = Colors.grey;
     }
 

@@ -46,7 +46,7 @@ void main() {
       expect(lido.nomeComprador, 'Maria');
       expect(lido.valorAtrasado, 250.5);
       expect(lido.valorFinanciado, 1000);
-      expect(lido.statusAssinatura, StatusAssinatura.naoAssinado);
+      expect(lido.statusAssinatura, StatusAssinatura.pendente);
     });
 
     test('codigoContrato faz round-trip', () async {

@@ -1393,20 +1393,22 @@ class FirestoreService {
   }
 
   /// Atualiza apenas o status de assinatura de um contrato.
-  /// Quando o contrato passa a "assinado" (transição), conta a assinatura
-  /// conseguida para o usuário logado (meta de pós-venda).
+  /// Quando o contrato entra no grupo "Formalizados" (transição a partir de um
+  /// status não-formalizado), conta a formalização conseguida para o usuário
+  /// logado (meta de pós-venda).
   Future<void> atualizarStatusAssinatura(
     String contratoId,
     StatusAssinatura status,
   ) async {
     final ref = _db.collection(_colContratos).doc(contratoId);
     final snap = await ref.get();
-    final anterior = snap.data()?['statusAssinatura'] as String?;
+    final anterior =
+        StatusAssinatura.fromString(snap.data()?['statusAssinatura'] as String?);
     await ref.update({
       'statusAssinatura': status.value,
       'atualizadoEm': FieldValue.serverTimestamp(),
     });
-    if (status == StatusAssinatura.assinado && anterior != 'assinado') {
+    if (status.formalizado && !anterior.formalizado) {
       await _incrementarContadorUsuario('assinaturas');
     }
   }

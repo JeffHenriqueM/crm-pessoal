@@ -1,48 +1,136 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Grupo que classifica o estado de formalização de um contrato (ticket #54).
+/// O painel de pós-venda usa estes 3 grupos para medir o % de formalização.
+enum GrupoFormalizacao {
+  /// Contribuem para o aumento do % de formalização.
+  formalizado('Formalizados'),
+
+  /// Status negativos (pendência de formalização).
+  pendente('Pendentes'),
+
+  /// Caminhando para contribuir com a formalização.
+  emAndamento('Em andamento');
+
+  final String label;
+  const GrupoFormalizacao(this.label);
+}
+
+/// Categorias de controle de formalização dos contratos (ticket #54).
+/// São 8 categorias distribuídas em 3 grupos ([GrupoFormalizacao]).
 enum StatusAssinatura {
-  naoAssinado,
+  // ── Formalizados ───────────────────────────────────────────────────────
+  assinado,
+  projetoAtualizado,
+  resgatado,
+  // ── Pendentes ──────────────────────────────────────────────────────────
+  pendente,
+  projetoAntigo,
+  // ── Em andamento ───────────────────────────────────────────────────────
+  atualizandoProjeto,
   emAndamento,
-  assinado;
+  emResgate;
 
   String get label {
     switch (this) {
-      case StatusAssinatura.naoAssinado:
-        return 'Não assinado';
-      case StatusAssinatura.emAndamento:
-        return 'Em andamento';
       case StatusAssinatura.assinado:
         return 'Assinado';
+      case StatusAssinatura.projetoAtualizado:
+        return 'Projeto atualizado';
+      case StatusAssinatura.resgatado:
+        return 'Resgatado';
+      case StatusAssinatura.pendente:
+        return 'Pendente';
+      case StatusAssinatura.projetoAntigo:
+        return 'Projeto antigo';
+      case StatusAssinatura.atualizandoProjeto:
+        return 'Atualizando projeto';
+      case StatusAssinatura.emAndamento:
+        return 'Em andamento';
+      case StatusAssinatura.emResgate:
+        return 'Em resgate';
     }
   }
 
+  /// A qual grupo de formalização esta categoria pertence.
+  GrupoFormalizacao get grupo {
+    switch (this) {
+      case StatusAssinatura.assinado:
+      case StatusAssinatura.projetoAtualizado:
+      case StatusAssinatura.resgatado:
+        return GrupoFormalizacao.formalizado;
+      case StatusAssinatura.pendente:
+      case StatusAssinatura.projetoAntigo:
+        return GrupoFormalizacao.pendente;
+      case StatusAssinatura.atualizandoProjeto:
+      case StatusAssinatura.emAndamento:
+      case StatusAssinatura.emResgate:
+        return GrupoFormalizacao.emAndamento;
+    }
+  }
+
+  /// True quando a categoria conta como formalizada (sobe o % de formalização
+  /// e a meta pessoal de assinaturas).
+  bool get formalizado => grupo == GrupoFormalizacao.formalizado;
+
   static StatusAssinatura fromString(String? v) {
     switch (v) {
-      case 'em_andamento':
-        return StatusAssinatura.emAndamento;
       case 'assinado':
         return StatusAssinatura.assinado;
+      case 'projeto_atualizado':
+        return StatusAssinatura.projetoAtualizado;
+      case 'resgatado':
+        return StatusAssinatura.resgatado;
+      case 'pendente':
+        return StatusAssinatura.pendente;
+      // Legado: "Não assinado" migra para PENDENTE.
+      case 'nao_assinado':
+        return StatusAssinatura.pendente;
+      case 'projeto_antigo':
+        return StatusAssinatura.projetoAntigo;
+      case 'atualizando_projeto':
+        return StatusAssinatura.atualizandoProjeto;
+      case 'em_andamento':
+        return StatusAssinatura.emAndamento;
+      case 'em_resgate':
+        return StatusAssinatura.emResgate;
       default:
-        return StatusAssinatura.naoAssinado;
+        return StatusAssinatura.pendente;
     }
   }
 
   // Converte o texto legível do CSV ("Assinado", "Em andamento", etc.)
   static StatusAssinatura fromCsvLabel(String v) {
     final s = v.toLowerCase().trim();
-    if (s == 'assinado') return StatusAssinatura.assinado;
+    if (s.contains('em resgate')) return StatusAssinatura.emResgate;
+    if (s.contains('resgatad')) return StatusAssinatura.resgatado;
+    if (s.contains('atualizando')) return StatusAssinatura.atualizandoProjeto;
+    if (s.contains('atualizado')) return StatusAssinatura.projetoAtualizado;
+    if (s.contains('antigo')) return StatusAssinatura.projetoAntigo;
     if (s.contains('andamento')) return StatusAssinatura.emAndamento;
-    return StatusAssinatura.naoAssinado;
+    if (s.contains('pendente')) return StatusAssinatura.pendente;
+    if (s == 'assinado') return StatusAssinatura.assinado;
+    return StatusAssinatura.pendente;
   }
 
   String get value {
     switch (this) {
-      case StatusAssinatura.naoAssinado:
-        return 'nao_assinado';
-      case StatusAssinatura.emAndamento:
-        return 'em_andamento';
       case StatusAssinatura.assinado:
         return 'assinado';
+      case StatusAssinatura.projetoAtualizado:
+        return 'projeto_atualizado';
+      case StatusAssinatura.resgatado:
+        return 'resgatado';
+      case StatusAssinatura.pendente:
+        return 'pendente';
+      case StatusAssinatura.projetoAntigo:
+        return 'projeto_antigo';
+      case StatusAssinatura.atualizandoProjeto:
+        return 'atualizando_projeto';
+      case StatusAssinatura.emAndamento:
+        return 'em_andamento';
+      case StatusAssinatura.emResgate:
+        return 'em_resgate';
     }
   }
 }
@@ -191,7 +279,7 @@ class Contrato {
     this.captador = '',
     this.vendedorLiner = '',
     this.pontoCapatcao = '',
-    this.statusAssinatura = StatusAssinatura.naoAssinado,
+    this.statusAssinatura = StatusAssinatura.pendente,
     this.criadoEm,
     this.atualizadoEm,
     this.interacoesPorMes = const {},

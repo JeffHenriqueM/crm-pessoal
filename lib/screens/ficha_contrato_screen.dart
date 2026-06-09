@@ -337,27 +337,47 @@ class _DadosTab extends StatelessWidget {
               ),
             ),
           ),
-        // Assinatura
-        _secao('Processo de Assinatura', [
+        // Formalização (ticket #54): 8 categorias em 3 grupos.
+        _secao('Formalização', [
           if (isAdmin)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: SegmentedButton<StatusAssinatura>(
-                segments: StatusAssinatura.values
-                    .map(
-                      (s) => ButtonSegment(
-                        value: s,
-                        label: Text(s.label, style: const TextStyle(fontSize: 12)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final g in GrupoFormalizacao.values) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        g.label.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _corGrupo(g),
+                          letterSpacing: 0.4,
+                        ),
                       ),
-                    )
-                    .toList(),
-                selected: {c.statusAssinatura},
-                onSelectionChanged: (sel) => onAssinaturaAlterada(sel.first),
-                showSelectedIcon: false,
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final s in StatusAssinatura.values
+                            .where((s) => s.grupo == g))
+                          ChoiceChip(
+                            label: Text(s.label,
+                                style: const TextStyle(fontSize: 12)),
+                            selected: c.statusAssinatura == s,
+                            onSelected: (_) => onAssinaturaAlterada(s),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             )
           else
-            _campo('Status de Assinatura', c.statusAssinatura.label),
+            _campo('Status de formalização', c.statusAssinatura.label),
         ]),
         const SizedBox(height: 8),
 
@@ -617,6 +637,17 @@ class _DadosTab extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _corGrupo(GrupoFormalizacao g) {
+    switch (g) {
+      case GrupoFormalizacao.formalizado:
+        return Colors.green.shade700;
+      case GrupoFormalizacao.emAndamento:
+        return Colors.orange.shade700;
+      case GrupoFormalizacao.pendente:
+        return Colors.grey.shade600;
+    }
   }
 
   Widget _campo(String label, String valor, {Color? destaque}) {

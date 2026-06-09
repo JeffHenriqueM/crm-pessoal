@@ -51,13 +51,14 @@ class AbaPosVenda extends StatelessWidget {
             total
         : 0.0;
 
-    final assinados =
-        contratos.where((c) => c.statusAssinatura == StatusAssinatura.assinado).length;
-    final assinaturaEmAndamento = contratos
-        .where((c) => c.statusAssinatura == StatusAssinatura.emAndamento)
+    final formalizados = contratos
+        .where((c) => c.statusAssinatura.grupo == GrupoFormalizacao.formalizado)
         .length;
-    final naoAssinados = contratos
-        .where((c) => c.statusAssinatura == StatusAssinatura.naoAssinado)
+    final formalizacaoEmAndamento = contratos
+        .where((c) => c.statusAssinatura.grupo == GrupoFormalizacao.emAndamento)
+        .length;
+    final pendentes = contratos
+        .where((c) => c.statusAssinatura.grupo == GrupoFormalizacao.pendente)
         .length;
 
     final aniversariantes = aniversariantesEm(contratos, DateTime.now());
@@ -80,13 +81,13 @@ class AbaPosVenda extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // ── Assinatura ────────────────────────────────────────────────
-          _buildSecaoTitulo(context, 'Status de assinatura'),
+          // ── Formalização ──────────────────────────────────────────────
+          _buildSecaoTitulo(context, 'Status de formalização'),
           const SizedBox(height: 8),
           _AssinaturaCard(
-            assinados: assinados,
-            emAndamento: assinaturaEmAndamento,
-            naoAssinados: naoAssinados,
+            formalizados: formalizados,
+            emAndamento: formalizacaoEmAndamento,
+            pendentes: pendentes,
             total: total,
           ),
 
@@ -400,15 +401,15 @@ class _IntegralizacaoCard extends StatelessWidget {
 
 // ── Barra tripartida de assinatura ────────────────────────────────────────────
 class _AssinaturaCard extends StatelessWidget {
-  final int assinados;
+  final int formalizados;
   final int emAndamento;
-  final int naoAssinados;
+  final int pendentes;
   final int total;
 
   const _AssinaturaCard({
-    required this.assinados,
+    required this.formalizados,
     required this.emAndamento,
-    required this.naoAssinados,
+    required this.pendentes,
     required this.total,
   });
 
@@ -418,9 +419,9 @@ class _AssinaturaCard extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final t = total == 0 ? 1 : total;
 
-    final fracAssinado = assinados / t;
+    final fracAssinado = formalizados / t;
     final fracAndamento = emAndamento / t;
-    final fracNao = naoAssinados / t;
+    final fracNao = pendentes / t;
 
     return Card(
       elevation: 0,
@@ -462,8 +463,8 @@ class _AssinaturaCard extends StatelessWidget {
               children: [
                 _LegendaItem(
                   cor: Colors.green.shade600,
-                  label: 'Assinado',
-                  count: assinados,
+                  label: 'Formalizados',
+                  count: formalizados,
                   percentual: fracAssinado * 100,
                   tt: tt,
                 ),
@@ -478,8 +479,8 @@ class _AssinaturaCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 _LegendaItem(
                   cor: cs.surfaceContainerHighest,
-                  label: 'Não assinado',
-                  count: naoAssinados,
+                  label: 'Pendentes',
+                  count: pendentes,
                   percentual: fracNao * 100,
                   tt: tt,
                   corTexto: cs.onSurfaceVariant,

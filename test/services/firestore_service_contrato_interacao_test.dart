@@ -80,6 +80,39 @@ void main() {
       final u = await service.getUsuario('pv1');
       expect(u?.assinaturasTotal ?? 0, 0);
     });
+
+    test('resgatado (grupo Formalizados) conta a formalização', () async {
+      await service.atualizarStatusAssinatura(
+          'LOC1', StatusAssinatura.resgatado);
+      final u = await service.getUsuario('pv1');
+      expect(u?.assinaturasTotal, 1);
+    });
+
+    test('projeto atualizado (grupo Formalizados) conta a formalização',
+        () async {
+      await service.atualizarStatusAssinatura(
+          'LOC1', StatusAssinatura.projetoAtualizado);
+      final u = await service.getUsuario('pv1');
+      expect(u?.assinaturasTotal, 1);
+    });
+
+    test('mudar entre dois formalizados NÃO conta de novo', () async {
+      await service.atualizarStatusAssinatura(
+          'LOC1', StatusAssinatura.assinado);
+      await service.atualizarStatusAssinatura(
+          'LOC1', StatusAssinatura.resgatado);
+      final u = await service.getUsuario('pv1');
+      expect(u?.assinaturasTotal, 1);
+    });
+
+    test('em andamento → formalizado conta a formalização', () async {
+      await service.atualizarStatusAssinatura(
+          'LOC1', StatusAssinatura.atualizandoProjeto);
+      await service.atualizarStatusAssinatura(
+          'LOC1', StatusAssinatura.projetoAtualizado);
+      final u = await service.getUsuario('pv1');
+      expect(u?.assinaturasTotal, 1);
+    });
   });
 
   group('meta de upgrades', () {
