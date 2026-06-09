@@ -47,7 +47,7 @@ class AbaPosVenda extends StatelessWidget {
     final valorAtrasadoTotal =
         contratos.fold<double>(0, (s, c) => s + c.valorAtrasado);
     final percMedioIntegralizado = total > 0
-        ? contratos.fold<double>(0, (s, c) => s + c.percentualIntegralizado) /
+        ? contratos.fold<double>(0, (s, c) => s + c.percentualEfetivo) /
             total
         : 0.0;
 

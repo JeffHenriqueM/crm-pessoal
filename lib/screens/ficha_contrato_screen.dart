@@ -441,7 +441,7 @@ class _DadosTab extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '${c.percentualIntegralizado.toStringAsFixed(1)}% integralizado',
+                      '${c.percentualEfetivo.toStringAsFixed(1)}% integralizado',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     Text(
@@ -458,7 +458,7 @@ class _DadosTab extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: (c.percentualIntegralizado / 100).clamp(0.0, 1.0),
+                    value: (c.percentualEfetivo / 100).clamp(0.0, 1.0),
                     minHeight: 8,
                     backgroundColor: Colors.grey.shade200,
                     valueColor: AlwaysStoppedAnimation(

@@ -435,7 +435,7 @@ class _ContratoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = contrato;
-    final pct = c.percentualIntegralizado;
+    final pct = c.percentualEfetivo;
     final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
     Color statusColor;

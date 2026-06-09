@@ -204,6 +204,12 @@ class Contrato {
 
   bool get temAtrasos => valorAtrasado > 0;
   bool get estaQuitado => statusFinanceiro.toLowerCase() == 'quitado';
+
+  /// % integralizado para fins de regra: contrato quitado conta como 100%,
+  /// mesmo que o campo numérico esteja desatualizado (ex.: 0%).
+  double get percentualEfetivo =>
+      estaQuitado ? 100.0 : percentualIntegralizado;
+
   String get nomeExibicao => nomeComprador;
 
   /// True se o contrato teve ao menos uma interação no mês corrente.
