@@ -8,6 +8,8 @@ import '../models/produto_model.dart';
 import '../services/proposta_pdf.dart';
 import '../models/usuario_model.dart';
 import '../services/firestore_service.dart';
+import '../utils/moeda_input.dart';
+import '../utils/negociacao_regras.dart';
 
 final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 final _moedaCompacta = NumberFormat.currency(
@@ -935,6 +937,13 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
 
+  // Quem pode escolher livremente o embaixador/vendedor da negociação:
+  // admin/super admin e recepção (não precisa ser o próprio usuário logado).
+  bool get _podeEscolherEmbaixador =>
+      _isAdmin ||
+      widget.userProfile == 'recepcao' ||
+      widget.userProfile == 'recepção';
+
   bool get _deveSerEspecial {
     if (_produtoSelecionado == null) return false;
     final limite = _produtoSelecionado!.limiteEspecial;
@@ -1101,13 +1110,15 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
     super.dispose();
   }
 
-  String _fmt(double v) {
-    if (v == v.truncateToDouble()) return v.toInt().toString();
-    return v.toStringAsFixed(2);
-  }
+  // Formata valores monetários no padrão BR mascarado (#51): "1.234,56".
+  String _fmt(double v) => formatMoeda(v);
 
-  double _parse(String s) =>
-      double.tryParse(s.replaceAll(',', '.')) ?? 0;
+  // Parser robusto: aceita máscara BR ("1.234,56") e entradas simples.
+  double _parse(String s) => parseMoeda(s);
+
+  // Limite de parcelas sem virar Especial: 100 p/ Diamante, senão 80 (#52).
+  int get _limiteParcelas =>
+      limiteParcelasNormais(_produtoSelecionado?.nome);
 
   double get _valorFinal {
     final orig = _parse(_valorOriginalCtrl.text);
@@ -1172,12 +1183,13 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
       }
     }
 
-    // ④ Auto-especial por parcelas > 80
+    // ④ Auto-especial por parcelas acima do limite (80 padrão · 100 Diamante)
     final nParcelas = int.tryParse(_parcelasCtrl.text) ?? 0;
-    if (nParcelas > 80 && _tipoNegociacao == TipoNegociacao.tabela) {
+    final limiteParcelas = _limiteParcelas;
+    if (nParcelas > limiteParcelas && _tipoNegociacao == TipoNegociacao.tabela) {
       _tipoNegociacao = TipoNegociacao.especial;
       _autoEspecialParcelas = true;
-    } else if (nParcelas <= 80 && _autoEspecialParcelas) {
+    } else if (nParcelas <= limiteParcelas && _autoEspecialParcelas) {
       _autoEspecialParcelas = false;
       if (!_autoEspecial && _tipoNegociacao == TipoNegociacao.especial) {
         _tipoNegociacao = TipoNegociacao.tabela;
@@ -1608,7 +1620,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                     prefixText: 'R\$ ',
                                   ),
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+                                  inputFormatters: [MoedaInputFormatter()],
                                   validator: (v) {
                                     if (v == null || v.trim().isEmpty) return 'Informe o valor';
                                     if (_parse(v) <= 0) return 'Valor inválido';
@@ -1686,7 +1698,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                           prefixText: 'R\$ ',
                                         ),
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+                                        inputFormatters: [MoedaInputFormatter()],
                                       ),
                                     ),
                                     const SizedBox(width: 8),
@@ -1704,8 +1716,8 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                   ],
                                 ),
 
-                                // Banner: parcelas > 80 → obrigatório especial
-                                if ((int.tryParse(_parcelasCtrl.text) ?? 0) > 80)
+                                // Banner: parcelas acima do limite → especial obrigatório
+                                if ((int.tryParse(_parcelasCtrl.text) ?? 0) > _limiteParcelas)
                                   Container(
                                     margin: const EdgeInsets.only(top: 6),
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1719,7 +1731,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                         const SizedBox(width: 7),
                                         Expanded(
                                           child: Text(
-                                            'Acima de 80x → Negociação Especial obrigatória',
+                                            'Acima de ${_limiteParcelas}x → Negociação Especial obrigatória',
                                             style: TextStyle(fontSize: 12, color: cs.onTertiaryContainer),
                                           ),
                                         ),
@@ -1746,7 +1758,7 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                         : Icon(Icons.calculate_outlined, color: cs.onSurfaceVariant),
                                   ),
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+                                  inputFormatters: [MoedaInputFormatter()],
                                 ),
 
                                 // Divergência
@@ -1862,10 +1874,11 @@ class _FormularioNegociacaoState extends State<_FormularioNegociacao> {
                                   const SizedBox(height: 12),
                                 ],
 
-                                // Embaixador: admin pode alterar, não-admin vê chip fixo
+                                // Embaixador: admin e recepção podem alterar;
+                                // demais perfis veem o chip fixo
                                 if (_carregandoUsuarios)
                                   const LinearProgressIndicator()
-                                else if (_isAdmin)
+                                else if (_podeEscolherEmbaixador)
                                   DropdownButtonFormField<Usuario>(
                                     key: ValueKey(_embaixador?.id),
                                     initialValue: _embaixador,

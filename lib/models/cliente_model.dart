@@ -20,6 +20,8 @@ class Cliente {
   final DateTime? dataEntradaSala;
   final String? motivoNaoVenda;
   final String? motivoNaoVendaDropdown;
+  // Observação livre sobre o cliente (#53) — visível em qualquer fase.
+  final String? observacao;
   final String? vendedorId;
   final String? vendedorNome;
   final String? criadoPorId;
@@ -81,6 +83,7 @@ class Cliente {
     this.origem,
     this.motivoNaoVenda,
     this.motivoNaoVendaDropdown,
+    this.observacao,
     this.vendedorId,
     this.vendedorNome,
     this.captadorId,
@@ -129,6 +132,7 @@ class Cliente {
       'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita!) : null,
       'motivoNaoVenda': motivoNaoVenda,
       'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
+      'observacao': observacao,
       'vendedorId': vendedorId,
       'vendedorNome': vendedorNome,
       'captadorNome': captadorNome,
@@ -194,6 +198,7 @@ class Cliente {
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
       motivoNaoVenda: data['motivoNaoVenda'],
       motivoNaoVendaDropdown: data['motivoNaoVendaDropdown'],
+      observacao: data['observacao'] as String?,
       vendedorId: data['vendedorId'],
       vendedorNome: data['vendedorNome'],
       captadorId: data['captadorId'],

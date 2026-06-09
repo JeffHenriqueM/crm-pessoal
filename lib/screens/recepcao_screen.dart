@@ -114,6 +114,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
   final _profissaoConjugeCtrl = TextEditingController();
   final _telefoneConjugeCtrl  = TextEditingController();
 
+  // Observação livre sobre o cliente (#53)
+  final _observacaoCtrl       = TextEditingController();
+
   // Geral
   String   _pontoCap = 'Presencial';
   String   _sala     = 'Villa';
@@ -142,7 +145,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
     for (final c in [
       _nomeCtrl, _idadeCtrl, _profissaoCtrl, _telefoneCtrl,
       _conjugeCtrl, _idadeConjugeCtrl, _profissaoConjugeCtrl,
-      _telefoneConjugeCtrl,
+      _telefoneConjugeCtrl, _observacaoCtrl,
     ]) {
       c.dispose();
     }
@@ -200,6 +203,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
             ? null
             : _telefoneConjugeCtrl.text.trim(),
         brinde: _brinde,
+        observacao: _observacaoCtrl.text.trim().isEmpty
+            ? null
+            : _observacaoCtrl.text.trim(),
         sala: _sala,
         origem: _pontoCap,
         captadorId: _captador?.id,
@@ -272,7 +278,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
     for (final c in [
       _nomeCtrl, _idadeCtrl, _profissaoCtrl, _telefoneCtrl,
       _conjugeCtrl, _idadeConjugeCtrl, _profissaoConjugeCtrl,
-      _telefoneConjugeCtrl,
+      _telefoneConjugeCtrl, _observacaoCtrl,
     ]) {
       c.clear();
     }
@@ -534,6 +540,26 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                           onChanged: (v) => setState(() => _brinde = v),
                         ),
                       ],
+                    ]),
+                const SizedBox(height: 16),
+
+                // ── Observação ────────────────────────────────────────────
+                _card(cs,
+                    icon: Icons.sticky_note_2_outlined,
+                    title: 'Observação',
+                    children: [
+                      TextFormField(
+                        controller: _observacaoCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Observação sobre o cliente (opcional)',
+                          prefixIcon: Icon(Icons.notes_outlined),
+                          alignLabelWithHint: true,
+                        ),
+                        textCapitalization: TextCapitalization.sentences,
+                        keyboardType: TextInputType.multiline,
+                        minLines: 2,
+                        maxLines: 5,
+                      ),
                     ]),
                 const SizedBox(height: 28),
 
