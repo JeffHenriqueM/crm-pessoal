@@ -83,6 +83,61 @@ RecomendacaoFesta recomendarFesta(String tier, num pct) {
   return RecomendacaoFesta(null, flags, false);
 }
 
+/// Pontos por tier para combinar contratos ("escada por pontos"):
+/// bronze+bronze=prata, prata+prata=ouro, ouro+ouro=diamante.
+const Map<String, int> _pontosTier = {
+  'bronze': 1,
+  'prata': 2,
+  'ouro': 4,
+  'diamante': 8,
+  'integral': 8,
+};
+
+String? _tierDePontos(int pts) {
+  if (pts >= 8) return 'diamante';
+  if (pts >= 4) return 'ouro';
+  if (pts >= 2) return 'prata';
+  if (pts >= 1) return 'bronze';
+  return null;
+}
+
+/// Combina vários contratos (tier + %) de um mesmo sócio/casal num único par
+/// efetivo: soma os "pontos" dos tiers (escada) e soma os % (limitado a 100).
+/// 'integral' domina (vira sempre suíte Villamor pela regra). Um único contrato
+/// retorna o próprio tier/%, mantendo o comportamento anterior.
+({String tier, double pct}) combinarContratosFesta(
+    List<({String tier, double pct})> contratos) {
+  if (contratos.isEmpty) return (tier: '?', pct: 0);
+  final pctSoma =
+      contratos.fold<double>(0, (s, c) => s + c.pct).clamp(0, 100).toDouble();
+  if (contratos.any((c) => c.tier == 'integral')) {
+    return (tier: 'integral', pct: pctSoma);
+  }
+  final pontos =
+      contratos.fold<int>(0, (s, c) => s + (_pontosTier[c.tier] ?? 0));
+  return (tier: _tierDePontos(pontos) ?? '?', pct: pctSoma);
+}
+
+/// Classificação do hóspede no evento:
+///  • 'voucher'  → sócio com mais de 10% pago e em dia (sem atraso);
+///  • 'pagante'  → não-sócios, sócios em atraso, ou sócios com menos de 10% pago.
+/// (10% conta como atingido → voucher.)
+String tipoEventoFesta({
+  required bool socio,
+  required num pct,
+  required bool atrasado,
+}) {
+  if (socio && !atrasado && pct >= 10) return 'voucher';
+  return 'pagante';
+}
+
+/// Conta "casais" num quarto: cada nome separado por " + " conta como 1 casal.
+int contarCasais(String ocupante) => ocupante
+    .split('+')
+    .map((s) => s.trim())
+    .where((s) => s.isNotEmpty)
+    .length;
+
 /// Ação ao comparar categoria atual com a recomendada.
 String acaoFesta(String catAtual, String? recomendada) {
   if (recomendada == null) return 'mantem';

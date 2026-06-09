@@ -144,7 +144,7 @@ const List<QuartoFestaSocios> quartosFestaSocios = [
   QuartoFestaSocios('127', CategoriaQuarto.comfortTerreo),
   QuartoFestaSocios('128', CategoriaQuarto.duplex),
   QuartoFestaSocios('129', CategoriaQuarto.comfortTerreo),
-  QuartoFestaSocios('130', CategoriaQuarto.comfortTerreo),
+  QuartoFestaSocios('130', CategoriaQuarto.duplex),
   QuartoFestaSocios('136', CategoriaQuarto.comfort1Andar),
   QuartoFestaSocios('137', CategoriaQuarto.comfort1Andar),
   QuartoFestaSocios('138', CategoriaQuarto.comfort1Andar),

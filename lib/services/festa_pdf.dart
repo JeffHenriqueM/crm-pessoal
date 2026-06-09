@@ -17,6 +17,7 @@ typedef LinhaQuarto = ({
   String? tier,
   int? pct,
   String? origem,
+  String? obs,
 });
 typedef GrupoCategoria = ({String categoria, List<LinhaQuarto> linhas});
 typedef LinhaEspera = ({
@@ -163,13 +164,14 @@ class FestaPdf {
       border: pw.TableBorder.symmetric(
           inside: const pw.BorderSide(color: _divisor, width: .5)),
       columnWidths: const {
-        0: pw.FixedColumnWidth(48),
-        1: pw.FlexColumnWidth(),
-        2: pw.FixedColumnWidth(90),
-        3: pw.FixedColumnWidth(70),
+        0: pw.FixedColumnWidth(42),
+        1: pw.FlexColumnWidth(1.3),
+        2: pw.FixedColumnWidth(80),
+        3: pw.FixedColumnWidth(52),
+        4: pw.FlexColumnWidth(1.2),
       },
       children: [
-        _linhaCab(['Quarto', 'Hóspede', 'Cota / %', 'Origem']),
+        _linhaCab(['Quarto', 'Hóspede', 'Cota / %', 'Origem', 'Obs.']),
         for (final l in linhas)
           pw.TableRow(children: [
             _cel(l.numero, bold: true),
@@ -178,6 +180,7 @@ class FestaPdf {
                 ? '—'
                 : '${l.tier!.toUpperCase()}${l.pct != null ? ' · ${l.pct}%' : ''}'),
             _cel(l.origem != null ? 'veio do ${l.origem}' : '—'),
+            _cel((l.obs ?? '').isEmpty ? '—' : l.obs!),
           ]),
       ],
     );

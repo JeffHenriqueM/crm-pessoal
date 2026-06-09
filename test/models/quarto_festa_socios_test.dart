@@ -29,6 +29,7 @@ void main() {
     expect(cat('101'), CategoriaQuarto.triplo);
     expect(cat('105'), CategoriaQuarto.triplo);
     expect(cat('128'), CategoriaQuarto.duplex);
+    expect(cat('130'), CategoriaQuarto.duplex);
     expect(cat('143'), CategoriaQuarto.suiteVillamor);
     expect(cat('144'), CategoriaQuarto.comfortTerreo);
     expect(cat('162'), CategoriaQuarto.comfort2Andar);

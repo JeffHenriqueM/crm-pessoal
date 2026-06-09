@@ -299,6 +299,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
             tier: o.tier,
             pct: o.pct,
             origem: assocs[q.numero]?.origem,
+            obs: assocs[q.numero]?.observacao,
           ));
         }
         if (linhas.isNotEmpty) {
@@ -506,6 +507,13 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     final cs = Theme.of(context).colorScheme;
     final assoc = assocs[q.numero];
     final o = ocupacaoEfetiva(q, assocs);
+    final autoTipo = (o?.ocupante.isNotEmpty ?? false)
+        ? tipoEventoFesta(
+            socio: o?.tier != null,
+            pct: o?.pct ?? 0,
+            atrasado: o?.atrasado ?? false)
+        : null;
+    final tipoEfetivo = assoc?.tipo ?? autoTipo;
 
     Future<void> validar(String? status) async {
       await _service.setValidacaoFesta(q.numero, status);
@@ -513,21 +521,104 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     }
 
     Future<void> associar() async {
-      final contrato = await showModalBottomSheet<Contrato>(
+      final contratos = await showModalBottomSheet<List<Contrato>>(
         context: context,
         isScrollControlled: true,
         builder: (_) => _SeletorContrato(service: _service),
       );
-      if (contrato == null) return;
-      final tier = tierDeProduto(contrato.produto, contrato.cota);
+      if (contratos == null || contratos.isEmpty) return;
+      // Combina os tiers/% (escada por pontos) quando há mais de um contrato.
+      final combos = contratos
+          .map((c) => (
+                tier: tierDeProduto(c.produto, c.cota),
+                pct: c.percentualEfetivo
+              ))
+          .toList();
+      final agg = combinarContratosFesta(combos);
+      // Nome: 1 contrato → nome do comprador; vários → nome do 1º (representa o
+      // casal); não usa " + " pra não inflar a contagem de casais do duplex.
+      final nome = contratos.first.nomeComprador;
       await _service.setAssociacaoFesta(
         q.numero,
         FestaAssociacao(
-          contratoId: contrato.localizador,
-          ocupante: contrato.nomeComprador,
-          tier: tier,
-          pct: contrato.percentualIntegralizado,
-          atrasado: contrato.valorAtrasado > 0,
+          contratoId: contratos.first.localizador,
+          contratosIds: contratos.map((c) => c.localizador).toList(),
+          ocupante: nome,
+          tier: agg.tier,
+          pct: agg.pct,
+          atrasado: contratos.any((c) => c.valorAtrasado > 0),
+        ),
+      );
+      if (context.mounted) Navigator.pop(context);
+    }
+
+    Future<void> definirTipo(String? tipo) async {
+      await _service.setAssociacaoFesta(
+        q.numero,
+        FestaAssociacao(
+          contratoId: assoc?.contratoId,
+          contratosIds: assoc?.contratosIds ?? const [],
+          ocupante: (o?.ocupante ?? '').replaceFirst(RegExp(r'^\*'), ''),
+          tier: assoc?.tier,
+          pct: assoc?.pct,
+          atrasado: o?.atrasado ?? false,
+          categoriaManual: assoc?.categoriaManual,
+          origem: assoc?.origem,
+          tipo: tipo,
+          observacao: assoc?.observacao,
+        ),
+      );
+      if (context.mounted) Navigator.pop(context);
+    }
+
+    Future<void> anotar() async {
+      final ctrl = TextEditingController(text: assoc?.observacao ?? '');
+      final texto = await showDialog<String>(
+        context: context,
+        builder: (dctx) => AlertDialog(
+          title: const Text('Anotação da reserva'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Ex.: chega dia 20, precisa de cama extra, PCD…',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            if ((assoc?.observacao ?? '').isNotEmpty)
+              TextButton(
+                onPressed: () => Navigator.pop(dctx, ''),
+                child: const Text('Apagar'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dctx, ctrl.text),
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
+      );
+      if (texto == null || !context.mounted) return; // cancelou
+      final t = texto.trim();
+      await _service.setAssociacaoFesta(
+        q.numero,
+        FestaAssociacao(
+          contratoId: assoc?.contratoId,
+          contratosIds: assoc?.contratosIds ?? const [],
+          ocupante: (o?.ocupante ?? '').replaceFirst(RegExp(r'^\*'), ''),
+          tier: assoc?.tier,
+          pct: assoc?.pct,
+          atrasado: o?.atrasado ?? false,
+          categoriaManual: assoc?.categoriaManual,
+          origem: assoc?.origem,
+          tipo: assoc?.tipo,
+          observacao: t.isEmpty ? null : t,
         ),
       );
       if (context.mounted) Navigator.pop(context);
@@ -656,17 +747,60 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                     style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w600)),
               ),
-              if (assoc != null)
+              if (tipoEfetivo != null)
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                      color: cs.primary.withValues(alpha: 0.12),
+                      color: (tipoEfetivo == 'voucher'
+                              ? Colors.teal
+                              : Colors.orange.shade800)
+                          .withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6)),
-                  child: Text('vínculo manual',
-                      style: TextStyle(fontSize: 10, color: cs.primary)),
+                  child: Text(tipoEfetivo == 'voucher' ? 'Voucher' : 'Pagante',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: tipoEfetivo == 'voucher'
+                              ? Colors.teal.shade700
+                              : Colors.orange.shade900)),
                 ),
             ]),
+            if (q.categoria == CategoriaQuarto.duplex ||
+                q.categoria == CategoriaQuarto.suiteDuplex) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                Icon(Icons.favorite_outline, size: 16, color: cs.primary),
+                const SizedBox(width: 6),
+                Text(
+                    '${o != null ? contarCasais(o.ocupante) : 0} casal(is) neste ${q.categoria.label.toLowerCase()}',
+                    style: TextStyle(fontSize: 12.5, color: cs.primary)),
+              ]),
+            ],
+            if ((assoc?.observacao ?? '').isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFFE082))),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.sticky_note_2_outlined,
+                        size: 16, color: Color(0xFF8D6E00)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(assoc!.observacao!,
+                          style: const TextStyle(
+                              fontSize: 13, color: Color(0xFF5D4A00))),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (assoc?.origem != null) ...[
               const SizedBox(height: 8),
               Row(children: [
@@ -684,6 +818,14 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                     'Cota: ${o.tier!.toUpperCase()}'
                     '${o.pct != null ? '  ·  ${o.pct}% integralizado' : ''}',
                     style: TextStyle(color: cs.onSurfaceVariant)),
+              if ((assoc?.qtdContratos ?? 0) > 1) ...[
+                const SizedBox(height: 4),
+                Text('${assoc!.qtdContratos} contratos combinados',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600)),
+              ],
               const SizedBox(height: 12),
               _blocoSugestao(context, q, o),
               if (o.flags.isNotEmpty) ...[
@@ -772,6 +914,67 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
               onPressed: definirCategoria,
               icon: const Icon(Icons.tune, size: 18),
               label: const Text('Definir categoria manualmente'),
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Text('Classificação no evento',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant)),
+              const SizedBox(width: 6),
+              if (assoc?.tipo == null && autoTipo != null)
+                Text('(automático)',
+                    style: TextStyle(fontSize: 11, color: cs.outline)),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+                'Voucher = sócio com +10% pago e em dia. Pagante = não-sócio, '
+                'em atraso, ou com menos de 10% pago.',
+                style: TextStyle(fontSize: 11, color: cs.outline)),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(
+                child: _BotaoTipo(
+                  ativo: tipoEfetivo == 'pagante',
+                  icon: Icons.payments_outlined,
+                  label: 'Pagante',
+                  onTap: () => definirTipo(
+                      assoc?.tipo == 'pagante' ? null : 'pagante'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _BotaoTipo(
+                  ativo: tipoEfetivo == 'voucher',
+                  icon: Icons.confirmation_number_outlined,
+                  label: 'Voucher',
+                  onTap: () => definirTipo(
+                      assoc?.tipo == 'voucher' ? null : 'voucher'),
+                ),
+              ),
+            ]),
+            if (assoc?.tipo != null) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => definirTipo(null),
+                  child: const Text('Voltar ao automático'),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: anotar,
+              icon: Icon(
+                  (assoc?.observacao ?? '').isEmpty
+                      ? Icons.note_add_outlined
+                      : Icons.edit_note,
+                  size: 18),
+              label: Text((assoc?.observacao ?? '').isEmpty
+                  ? 'Adicionar anotação'
+                  : 'Editar anotação'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -931,13 +1134,22 @@ class _CategoriaSection extends StatelessWidget {
                 childAspectRatio: 1.12,
               ),
               itemCount: quartos.length,
-              itemBuilder: (_, i) => _QuartoCard(
-                quarto: quartos[i],
-                ocupacao: ocupacaoEfetiva(quartos[i], associacoes),
-                validacao: validacoes[quartos[i].numero],
-                onTap: () => onTapQuarto(quartos[i]),
-                onMover: onMover,
-              ),
+              itemBuilder: (_, i) {
+                final assocQ = associacoes[quartos[i].numero];
+                return _QuartoCard(
+                  quarto: quartos[i],
+                  ocupacao: ocupacaoEfetiva(quartos[i], associacoes),
+                  validacao: validacoes[quartos[i].numero],
+                  associado: assocQ != null &&
+                      !assocQ.vago &&
+                      assocQ.contratoId != null,
+                  tipo: assocQ?.vago == true ? null : assocQ?.tipo,
+                  temObs: assocQ?.vago != true &&
+                      (assocQ?.observacao ?? '').isNotEmpty,
+                  onTap: () => onTapQuarto(quartos[i]),
+                  onMover: onMover,
+                );
+              },
             ),
           ],
         ),
@@ -950,12 +1162,18 @@ class _QuartoCard extends StatelessWidget {
   final QuartoFestaSocios quarto;
   final OcupacaoQuarto? ocupacao;
   final FestaValidacao? validacao;
+  final bool associado; // sócio já vinculado a um contrato
+  final String? tipo; // 'pagante' | 'convidado' (não-sócio)
+  final bool temObs; // tem anotação na reserva
   final VoidCallback onTap;
   final Future<void> Function(String origem, String destino) onMover;
   const _QuartoCard({
     required this.quarto,
     required this.ocupacao,
     required this.validacao,
+    this.associado = false,
+    this.tipo,
+    this.temObs = false,
     required this.onTap,
     required this.onMover,
   });
@@ -1023,12 +1241,61 @@ class _QuartoCard extends StatelessWidget {
     );
   }
 
+  /// Mapeia o tier da cota → (ícone, cor, rótulo curto) para a medalha do card.
+  /// Bronze/Prata/Ouro = medalha; Diamante/Integral = diamante.
+  static ({IconData icon, Color cor, String label})? _medalhaTier(String? tier) {
+    switch (tier?.toLowerCase()) {
+      case 'bronze':
+        return (
+          icon: Icons.military_tech,
+          cor: const Color(0xFFCD7F32),
+          label: 'Bronze'
+        );
+      case 'prata':
+        return (
+          icon: Icons.military_tech,
+          cor: const Color(0xFF90A4AE),
+          label: 'Prata'
+        );
+      case 'ouro':
+        return (
+          icon: Icons.military_tech,
+          cor: const Color(0xFFFFC107),
+          label: 'Ouro'
+        );
+      case 'diamante':
+        return (
+          icon: Icons.diamond,
+          cor: const Color(0xFF26C6DA),
+          label: 'Diamante'
+        );
+      case 'integral':
+        return (
+          icon: Icons.diamond,
+          cor: const Color(0xFFAB47BC),
+          label: 'Integral'
+        );
+      default:
+        return null;
+    }
+  }
+
   Widget _cartao(BuildContext context) {
     final cor = quarto.categoria.cor;
     final corTexto = quarto.categoria.corTexto;
     final o = ocupacao;
     final troca = o?.deveTrocar ?? false;
-    final semContrato = o?.acao == 'semContrato';
+    final atrasado = o?.atrasado ?? false;
+    final ocupado = o?.ocupante.isNotEmpty ?? false;
+    // Classificação no evento (override manual sobrepõe a automática).
+    final tipoEfetivo = ocupado
+        ? (tipo ??
+            tipoEventoFesta(
+                socio: o?.tier != null, pct: o?.pct ?? 0, atrasado: atrasado))
+        : null;
+    final ehDuplex = quarto.categoria == CategoriaQuarto.duplex ||
+        quarto.categoria == CategoriaQuarto.suiteDuplex;
+    final casais = ehDuplex && ocupado ? contarCasais(o!.ocupante) : 0;
     return Material(
       color: cor,
       borderRadius: BorderRadius.circular(10),
@@ -1055,14 +1322,67 @@ class _QuartoCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        color: corTexto.withValues(alpha: 0.9),
+                        // Sócio já associado a um contrato → cor distinta
+                        // (verde adaptado ao fundo) e negrito.
+                        color: associado
+                            ? (corTexto == Colors.white
+                                ? const Color(0xFFB9F6CA)
+                                : const Color(0xFF0B5D1E))
+                            : corTexto.withValues(alpha: 0.9),
+                        fontWeight:
+                            associado ? FontWeight.bold : FontWeight.normal,
                         fontSize: 10,
                         height: 1.05),
                   ),
-                  if (o?.atrasado ?? false) ...[
+                  if (atrasado) ...[
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: Colors.red.shade700,
+                          borderRadius: BorderRadius.circular(4)),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.schedule, size: 9, color: Colors.white),
+                          SizedBox(width: 3),
+                          Text('EM ATRASO',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.3)),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (tipoEfetivo != null) ...[
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: tipoEfetivo == 'voucher'
+                              ? const Color(0xFF00897B) // teal
+                              : const Color(0xFFE65100), // laranja
+                          borderRadius: BorderRadius.circular(4)),
+                      child: Text(
+                          tipoEfetivo == 'voucher' ? 'VOUCHER' : 'PAGANTE',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.3)),
+                    ),
+                  ],
+                  if (casais > 0) ...[
                     const SizedBox(height: 2),
-                    Icon(Icons.schedule,
-                        size: 11, color: corTexto.withValues(alpha: 0.8)),
+                    Text('$casais ${casais == 1 ? 'casal' : 'casais'}',
+                        style: TextStyle(
+                            color: corTexto.withValues(alpha: 0.9),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600)),
                   ],
                 ],
               ),
@@ -1084,17 +1404,6 @@ class _QuartoCard extends StatelessWidget {
                   ),
                 ),
               ),
-            if (semContrato)
-              const Positioned(
-                top: 3,
-                right: 3,
-                child: CircleAvatar(
-                  radius: 9,
-                  backgroundColor: Colors.white,
-                  child: Icon(Icons.priority_high,
-                      size: 13, color: Colors.redAccent),
-                ),
-              ),
             if (validacao != null)
               Positioned(
                 top: 3,
@@ -1109,9 +1418,67 @@ class _QuartoCard extends StatelessWidget {
                   ),
                 ),
               ),
+            if (temObs)
+              const Positioned(
+                bottom: 3,
+                right: 3,
+                child: CircleAvatar(
+                  radius: 8,
+                  backgroundColor: Color(0xFFFFE082),
+                  child: Icon(Icons.sticky_note_2,
+                      size: 11, color: Color(0xFF8D6E00)),
+                ),
+              ),
+            if (ocupado && _medalhaTier(o?.tier) != null)
+              Positioned(
+                bottom: 3,
+                left: 3,
+                child: Builder(builder: (_) {
+                  final m = _medalhaTier(o?.tier)!;
+                  return Tooltip(
+                    message: 'Cota: ${m.label}',
+                    child: CircleAvatar(
+                      radius: 9,
+                      backgroundColor: Colors.white,
+                      child: Icon(m.icon, size: 13, color: m.cor),
+                    ),
+                  );
+                }),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Botão-toggle de tipo de hóspede (pagante/convidado) na ficha do quarto.
+class _BotaoTipo extends StatelessWidget {
+  final bool ativo;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _BotaoTipo({
+    required this.ativo,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (ativo) {
+      return FilledButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
     );
   }
 }
@@ -1809,6 +2176,9 @@ class _SeletorContratoState extends State<_SeletorContrato> {
   final _buscaCtrl = TextEditingController();
   late final Future<List<Contrato>> _futuro;
   String _q = '';
+  // Múltipla seleção: localizador → contrato. Permite juntar vários contratos
+  // de um mesmo sócio/casal (a regra de soma de tiers é aplicada ao confirmar).
+  final Map<String, Contrato> _sel = {};
 
   @override
   void initState() {
@@ -1902,17 +2272,70 @@ class _SeletorContratoState extends State<_SeletorContrato> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final c = lista[i];
-                      return ListTile(
+                      final sel = _sel.containsKey(c.localizador);
+                      return CheckboxListTile(
+                        value: sel,
+                        controlAffinity: ListTileControlAffinity.leading,
                         title: Text(c.nomeComprador),
                         subtitle: Text(
-                            '${c.produto} · ${c.cota} · ${c.percentualIntegralizado.toStringAsFixed(0)}%'
+                            '${c.produto} · ${c.cota} · '
+                            '${c.estaQuitado ? 'QUITADO (100%)' : '${c.percentualIntegralizado.toStringAsFixed(0)}%'}'
                             '${c.valorAtrasado > 0 ? ' · em atraso' : ''}'),
-                        onTap: () => Navigator.pop(context, c),
+                        onChanged: (v) => setState(() {
+                          if (v == true) {
+                            _sel[c.localizador] = c;
+                          } else {
+                            _sel.remove(c.localizador);
+                          }
+                        }),
                       );
                     },
                   );
                 },
               ),
+            ),
+            _barraConfirmar(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _barraConfirmar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final n = _sel.length;
+    final agg = combinarContratosFesta(_sel.values
+        .map((c) => (
+              tier: tierDeProduto(c.produto, c.cota),
+              pct: c.percentualEfetivo
+            ))
+        .toList());
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (n > 1)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                    'Combinado: ${agg.tier.toUpperCase()} · ${agg.pct.toStringAsFixed(0)}%',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: cs.primary)),
+              ),
+            FilledButton.icon(
+              onPressed: n == 0
+                  ? null
+                  : () => Navigator.pop(context, _sel.values.toList()),
+              icon: const Icon(Icons.link, size: 18),
+              label: Text(n <= 1
+                  ? 'Associar sócio'
+                  : 'Associar $n contratos (combinar)'),
+              style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48)),
             ),
           ],
         ),
