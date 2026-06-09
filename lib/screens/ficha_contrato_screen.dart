@@ -34,6 +34,9 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   late bool _upgradeOferecido = widget.contrato.upgradeOferecido;
   late bool _upgradeRealizado = widget.contrato.upgradeRealizado;
   late String? _linkPdf = widget.contrato.linkContratoDrive;
+  // Status de formalização: mantido em estado local para a seleção visual
+  // refletir na mesma tela (a tela não faz stream do contrato).
+  late StatusAssinatura _statusAssinatura = widget.contrato.statusAssinatura;
 
   StreamSubscription<List<Interacao>>? _interSub;
 
@@ -89,6 +92,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
           _DadosTab(
             contrato: c,
             isAdmin: _isAdmin,
+            statusAssinatura: _statusAssinatura,
             onAssinaturaAlterada: _alterarAssinatura,
             upgradeOferecido: _upgradeOferecido,
             upgradeRealizado: _upgradeRealizado,
@@ -168,14 +172,25 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   // ── Assinatura ─────────────────────────────────────────────────────────────
 
   void _alterarAssinatura(StatusAssinatura novo) async {
-    await _fs.atualizarStatusAssinatura(
-      widget.contrato.localizador,
-      novo,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Assinatura atualizada: ${novo.label}')),
-      );
+    final anterior = _statusAssinatura;
+    if (novo == anterior) return;
+    // Atualização otimista: a seleção visual muda na hora.
+    setState(() => _statusAssinatura = novo);
+    try {
+      await _fs.atualizarStatusAssinatura(widget.contrato.localizador, novo);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Formalização atualizada: ${novo.label}')),
+        );
+      }
+    } catch (e) {
+      // Falhou ao gravar: reverte a seleção e avisa.
+      if (mounted) {
+        setState(() => _statusAssinatura = anterior);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível salvar a formalização.')),
+        );
+      }
     }
   }
 
@@ -274,6 +289,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
 class _DadosTab extends StatelessWidget {
   final Contrato contrato;
   final bool isAdmin;
+  final StatusAssinatura statusAssinatura;
   final ValueChanged<StatusAssinatura> onAssinaturaAlterada;
   final bool upgradeOferecido;
   final bool upgradeRealizado;
@@ -286,6 +302,7 @@ class _DadosTab extends StatelessWidget {
   const _DadosTab({
     required this.contrato,
     required this.isAdmin,
+    required this.statusAssinatura,
     required this.onAssinaturaAlterada,
     required this.upgradeOferecido,
     required this.upgradeRealizado,
@@ -364,12 +381,31 @@ class _DadosTab extends StatelessWidget {
                       children: [
                         for (final s in StatusAssinatura.values
                             .where((s) => s.grupo == g))
-                          ChoiceChip(
-                            label: Text(s.label,
-                                style: const TextStyle(fontSize: 12)),
-                            selected: c.statusAssinatura == s,
-                            onSelected: (_) => onAssinaturaAlterada(s),
-                          ),
+                          Builder(builder: (_) {
+                            final cor = _corGrupo(g);
+                            final selecionado = statusAssinatura == s;
+                            // Cores explícitas garantem contraste no dark mode
+                            // (chips default ficavam pretos/ilegíveis).
+                            return ChoiceChip(
+                              label: Text(
+                                s.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: selecionado ? Colors.white : cor,
+                                  fontWeight: selecionado
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                              selected: selecionado,
+                              showCheckmark: false,
+                              backgroundColor: cor.withValues(alpha: 0.14),
+                              selectedColor: cor,
+                              side: BorderSide(
+                                  color: cor.withValues(alpha: 0.5)),
+                              onSelected: (_) => onAssinaturaAlterada(s),
+                            );
+                          }),
                       ],
                     ),
                   ],
@@ -377,7 +413,7 @@ class _DadosTab extends StatelessWidget {
               ),
             )
           else
-            _campo('Status de formalização', c.statusAssinatura.label),
+            _campo('Status de formalização', statusAssinatura.label),
         ]),
         const SizedBox(height: 8),
 
