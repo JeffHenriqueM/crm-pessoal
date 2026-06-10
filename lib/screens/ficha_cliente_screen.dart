@@ -11,6 +11,7 @@ import '../models/negociacao_model.dart';
 import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../utils/datas_uteis.dart';
 import '../utils/url_launcher_service.dart';
 import '../utils/whatsapp_modelos.dart';
 import '../widgets/aba_negociacoes.dart';
@@ -831,6 +832,10 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     var canalSelecionado = interacao?.canal ?? Canal.whatsapp;
     var modalidadeSelecionada = interacao?.modalidade ?? Modalidade.online;
     var houveResposta = interacao?.houveResposta ?? false;
+    // Próximo contato sugerido ao registrar (tira o lead do "em atraso").
+    // Só ao registrar uma interação nova — não ao editar uma existente.
+    DateTime? proxContato =
+        isEditing ? null : adicionarDiasUteis(DateTime.now(), 3);
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -1011,6 +1016,65 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       textCapitalization: TextCapitalization.sentences,
                       maxLines: 2,
                     ),
+
+                    // ── Próximo contato (só ao registrar) ─────────────────
+                    if (!isEditing) ...[
+                      const SizedBox(height: 16),
+                      Text('Próximo contato',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(ctx).colorScheme.primary)),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.event_outlined, size: 18),
+                              label: Text(
+                                proxContato == null
+                                    ? 'Sem agendamento'
+                                    : DateFormat('dd/MM/yyyy')
+                                        .format(proxContato!),
+                              ),
+                              onPressed: () async {
+                                final d = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: proxContato ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2101),
+                                );
+                                if (d != null) {
+                                  setStateDialog(() => proxContato = d);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () => setStateDialog(() => proxContato =
+                                adicionarDiasUteis(DateTime.now(), 3)),
+                            child: const Text('+3 dias úteis'),
+                          ),
+                          if (proxContato != null)
+                            IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              tooltip: 'Sem agendamento',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () =>
+                                  setStateDialog(() => proxContato = null),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Agendar tira o lead do "em atraso".',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                Theme.of(ctx).colorScheme.onSurfaceVariant),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1045,6 +1109,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       if (idx >= 0) _interacoes[idx] = nova;
                     } else {
                       _interacoes.insert(0, nova);
+                      if (proxContato != null) _proximoContato = proxContato;
                     }
                   });
                   if (ctx.mounted) Navigator.of(ctx).pop();
@@ -1052,7 +1117,11 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                   if (isEditing) {
                     await _service.atualizarInteracao(_clienteId!, nova);
                   } else {
-                    await _service.adicionarInteracao(_clienteId!, nova);
+                    await _service.adicionarInteracao(_clienteId!, nova,
+                        proximoContato: proxContato);
+                    if (proxContato != null && mounted) {
+                      setState(() => _proximoContato = proxContato);
+                    }
                   }
                   if (ctx.mounted) {
                     Navigator.of(ctx).pop();

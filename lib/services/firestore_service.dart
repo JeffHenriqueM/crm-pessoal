@@ -482,7 +482,17 @@ class FirestoreService {
         .map((s) => s.docs.map((d) => Interacao.fromFirestore(d)).toList());
   }
 
-  Future<void> adicionarInteracao(String clienteId, Interacao interacao) async {
+  /// Registra uma interação no lead.
+  ///
+  /// Se [proximoContato] for informado, agenda o próximo contato na MESMA
+  /// escrita — é isto que tira o lead do estado "em atraso" (o badge depende
+  /// de `proximoContato` estar no passado). Sem ele, mantém o comportamento
+  /// anterior (só atualiza contadores e `ultimoContato`).
+  Future<void> adicionarInteracao(
+    String clienteId,
+    Interacao interacao, {
+    DateTime? proximoContato,
+  }) async {
     final dados = interacao.toFirestore();
     dados['autorId']       = _currentUserId;
     dados['autorNome']     = _currentUserName;
@@ -496,6 +506,9 @@ class FirestoreService {
         'interaction_count': FieldValue.increment(1),
         // Marca a data do último contato real (base do "Risco de Silêncio").
         'ultimoContato': FieldValue.serverTimestamp(),
+        // Agenda o próximo contato junto com a interação (tira do "em atraso").
+        if (proximoContato != null)
+          'proximoContato': Timestamp.fromDate(proximoContato),
         if (!interacao.houveResposta)
           'no_response_count': FieldValue.increment(1),
         if (interacao.houveResposta)
