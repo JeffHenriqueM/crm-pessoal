@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../models/agendamento_model.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
@@ -61,15 +62,17 @@ class RecepcaoShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: const Text('Recepção'),
           toolbarHeight: 50,
           bottom: TabBar(
+            isScrollable: true,
             tabs: const [
               Tab(icon: Icon(Icons.add_circle_outline), text: 'Registrar'),
+              Tab(icon: Icon(Icons.event_outlined), text: 'Agendamentos'),
               Tab(icon: Icon(Icons.people_outline), text: 'Meus Leads'),
               Tab(icon: Icon(Icons.contacts_outlined), text: 'Contatos'),
             ],
@@ -81,6 +84,7 @@ class RecepcaoShell extends StatelessWidget {
         body: const TabBarView(
           children: [
             RecepcaoScreen(),
+            _RecepcaoAgendamentosTab(),
             _RecepcaoLeadsTab(),
             ContatosEmbaixadorTab(),
           ],
@@ -92,7 +96,12 @@ class RecepcaoShell extends StatelessWidget {
 
 // ── Formulário de registro ───────────────────────────────────────────────────
 class RecepcaoScreen extends StatefulWidget {
-  const RecepcaoScreen({super.key});
+  /// Quando informado, a tela abre no modo ATENDIMENTO com os campos
+  /// pré-preenchidos por este agendamento; ao salvar, o agendamento é
+  /// marcado como `compareceu` e vinculado ao cliente criado.
+  final Agendamento? agendamentoOrigem;
+
+  const RecepcaoScreen({super.key, this.agendamentoOrigem});
 
   @override
   State<RecepcaoScreen> createState() => _RecepcaoScreenState();
@@ -128,16 +137,48 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
   bool          _carregandoUsuarios = true;
   bool          _salvando           = false;
 
+  // ── Agendamento (atendimento futuro) ──────────────────────────────────────
+  bool      _modoAgendamento     = false;
+  DateTime? _dataHoraAgendamento;
+  // Quando esta tela é aberta para CONVERTER um agendamento em atendimento.
+  String?   _agendamentoOrigemId;
+
   FichaAtendimentoData? _ultimaFicha;
 
   static const _salas   = ['Villa', 'Online'];
   static const _origens = ['Presencial', 'WhatsApp', 'Instagram'];
   static const _brindes = ['Dream Vacation', 'Day Use', 'Drinks', 'Calcinha'];
+  static final _dataHoraFmt = DateFormat('dd/MM/yyyy HH:mm');
 
   @override
   void initState() {
     super.initState();
+    final ag = widget.agendamentoOrigem;
+    if (ag != null) {
+      _agendamentoOrigemId = ag.id;
+      _modoAgendamento = false; // convertendo → vira atendimento real
+      _nomeCtrl.text = ag.nome;
+      _idadeCtrl.text = ag.idade ?? '';
+      _profissaoCtrl.text = ag.profissao ?? '';
+      _telefoneCtrl.text = ag.telefone ?? '';
+      _conjugeCtrl.text = ag.nomeConjuge ?? '';
+      _idadeConjugeCtrl.text = ag.idadeConjuge ?? '';
+      _profissaoConjugeCtrl.text = ag.profissaoConjuge ?? '';
+      _telefoneConjugeCtrl.text = ag.telefoneConjuge ?? '';
+      _observacaoCtrl.text = ag.observacao ?? '';
+      if (_salas.contains(ag.sala)) _sala = ag.sala!;
+      if (_origens.contains(ag.origem)) _pontoCap = ag.origem!;
+      if (_brindes.contains(ag.brinde)) _brinde = ag.brinde;
+    }
     _carregarUsuarios();
+  }
+
+  Usuario? _acharUsuario(String? id) {
+    if (id == null) return null;
+    for (final u in _usuarios) {
+      if (u.id == id) return u;
+    }
+    return null;
   }
 
   @override
@@ -159,11 +200,18 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
         setState(() {
           _usuarios = lista
               .where((u) => u.ativo &&
-                  ['captador', 'vendedor', 'admin', 'super admin']
+                  // recepcao também pode atuar como captador/vendedor.
+                  ['captador', 'vendedor', 'recepcao', 'admin', 'super admin']
                       .contains(u.perfil))
               .toList()
             ..sort((a, b) => a.nome.compareTo(b.nome));
           _carregandoUsuarios = false;
+          // Pré-seleciona captador/vendedor ao converter um agendamento.
+          final ag = widget.agendamentoOrigem;
+          if (ag != null) {
+            _captador ??= _acharUsuario(ag.captadorId);
+            _liner ??= _acharUsuario(ag.linerId ?? ag.vendedorId);
+          }
         });
       }
     } catch (_) {
@@ -171,8 +219,91 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
     }
   }
 
+  String? _txt(TextEditingController c) =>
+      c.text.trim().isEmpty ? null : c.text.trim();
+
+  Future<void> _selecionarDataHora() async {
+    final hoje = DateTime.now();
+    final data = await showDatePicker(
+      context: context,
+      initialDate: _dataHoraAgendamento ?? hoje,
+      firstDate: DateTime(hoje.year, hoje.month, hoje.day),
+      lastDate: DateTime(2101),
+    );
+    if (data == null || !mounted) return;
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: _dataHoraAgendamento != null
+          ? TimeOfDay.fromDateTime(_dataHoraAgendamento!)
+          : const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (!mounted) return;
+    final h = hora ?? const TimeOfDay(hour: 9, minute: 0);
+    setState(() => _dataHoraAgendamento =
+        DateTime(data.year, data.month, data.day, h.hour, h.minute));
+  }
+
+  Future<void> _salvarAgendamento() async {
+    setState(() => _salvando = true);
+    try {
+      final ag = Agendamento(
+        nome: _nomeCtrl.text.trim(),
+        idade: _txt(_idadeCtrl),
+        profissao: _txt(_profissaoCtrl),
+        telefone: _txt(_telefoneCtrl),
+        nomeConjuge: _txt(_conjugeCtrl),
+        idadeConjuge: _txt(_idadeConjugeCtrl),
+        profissaoConjuge: _txt(_profissaoConjugeCtrl),
+        telefoneConjuge: _txt(_telefoneConjugeCtrl),
+        observacao: _txt(_observacaoCtrl),
+        sala: _sala,
+        origem: _pontoCap,
+        brinde: _brinde,
+        captadorId: _captador?.id,
+        captadorNome: _captador?.nome,
+        linerId: _liner?.id,
+        linerNome: _liner?.nome,
+        vendedorId: _liner?.id,
+        vendedorNome: _liner?.nome,
+        dataHoraAgendamento: _dataHoraAgendamento!,
+      );
+      await _service.adicionarAgendamento(ag);
+      if (mounted) {
+        setState(() {
+          _salvando = false;
+          _limparForm();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Agendamento para ${_dataHoraFmt.format(ag.dataHoraAgendamento)} registrado!'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _salvando = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erro ao salvar: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ));
+      }
+    }
+  }
+
   Future<void> _salvar({bool imprimir = true}) async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_modoAgendamento) {
+      if (_dataHoraAgendamento == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Escolha a data e a hora do agendamento.'),
+        ));
+        return;
+      }
+      return _salvarAgendamento();
+    }
+
     setState(() => _salvando = true);
 
     try {
@@ -220,7 +351,13 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
         dataAtualizacao: agora,
       );
 
-      await _service.adicionarCliente(cliente);
+      final clienteId = await _service.adicionarCliente(cliente);
+
+      // Conversão: se veio de um agendamento, marca como compareceu.
+      if (_agendamentoOrigemId != null) {
+        await _service.marcarCompareceu(_agendamentoOrigemId!, clienteId);
+        _agendamentoOrigemId = null;
+      }
 
       final fichaData = FichaAtendimentoData(
         nome: cliente.nome,
@@ -287,6 +424,7 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
     _brinde = null;
     _sala = 'Villa';
     _pontoCap = 'Presencial';
+    _dataHoraAgendamento = null;
   }
 
   @override
@@ -305,6 +443,71 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Tipo: Atendimento × Agendamento ───────────────────────
+                if (widget.agendamentoOrigem == null) ...[
+                  Center(
+                    child: SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(
+                            value: false,
+                            label: Text('Atendimento'),
+                            icon: Icon(Icons.meeting_room_outlined)),
+                        ButtonSegment(
+                            value: true,
+                            label: Text('Agendamento'),
+                            icon: Icon(Icons.event_outlined)),
+                      ],
+                      selected: {_modoAgendamento},
+                      onSelectionChanged: (s) =>
+                          setState(() => _modoAgendamento = s.first),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ] else ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.event_available_outlined,
+                          color: cs.onTertiaryContainer, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Convertendo agendamento de '
+                          '${widget.agendamentoOrigem!.nome} — confira os dados '
+                          'e registre o atendimento.',
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onTertiaryContainer),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Data e hora do agendamento ────────────────────────────
+                if (_modoAgendamento) ...[
+                  _card(cs,
+                      icon: Icons.schedule_outlined,
+                      title: 'Data e hora do atendimento',
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _selecionarDataHora,
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          label: Text(
+                            _dataHoraAgendamento == null
+                                ? 'Escolher data e hora'
+                                : _dataHoraFmt.format(_dataHoraAgendamento!),
+                          ),
+                        ),
+                      ]),
+                  const SizedBox(height: 16),
+                ],
+
                 // ── Entrada ───────────────────────────────────────────────
                 _card(cs,
                     icon: Icons.meeting_room_outlined,
@@ -511,9 +714,14 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                         DropdownButtonFormField<Usuario>(
                           value: _liner,
                           isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Vendedor *',
-                            prefixIcon: Icon(Icons.record_voice_over_outlined),
+                          decoration: InputDecoration(
+                            // Vendedor (closer) é opcional ao agendar — só vira
+                            // obrigatório no atendimento presencial.
+                            labelText: _modoAgendamento
+                                ? 'Vendedor (opcional)'
+                                : 'Vendedor *',
+                            prefixIcon:
+                                const Icon(Icons.record_voice_over_outlined),
                           ),
                           hint: const Text('Selecione'),
                           items: _usuarios
@@ -521,8 +729,9 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                                   value: u, child: Text(u.nome)))
                               .toList(),
                           onChanged: (v) => setState(() => _liner = v),
-                          validator: (v) =>
-                              v == null ? 'Selecione o vendedor' : null,
+                          validator: (v) => (_modoAgendamento || v != null)
+                              ? null
+                              : 'Selecione o vendedor',
                         ),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<String>(
@@ -564,39 +773,64 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
                 const SizedBox(height: 28),
 
                 // ── Botões salvar ─────────────────────────────────────────
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: _salvando ? null : () => _salvar(imprimir: true),
-                    icon: _salvando
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: cs.onPrimary))
-                        : const Icon(Icons.print_outlined),
-                    label: Text(
-                      _salvando ? 'Registrando...' : 'Registrar e Imprimir Ficha',
-                      style: const TextStyle(fontSize: 15),
+                if (_modoAgendamento)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: _salvando ? null : () => _salvar(),
+                      icon: _salvando
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: cs.onPrimary))
+                          : const Icon(Icons.event_available_outlined),
+                      label: Text(
+                        _salvando ? 'Salvando...' : 'Salvar Agendamento',
+                        style: const TextStyle(fontSize: 15),
+                      ),
+                    ),
+                  )
+                else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed:
+                          _salvando ? null : () => _salvar(imprimir: true),
+                      icon: _salvando
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: cs.onPrimary))
+                          : const Icon(Icons.print_outlined),
+                      label: Text(
+                        _salvando
+                            ? 'Registrando...'
+                            : 'Registrar e Imprimir Ficha',
+                        style: const TextStyle(fontSize: 15),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: _salvando ? null : () => _salvar(imprimir: false),
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text(
-                      'Salvar sem Imprimir',
-                      style: TextStyle(fontSize: 15),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          _salvando ? null : () => _salvar(imprimir: false),
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text(
+                        'Salvar sem Imprimir',
+                        style: TextStyle(fontSize: 15),
+                      ),
                     ),
                   ),
-                ),
+                ],
 
-                if (_ultimaFicha != null) ...[
+                if (!_modoAgendamento && _ultimaFicha != null) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -846,5 +1080,149 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
         ),
       ),
     ]);
+  }
+}
+
+// ── Aba "Agendamentos" (atendimentos futuros, ainda não são leads) ───────────
+class _RecepcaoAgendamentosTab extends StatefulWidget {
+  const _RecepcaoAgendamentosTab();
+
+  @override
+  State<_RecepcaoAgendamentosTab> createState() =>
+      _RecepcaoAgendamentosTabState();
+}
+
+class _RecepcaoAgendamentosTabState extends State<_RecepcaoAgendamentosTab> {
+  final _service = FirestoreService();
+  static final _fmt = DateFormat("dd/MM/yyyy 'às' HH:mm");
+
+  Future<void> _registrarAtendimento(Agendamento a) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => RegistrarAtendimentoScreen(agendamento: a)),
+    );
+  }
+
+  Future<void> _mudarStatus(Agendamento a, String status, String label) async {
+    try {
+      await _service.atualizarStatusAgendamento(a.id, status);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Agendamento marcado como $label.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Erro: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Agendamento>>(
+      stream: _service.getAgendamentosStream(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final ags = (snap.data ?? []).where((a) => a.isAgendado).toList();
+        if (ags.isEmpty) {
+          return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.event_busy_outlined,
+                size: 52, color: cs.outline.withValues(alpha: 0.4)),
+            const SizedBox(height: 14),
+            Text('Nenhum agendamento futuro.',
+                style: TextStyle(color: cs.outline, fontSize: 14)),
+          ]));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
+          itemCount: ags.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final a = ags[i];
+            return Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: cs.outlineVariant),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Icon(Icons.event_outlined, size: 18, color: cs.primary),
+                        const SizedBox(width: 8),
+                        Text(_fmt.format(a.dataHora),
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, color: cs.primary)),
+                      ]),
+                      const SizedBox(height: 8),
+                      Text(a.nome,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 15)),
+                      if (a.nomeConjuge?.isNotEmpty == true)
+                        Text('+ ${a.nomeConjuge}',
+                            style: TextStyle(
+                                fontSize: 12, color: cs.onSurfaceVariant)),
+                      if (a.telefone?.isNotEmpty == true) ...[
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          Icon(Icons.phone_outlined,
+                              size: 13, color: cs.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Text(a.telefone!,
+                              style: TextStyle(
+                                  fontSize: 12, color: cs.onSurfaceVariant)),
+                        ]),
+                      ],
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 8, runSpacing: 4, children: [
+                        FilledButton.icon(
+                          onPressed: () => _registrarAtendimento(a),
+                          icon:
+                              const Icon(Icons.meeting_room_outlined, size: 18),
+                          label: const Text('Registrar atendimento'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => _mudarStatus(a, 'faltou', 'faltou'),
+                          child: const Text('Faltou'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () =>
+                              _mudarStatus(a, 'cancelado', 'cancelado'),
+                          child: const Text('Cancelar'),
+                        ),
+                      ]),
+                    ]),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Hospeda o formulário da recepção pré-preenchido por um [agendamento], para
+/// registrar o atendimento quando o cliente comparece. Usado a partir da aba
+/// "Agendamentos" e do item de agendamento na Agenda.
+class RegistrarAtendimentoScreen extends StatelessWidget {
+  final Agendamento agendamento;
+  const RegistrarAtendimentoScreen({super.key, required this.agendamento});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Registrar Atendimento')),
+      body: RecepcaoScreen(agendamentoOrigem: agendamento),
+    );
   }
 }

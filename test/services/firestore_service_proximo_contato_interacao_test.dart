@@ -76,4 +76,54 @@ void main() {
       expect(doc.data()?['interaction_count'], 1);
     });
   });
+
+  group('FirestoreService.adicionarInteracao — statusMensagem', () {
+    late FakeFirebaseFirestore db;
+    late FirestoreService service;
+
+    setUp(() async {
+      db = FakeFirebaseFirestore();
+      service = FirestoreService(
+        db: db,
+        auth: MockFirebaseAuth(
+          signedIn: true,
+          mockUser: MockUser(uid: 'vendedor_a', displayName: 'Vendedor A'),
+        ),
+      );
+      await db.collection('usuarios').doc('vendedor_a').set({
+        'nome': 'Vendedor A',
+        'perfil': 'vendedor',
+      });
+      // Lead com mensagem pendente (badge vermelho "Msg. não enviada").
+      await db.collection('clientes').doc('lead1').set({
+        'nome': 'Lead Teste',
+        'fase': 'negociacao',
+        'statusMensagem': 'nao_enviada',
+      });
+    });
+
+    Interacao interacaoComResposta(bool houve) => Interacao(
+          titulo: 'Contato',
+          nota: 'Mensagem de acompanhamento',
+          canal: Canal.whatsapp,
+          houveResposta: houve,
+          dataInteracao: DateTime.now(),
+        );
+
+    test('interação sem resposta marca mensagem como enviada (aguardando)',
+        () async {
+      await service.adicionarInteracao('lead1', interacaoComResposta(false));
+
+      final doc = await db.collection('clientes').doc('lead1').get();
+      // Saiu de "nao_enviada": conta como enviada, aguardando resposta.
+      expect(doc.data()?['statusMensagem'], 'enviada_sem_resposta');
+    });
+
+    test('interação com resposta marca mensagem como respondida', () async {
+      await service.adicionarInteracao('lead1', interacaoComResposta(true));
+
+      final doc = await db.collection('clientes').doc('lead1').get();
+      expect(doc.data()?['statusMensagem'], 'enviada_com_resposta');
+    });
+  });
 }

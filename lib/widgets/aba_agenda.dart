@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../models/agendamento_model.dart';
 import '../models/cliente_model.dart';
+import '../screens/ficha_cliente_screen.dart';
+import '../screens/recepcao_screen.dart';
+import '../utils/url_launcher_service.dart';
+import '../utils/whatsapp_modelos.dart';
 
 // Paleta de cores determinística por vendedorId
 const _paleta = [
@@ -80,6 +87,10 @@ bool _isEventoResort(DateTime day) {
 class AbaAgenda extends StatefulWidget {
   final Map<DateTime, List<Cliente>> events;
 
+  /// Agendamentos futuros (atendimentos ainda não-leads) por dia. Renderizados
+  /// no calendário e na lista do dia, separados dos leads.
+  final Map<DateTime, List<Agendamento>> agendamentos;
+
   /// Quando true, mostra o nome do vendedor/embaixador e cor determinística
   /// em cada item da lista de eventos (usado na visão admin).
   final bool showVendedorInfo;
@@ -87,6 +98,7 @@ class AbaAgenda extends StatefulWidget {
   const AbaAgenda({
     super.key,
     required this.events,
+    this.agendamentos = const {},
     this.showVendedorInfo = false,
   });
 
@@ -125,6 +137,11 @@ class _AbaAgendaState extends State<AbaAgenda> {
     return widget.events[DateTime.utc(day.year, day.month, day.day)] ?? [];
   }
 
+  List<Agendamento> _getAgendamentosForDay(DateTime day) {
+    return widget.agendamentos[DateTime.utc(day.year, day.month, day.day)] ??
+        const [];
+  }
+
   void _onDaySelected(DateTime selected, DateTime focused) {
     if (!isSameDay(_selectedDay, selected)) {
       setState(() {
@@ -137,6 +154,55 @@ class _AbaAgendaState extends State<AbaAgenda> {
 
   // Cor do label "Evento" — teal suave, lê bem no dark e no light
   static const _eventoLabelColor = Color(0xFF4DB6AC);
+  static const _corWhatsapp = Color(0xFF25D366);
+  static const _corAgendamento = Color(0xFF6A1B9A); // roxo
+  static final _horaFmt = DateFormat('HH:mm');
+
+  // Abre o formulário de recepção pré-preenchido para registrar o atendimento
+  // a partir de um agendamento (cliente compareceu).
+  void _abrirRegistroAtendimento(Agendamento a) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+          builder: (_) => RegistrarAtendimentoScreen(agendamento: a)),
+    );
+  }
+
+  // Abre a ficha do lead ao tocar no item da agenda (mesmo destino da faixa
+  // "Hoje" na home do vendedor).
+  void _abrirCliente(Cliente cliente) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => FichaClienteScreen(cliente: cliente)),
+    );
+  }
+
+  // Envia WhatsApp direto pela agenda, reusando o modal de modelos de mensagem
+  // e o UrlLauncherService (mesmo fluxo da ficha do cliente).
+  Future<void> _enviarWhatsApp(Cliente cliente) async {
+    final tel = cliente.telefoneContato;
+    if (tel == null || tel.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lead sem telefone cadastrado.')),
+      );
+      return;
+    }
+    final escolha = await escolherMensagemWhatsApp(
+      context,
+      nome: cliente.nome,
+      esposa: cliente.nomeEsposa,
+    );
+    if (escolha == null || !mounted) return;
+    try {
+      await UrlLauncherService().abrirWhatsApp(
+        tel,
+        mensagem: escolha.texto.isEmpty ? null : escolha.texto,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,32 +255,25 @@ class _AbaAgendaState extends State<AbaAgenda> {
               );
             },
 
-            // ── Marcadores coloridos por embaixador (modo admin) ────────────
-            markerBuilder: widget.showVendedorInfo
-                ? (context, day, events) {
-                    if (events.isEmpty) return null;
-                    final vendedoresUnicos = events
-                        .map((c) => c.vendedorId)
-                        .toSet()
-                        .take(3)
-                        .toList();
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: vendedoresUnicos.map((vid) {
-                        final cor = _corPorVendedor(vid);
-                        return Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.symmetric(horizontal: 1),
-                          decoration: BoxDecoration(
-                            color: cor,
-                            shape: BoxShape.circle,
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  }
-                : null,
+            // ── Marcadores: leads (primary/por vendedor) + agendamentos (roxo)
+            markerBuilder: (context, day, events) {
+              final temAgendamento = _getAgendamentosForDay(day).isNotEmpty;
+              final dots = <Widget>[];
+              if (widget.showVendedorInfo) {
+                for (final vid
+                    in events.map((c) => c.vendedorId).toSet().take(3)) {
+                  dots.add(_dot(_corPorVendedor(vid)));
+                }
+              } else if (events.isNotEmpty) {
+                dots.add(_dot(cs.primary));
+              }
+              if (temAgendamento) dots.add(_dot(_corAgendamento));
+              if (dots.isEmpty) return null;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: dots,
+              );
+            },
           ),
           calendarStyle: CalendarStyle(
             // Fins de semana — cor primary, em negrito
@@ -300,7 +359,11 @@ class _AbaAgendaState extends State<AbaAgenda> {
           child: ValueListenableBuilder<List<Cliente>>(
             valueListenable: _selectedEvents,
             builder: (context, events, _) {
-              if (events.isEmpty) {
+              final ags = _selectedDay == null
+                  ? const <Agendamento>[]
+                  : _getAgendamentosForDay(_selectedDay!);
+
+              if (events.isEmpty && ags.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -318,54 +381,104 @@ class _AbaAgendaState extends State<AbaAgenda> {
                 );
               }
 
-              return ListView.builder(
+              return ListView(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                itemCount: events.length,
-                itemBuilder: (context, index) {
-                  final cliente = events[index];
-                  final isVisita = cliente.dataVisita != null &&
-                      isSameDay(cliente.dataVisita!, _selectedDay!);
-
-                  final corEvento = widget.showVendedorInfo
-                      ? _corPorVendedor(cliente.vendedorId)
-                      : (isVisita ? Colors.orange.shade700 : cs.primary);
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor:
-                            corEvento.withValues(alpha: 0.12),
-                        child: Icon(
-                          isVisita
-                              ? Icons.location_on_outlined
-                              : Icons.phone_outlined,
-                          color: corEvento,
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        cliente.nome,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        isVisita ? 'Visita agendada' : 'Próximo contato',
-                        style: TextStyle(color: corEvento, fontSize: 12),
-                      ),
-                      trailing: widget.showVendedorInfo &&
-                              cliente.vendedorNome != null
-                          ? _buildVendedorChip(
-                              cliente.vendedorNome!, corEvento)
-                          : null,
-                    ),
-                  );
-                },
+                children: [
+                  ...events.map(_clienteCard),
+                  ...ags.map(_agendamentoCard),
+                ],
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _dot(Color cor) => Container(
+        width: 6,
+        height: 6,
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
+      );
+
+  Widget _clienteCard(Cliente cliente) {
+    final cs = Theme.of(context).colorScheme;
+    final isVisita = cliente.dataVisita != null &&
+        isSameDay(cliente.dataVisita!, _selectedDay!);
+
+    final corEvento = widget.showVendedorInfo
+        ? _corPorVendedor(cliente.vendedorId)
+        : (isVisita ? Colors.orange.shade700 : cs.primary);
+
+    final temTelefone = (cliente.telefoneContato ?? '').trim().isNotEmpty;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        onTap: () => _abrirCliente(cliente),
+        leading: CircleAvatar(
+          backgroundColor: corEvento.withValues(alpha: 0.12),
+          child: Icon(
+            isVisita ? Icons.location_on_outlined : Icons.phone_outlined,
+            color: corEvento,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          cliente.nome,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          isVisita ? 'Visita agendada' : 'Próximo contato',
+          style: TextStyle(color: corEvento, fontSize: 12),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.showVendedorInfo && cliente.vendedorNome != null) ...[
+              _buildVendedorChip(cliente.vendedorNome!, corEvento),
+              const SizedBox(width: 4),
+            ],
+            if (temTelefone)
+              IconButton(
+                icon: const Icon(FontAwesomeIcons.whatsapp),
+                color: _corWhatsapp,
+                tooltip: 'Enviar WhatsApp',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _enviarWhatsApp(cliente),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _agendamentoCard(Agendamento a) {
+    const cor = _corAgendamento;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        onTap: () => _abrirRegistroAtendimento(a),
+        leading: CircleAvatar(
+          backgroundColor: cor.withValues(alpha: 0.12),
+          child: const Icon(Icons.event_outlined, color: cor, size: 20),
+        ),
+        title: Text(
+          a.nome,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          'Agendamento — ${_horaFmt.format(a.dataHora)}',
+          style: const TextStyle(color: cor, fontSize: 12),
+        ),
+        trailing: TextButton.icon(
+          onPressed: () => _abrirRegistroAtendimento(a),
+          icon: const Icon(Icons.meeting_room_outlined, size: 16),
+          label: const Text('Registrar'),
+        ),
+      ),
     );
   }
 

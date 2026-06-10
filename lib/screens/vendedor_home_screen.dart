@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/agendamento_model.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../screens/ficha_cliente_screen.dart';
@@ -41,6 +42,17 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
       }
     }
     return events;
+  }
+
+  Map<DateTime, List<Agendamento>> _processarEventosAgendamentos(
+      List<Agendamento> ags) {
+    final m = <DateTime, List<Agendamento>>{};
+    for (final a in ags) {
+      if (!a.isAgendado) continue;
+      final d = DateTime.utc(a.dataHora.year, a.dataHora.month, a.dataHora.day);
+      m.putIfAbsent(d, () => []).add(a);
+    }
+    return m;
   }
 
   @override
@@ -95,9 +107,17 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
           children: [
             _buildHojeStrip(context, cs, contatosHoje, visitasHoje, atrasados),
             Expanded(
-              child: AbaAgenda(
-                events: eventos,
-                showVendedorInfo: widget.showAllVendedores,
+              child: StreamBuilder<List<Agendamento>>(
+                stream: _firestoreService.getAgendamentosStream(),
+                builder: (context, agSnap) {
+                  final agendamentos =
+                      _processarEventosAgendamentos(agSnap.data ?? []);
+                  return AbaAgenda(
+                    events: eventos,
+                    agendamentos: agendamentos,
+                    showVendedorInfo: widget.showAllVendedores,
+                  );
+                },
               ),
             ),
           ],

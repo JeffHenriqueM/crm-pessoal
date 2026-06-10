@@ -47,6 +47,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Agendamentos (atendimento futuro, ainda não é lead) ──────────────────
+    // Gestores (inclui recepção) veem todos; vendedor/captador apenas os seus.
+    // Sem delete (padrão soft-delete/auditoria).
+    match /agendamentos/{docId} {
+      allow read:   if isAuth() && (isGestor() || isDono(resource.data));
+      allow create: if isAuth() && (isGestor() || isDono(request.resource.data));
+      allow update: if isAuth() && (isGestor() || isDono(resource.data));
+      allow delete: if false;
+    }
+
     // ── Negociações ─────────────────────────────────────────────────────────
     match /negociacoes/{docId} {
       allow read, write: if isAuth();

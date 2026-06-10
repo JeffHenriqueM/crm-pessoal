@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
+import '../models/agendamento_model.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
 import '../models/contato_embaixador_model.dart';
@@ -377,6 +378,102 @@ class FirestoreService {
     }).switchMap((stream) => stream);
   }
 
+  // ── AGENDAMENTOS (atendimento futuro, ainda não é lead) ────────────────────
+  static const _colAgendamentos = 'agendamentos';
+
+  /// Cria um agendamento futuro. Retorna o id.
+  /// NÃO toca o contador de atendimentos nem gera ficha — isso só acontece na
+  /// conversão (quando o cliente comparece e vira atendimento).
+  Future<String> adicionarAgendamento(Agendamento a) async {
+    final dados = _flagTeste({
+      ...a.toFirestore(),
+      'criadoPorId': _currentUserId,
+      'criadoPorNome': _currentUserName,
+      'criadoEm': FieldValue.serverTimestamp(),
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+    });
+    final ref = await _db.collection(_colAgendamentos).add(dados);
+    return ref.id;
+  }
+
+  /// Stream de agendamentos.
+  /// Perfil 'recepcao': vê todos. Demais: apenas os vinculados a si
+  /// (criador/captador/liner). Ordena por data/hora crescente (próximos
+  /// primeiro). Filtro/ordenação em Dart → sem índice composto.
+  Stream<List<Agendamento>> getAgendamentosStream() {
+    return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
+      if (perfil == 'recepcao') {
+        return _db.collection(_colAgendamentos).snapshots().map((s) {
+          final r = s.docs
+              .map(Agendamento.fromFirestore)
+              .where((a) => !a.deletado)
+              .toList();
+          r.sort(
+              (a, b) => a.dataHoraAgendamento.compareTo(b.dataHoraAgendamento));
+          return r;
+        });
+      }
+
+      final uid = _currentUserId;
+      List<Agendamento> fromSnap(s) =>
+          s.docs.map<Agendamento>(Agendamento.fromFirestore).toList();
+
+      final sCriados = _db
+          .collection(_colAgendamentos)
+          .where('criadoPorId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
+      final sCaptador = _db
+          .collection(_colAgendamentos)
+          .where('captadorId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
+      final sLiner = _db
+          .collection(_colAgendamentos)
+          .where('linerId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
+
+      return Rx.combineLatest3<List<Agendamento>, List<Agendamento>,
+          List<Agendamento>, List<Agendamento>>(
+        sCriados,
+        sCaptador,
+        sLiner,
+        (criados, captados, liners) {
+          final vistos = <String>{};
+          final r = <Agendamento>[];
+          for (final a in [...criados, ...captados, ...liners]) {
+            if (a.id.isNotEmpty && vistos.add(a.id)) r.add(a);
+          }
+          r.removeWhere((a) => a.deletado);
+          r.sort(
+              (a, b) => a.dataHoraAgendamento.compareTo(b.dataHoraAgendamento));
+          return r;
+        },
+      );
+    }).switchMap((stream) => stream);
+  }
+
+  /// Atualiza o status do agendamento (agendado|compareceu|faltou|cancelado).
+  Future<void> atualizarStatusAgendamento(
+    String id,
+    String status, {
+    String? clienteVinculadoId,
+  }) async {
+    await _db.collection(_colAgendamentos).doc(id).update({
+      'status': status,
+      if (clienteVinculadoId != null) 'clienteVinculadoId': clienteVinculadoId,
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
+  /// Marca o agendamento como compareceu, vinculando o cliente criado.
+  Future<void> marcarCompareceu(String agendamentoId, String clienteId) =>
+      atualizarStatusAgendamento(agendamentoId, 'compareceu',
+          clienteVinculadoId: clienteId);
+
   Future<String> adicionarCliente(Cliente cliente) async {
     final dados = cliente.toFirestore();
     dados['criadoPorId'] = _currentUserId;
@@ -506,6 +603,12 @@ class FirestoreService {
         'interaction_count': FieldValue.increment(1),
         // Marca a data do último contato real (base do "Risco de Silêncio").
         'ultimoContato': FieldValue.serverTimestamp(),
+        // Registrar interação conta como mensagem enviada: tira o badge
+        // vermelho "Msg. não enviada". Com resposta → encerra; sem resposta
+        // → "aguardando resposta".
+        'statusMensagem': interacao.houveResposta
+            ? 'enviada_com_resposta'
+            : 'enviada_sem_resposta',
         // Agenda o próximo contato junto com a interação (tira do "em atraso").
         if (proximoContato != null)
           'proximoContato': Timestamp.fromDate(proximoContato),
