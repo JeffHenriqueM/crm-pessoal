@@ -72,7 +72,7 @@ class _MainShellState extends State<MainShell> {
   static const _apresentacaoItem = _NavItem(
     icon: Icons.co_present_outlined,
     activeIcon: Icons.co_present,
-    label: 'Apresentação',
+    label: 'Negociação/Economia',
   );
 
   // ── Item de tickets — aparece em todos os perfis ─────────────────────────
