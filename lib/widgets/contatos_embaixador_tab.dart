@@ -23,6 +23,24 @@ class _ContatosEmbaixadorTabState extends State<ContatosEmbaixadorTab> {
   final _busca = TextEditingController();
   String _filtro = '';
 
+  /// Filtro por responsável: null = todos; '' = sem responsável; senão o nome.
+  String? _respFiltro;
+  FiltroMensagens _msgFiltro = FiltroMensagens.todas;
+
+  bool get _temFiltro =>
+      _filtro.isNotEmpty ||
+      _respFiltro != null ||
+      _msgFiltro != FiltroMensagens.todas;
+
+  void _limparFiltros() {
+    setState(() {
+      _busca.clear();
+      _filtro = '';
+      _respFiltro = null;
+      _msgFiltro = FiltroMensagens.todas;
+    });
+  }
+
   @override
   void dispose() {
     _busca.dispose();
@@ -32,82 +50,170 @@ class _ContatosEmbaixadorTabState extends State<ContatosEmbaixadorTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-            child: TextField(
-              controller: _busca,
-              decoration: InputDecoration(
-                hintText: 'Buscar por nome ou telefone…',
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10)),
+      body: StreamBuilder<List<ContatoEmbaixador>>(
+        stream: _fs.getContatosEmbaixadorStream(),
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return Center(child: Text('Erro: ${snap.error}'));
+          }
+          final todos = snap.data ?? [];
+          final hoje = DateTime.now();
+          final contatos = filtrarContatosEmbaixador(
+            todos,
+            texto: _filtro,
+            responsavel: _respFiltro,
+            mensagens: _msgFiltro,
+          );
+          final pendentes =
+              contatos.where((c) => c.temRespostaPendente(hoje)).length;
+
+          return Column(
+            children: [
+              _filtrosBar(context, todos, contatos.length),
+              Expanded(
+                child: contatos.isEmpty
+                    ? _vazio(context)
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
+                        children: [
+                          if (pendentes > 0)
+                            Card(
+                              color: Colors.orange.shade50,
+                              child: ListTile(
+                                leading: const Icon(
+                                    Icons.assignment_late_outlined,
+                                    color: Colors.orange),
+                                title: Text(
+                                    '$pendentes contato(s) aguardando "houve resposta?"'),
+                                subtitle: const Text(
+                                    'Preencha a resposta das tentativas do dia anterior.'),
+                              ),
+                            ),
+                          for (final c in contatos)
+                            _CardContato(contato: c, hoje: hoje, fs: _fs),
+                        ],
+                      ),
               ),
-              onChanged: (v) => setState(() => _filtro = v.trim().toLowerCase()),
-            ),
-          ),
-          Expanded(
-            child: StreamBuilder<List<ContatoEmbaixador>>(
-              stream: _fs.getContatosEmbaixadorStream(),
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(child: Text('Erro: ${snap.error}'));
-                }
-                final todos = snap.data ?? [];
-                final hoje = DateTime.now();
-                final contatos = _filtro.isEmpty
-                    ? todos
-                    : todos.where((c) {
-                        final alvo =
-                            '${c.nome} ${c.nomeEsposa ?? ''} ${c.telefone} ${c.responsavel ?? ''}'
-                                .toLowerCase();
-                        return alvo.contains(_filtro);
-                      }).toList();
-
-                if (contatos.isEmpty) {
-                  return _vazio(context);
-                }
-
-                final pendentes =
-                    contatos.where((c) => c.temRespostaPendente(hoje)).length;
-
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
-                  children: [
-                    if (pendentes > 0)
-                      Card(
-                        color: Colors.orange.shade50,
-                        child: ListTile(
-                          leading: const Icon(Icons.assignment_late_outlined,
-                              color: Colors.orange),
-                          title: Text(
-                              '$pendentes contato(s) aguardando "houve resposta?"'),
-                          subtitle: const Text(
-                              'Preencha a resposta das tentativas do dia anterior.'),
-                        ),
-                      ),
-                    for (final c in contatos)
-                      _CardContato(
-                        contato: c,
-                        hoje: hoje,
-                        fs: _fs,
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _menuAdicionar,
         icon: const Icon(Icons.person_add_alt_1),
         label: const Text('Adicionar'),
+      ),
+    );
+  }
+
+  // ── Barra de busca + filtros (Responsável / Qtd de mensagens) ───────────────
+  Widget _filtrosBar(
+      BuildContext context, List<ContatoEmbaixador> todos, int total) {
+    // Responsáveis distintos (não vazios) presentes nos dados carregados.
+    final comResp = <String>{};
+    var temSemResp = false;
+    for (final c in todos) {
+      final r = (c.responsavel ?? '').trim();
+      if (r.isEmpty) {
+        temSemResp = true;
+      } else {
+        comResp.add(r);
+      }
+    }
+    final responsaveis = comResp.toList()..sort();
+
+    // Evita assert do Dropdown se o filtro guardado sumiu dos dados.
+    final respValido = _respFiltro == null ||
+        (_respFiltro!.isEmpty && temSemResp) ||
+        responsaveis.contains(_respFiltro);
+    final respValue = respValido ? _respFiltro : null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Column(
+        children: [
+          TextField(
+            controller: _busca,
+            decoration: InputDecoration(
+              hintText: 'Buscar por nome ou telefone…',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onChanged: (v) => setState(() => _filtro = v.trim().toLowerCase()),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String?>(
+                  initialValue: respValue,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Responsável',
+                    prefixIcon: Icon(Icons.person_pin_outlined),
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                        value: null, child: Text('Todos')),
+                    if (temSemResp)
+                      const DropdownMenuItem(
+                          value: '', child: Text('Sem responsável')),
+                    for (final r in responsaveis)
+                      DropdownMenuItem(value: r, child: Text(r)),
+                  ],
+                  onChanged: (v) => setState(() => _respFiltro = v),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<FiltroMensagens>(
+                  initialValue: _msgFiltro,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Mensagens',
+                    prefixIcon: Icon(Icons.forum_outlined),
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: FiltroMensagens.todas, child: Text('Todas')),
+                    DropdownMenuItem(
+                        value: FiltroMensagens.nenhuma,
+                        child: Text('Sem mensagem')),
+                    DropdownMenuItem(
+                        value: FiltroMensagens.ate2, child: Text('1 a 2')),
+                    DropdownMenuItem(
+                        value: FiltroMensagens.tresOuMais, child: Text('3 ou +')),
+                  ],
+                  onChanged: (v) => setState(
+                      () => _msgFiltro = v ?? FiltroMensagens.todas),
+                ),
+              ),
+              if (_temFiltro)
+                IconButton(
+                  tooltip: 'Limpar filtros',
+                  icon: const Icon(Icons.filter_alt_off_outlined),
+                  onPressed: _limparFiltros,
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '$total contato(s)${_temFiltro ? ' (filtrado)' : ''}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -122,11 +228,13 @@ class _ContatosEmbaixadorTabState extends State<ContatosEmbaixadorTab> {
           children: [
             const Icon(Icons.contacts_outlined, size: 56, color: Colors.grey),
             const SizedBox(height: 12),
-            Text(_filtro.isEmpty ? 'Nenhum contato ainda' : 'Nada encontrado',
+            Text(_temFiltro ? 'Nada encontrado' : 'Nenhum contato ainda',
                 style: tt.titleMedium),
             const SizedBox(height: 6),
             Text(
-              'Use o botão "Adicionar" para incluir um contato ou vários de uma vez.',
+              _temFiltro
+                  ? 'Ajuste a busca ou os filtros de responsável/mensagens.'
+                  : 'Use o botão "Adicionar" para incluir um contato ou vários de uma vez.',
               textAlign: TextAlign.center,
               style: tt.bodySmall,
             ),
@@ -238,6 +346,56 @@ class _ContatosEmbaixadorTabState extends State<ContatosEmbaixadorTab> {
       );
     }
   }
+}
+
+/// Faixas de quantidade de mensagens/tentativas para o filtro da aba Contatos.
+enum FiltroMensagens { todas, nenhuma, ate2, tresOuMais }
+
+/// Filtra a lista de contatos por texto livre (nome/esposa/telefone/responsável),
+/// por responsável e por faixa de quantidade de tentativas.
+///
+/// [responsavel]: `null` = todos; `''` = apenas sem responsável; senão o nome
+/// exato. Lógica pura, sem UI, para ser testável.
+List<ContatoEmbaixador> filtrarContatosEmbaixador(
+  List<ContatoEmbaixador> todos, {
+  String texto = '',
+  String? responsavel,
+  FiltroMensagens mensagens = FiltroMensagens.todas,
+}) {
+  final t = texto.trim().toLowerCase();
+
+  bool matchTexto(ContatoEmbaixador c) {
+    if (t.isEmpty) return true;
+    final alvo =
+        '${c.nome} ${c.nomeEsposa ?? ''} ${c.telefone} ${c.responsavel ?? ''}'
+            .toLowerCase();
+    return alvo.contains(t);
+  }
+
+  bool matchResponsavel(ContatoEmbaixador c) {
+    if (responsavel == null) return true;
+    final r = (c.responsavel ?? '').trim();
+    return responsavel.isEmpty ? r.isEmpty : r == responsavel;
+  }
+
+  bool matchMensagens(ContatoEmbaixador c) {
+    final n = c.totalTentativas;
+    switch (mensagens) {
+      case FiltroMensagens.todas:
+        return true;
+      case FiltroMensagens.nenhuma:
+        return n == 0;
+      case FiltroMensagens.ate2:
+        return n >= 1 && n <= 2;
+      case FiltroMensagens.tresOuMais:
+        return n >= 3;
+    }
+  }
+
+  return todos
+      .where((c) =>
+          matchTexto(c) && matchResponsavel(c) && matchMensagens(c))
+      .toList();
 }
 
 /// Faz o parse de uma lista colada direto da planilha (um contato por linha,

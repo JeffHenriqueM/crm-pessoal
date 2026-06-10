@@ -2,7 +2,7 @@
 
 ## 🛠️ Comandos de Execução e Deploy
 - Rodar Web Local: `flutter run -d chrome --web-port 5173`
-- Build Release: `flutter build web --release --no-tree-shake-icons`
+- Build Release: `./scripts/build_web.sh` (carimba `APP_BUILD` no app e em `build/web/app_build.json` para o aviso de "nova versão disponível"). O `flutter build web --release --no-tree-shake-icons` puro ainda funciona, mas sem o carimbo o aviso de atualização fica desligado.
 - Deploy Preview: `firebase hosting:channel:deploy preview_nome --project crm-pessoal-d993d`
 - Deploy Produção: `firebase deploy --only hosting --project crm-pessoal-d993d`
 - Build Functions: `cd functions && npm run build`

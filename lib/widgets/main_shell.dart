@@ -16,6 +16,7 @@ import 'aba_pos_venda.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/vendedor_home_screen.dart';
 import '../screens/ficha_ticket_screen.dart';
+import '../services/atualizacao_service.dart';
 import '../services/auth_service.dart';
 import '../utils/env.dart';
 import 'notificacao_bell.dart';
@@ -187,11 +188,22 @@ class _MainShellState extends State<MainShell> {
 
   final _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
+  // ── Perfis que abrem direto na Recepção ───────────────────────────────────
+  static const _recepcaoComoPadrao = {'recepcao', 'captador'};
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
     _carregarPreferenciaSidebar();
+    // Recepção/captador abrem direto na aba Recepção.
+    if (_recepcaoComoPadrao.contains(widget.userProfile)) {
+      final idx =
+          _navItems.indexWhere((it) => it.label == _recepcaoItem.label);
+      if (idx >= 0) _selectedIndex = idx;
+    }
+    // Avisa quando uma nova versão for publicada (só web em produção).
+    AtualizacaoService.instance.iniciar();
   }
 
   Future<void> _carregarPreferenciaSidebar() async {
@@ -260,6 +272,7 @@ class _MainShellState extends State<MainShell> {
         body: Column(
           children: [
             if (kIsStaging) _buildStagingBanner(),
+            _buildAtualizacaoBanner(),
             Expanded(
               child: IndexedStack(
                 index: _selectedIndex,
@@ -278,6 +291,7 @@ class _MainShellState extends State<MainShell> {
       body: Column(
         children: [
           if (kIsStaging) _buildStagingBanner(),
+          _buildAtualizacaoBanner(),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -328,6 +342,58 @@ class _MainShellState extends State<MainShell> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Banner de nova versão disponível ───────────────────────────────────────
+  Widget _buildAtualizacaoBanner() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AtualizacaoService.instance.disponivel,
+      builder: (context, disponivel, _) {
+        if (!disponivel) return const SizedBox.shrink();
+        final cs = Theme.of(context).colorScheme;
+        return Material(
+          color: cs.primary,
+          child: InkWell(
+            onTap: AtualizacaoService.instance.recarregar,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.system_update_alt,
+                      size: 16, color: cs.onPrimary),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Nova versão disponível',
+                      style: TextStyle(
+                        color: cs.onPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: AtualizacaoService.instance.recarregar,
+                    style: TextButton.styleFrom(
+                      foregroundColor: cs.onPrimary,
+                      backgroundColor: cs.onPrimary.withValues(alpha: 0.18),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    child: const Text('Atualizar agora',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

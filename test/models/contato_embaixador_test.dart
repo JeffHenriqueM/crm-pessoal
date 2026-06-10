@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:crm_pessoal/models/contato_embaixador_model.dart';
 import 'package:crm_pessoal/models/interacao_model.dart' show Canal;
 import 'package:crm_pessoal/widgets/contatos_embaixador_tab.dart'
-    show parsearContatosColados;
+    show parsearContatosColados, filtrarContatosEmbaixador, FiltroMensagens;
 
 void main() {
   group('Tentativa.respostaPendente', () {
@@ -102,6 +102,85 @@ void main() {
 
     test('lista vazia retorna vazio', () {
       expect(parsearContatosColados('   \n  \n'), isEmpty);
+    });
+  });
+
+  group('filtrarContatosEmbaixador', () {
+    Tentativa wpp() => Tentativa(data: DateTime(2026, 6, 1), canal: Canal.whatsapp);
+
+    final ana = ContatoEmbaixador(
+      nome: 'Ana Souza',
+      telefone: '11999990000',
+      responsavel: 'Jefferson',
+      tentativas: [wpp(), wpp(), wpp()], // 3
+    );
+    final bruno = ContatoEmbaixador(
+      nome: 'Bruno Lima',
+      telefone: '21988887777',
+      responsavel: 'Marina',
+      tentativas: [wpp()], // 1
+    );
+    final carla = ContatoEmbaixador(
+      nome: 'Carla Dias',
+      telefone: '31977776666',
+      responsavel: null, // sem responsável
+      tentativas: const [], // 0
+    );
+    final lista = [ana, bruno, carla];
+
+    test('sem filtros retorna todos', () {
+      expect(filtrarContatosEmbaixador(lista).length, 3);
+    });
+
+    test('texto casa nome, telefone ou responsável (case-insensitive)', () {
+      expect(filtrarContatosEmbaixador(lista, texto: 'bruno').single.nome,
+          'Bruno Lima');
+      expect(filtrarContatosEmbaixador(lista, texto: 'jefferson').single.nome,
+          'Ana Souza');
+      expect(filtrarContatosEmbaixador(lista, texto: '3197').single.nome,
+          'Carla Dias');
+    });
+
+    test('responsável exato filtra; null = todos', () {
+      expect(filtrarContatosEmbaixador(lista, responsavel: 'Marina').single.nome,
+          'Bruno Lima');
+      expect(filtrarContatosEmbaixador(lista, responsavel: null).length, 3);
+    });
+
+    test("responsável '' retorna apenas os sem responsável", () {
+      final r = filtrarContatosEmbaixador(lista, responsavel: '');
+      expect(r.length, 1);
+      expect(r.single.nome, 'Carla Dias');
+    });
+
+    test('faixa de mensagens: nenhuma / 1 a 2 / 3 ou mais', () {
+      expect(
+          filtrarContatosEmbaixador(lista, mensagens: FiltroMensagens.nenhuma)
+              .single
+              .nome,
+          'Carla Dias');
+      expect(
+          filtrarContatosEmbaixador(lista, mensagens: FiltroMensagens.ate2)
+              .single
+              .nome,
+          'Bruno Lima');
+      expect(
+          filtrarContatosEmbaixador(
+                  lista, mensagens: FiltroMensagens.tresOuMais)
+              .single
+              .nome,
+          'Ana Souza');
+    });
+
+    test('combina responsável + faixa de mensagens', () {
+      final r = filtrarContatosEmbaixador(lista,
+          responsavel: 'Jefferson', mensagens: FiltroMensagens.tresOuMais);
+      expect(r.single.nome, 'Ana Souza');
+      // Jefferson não tem ninguém na faixa 1-2 → vazio.
+      expect(
+          filtrarContatosEmbaixador(lista,
+              responsavel: 'Jefferson', mensagens: FiltroMensagens.ate2),
+          isEmpty);
     });
   });
 
