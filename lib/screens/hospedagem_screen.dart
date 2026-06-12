@@ -17,6 +17,7 @@ import '../models/festa_regras.dart';
 import '../services/festa_pdf.dart';
 import '../services/firestore_service.dart';
 import '../utils/url_launcher_service.dart';
+import '../widgets/esolution_button.dart';
 
 const String _periodoFesta = '19 a 23 de julho';
 
@@ -88,6 +89,7 @@ class HospedagemScreen extends StatelessWidget {
         appBar: AppBar(
           title: const Text('Hospedagem'),
           automaticallyImplyLeading: false,
+          actions: const [EsolutionButton(), SizedBox(width: 8)],
           bottom: const TabBar(
             isScrollable: true,
             tabs: [

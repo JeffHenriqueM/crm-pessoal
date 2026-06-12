@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../models/contrato_model.dart';
 import '../services/contrato_csv_parser.dart';
 import '../services/firestore_service.dart';
+import '../widgets/esolution_button.dart';
 import 'ficha_contrato_screen.dart';
 
 class PosVendaScreen extends StatefulWidget {
@@ -169,6 +170,8 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                   onChanged: (v) => setState(() => _busca = v),
                 ),
               ),
+              const SizedBox(width: 4),
+              const EsolutionButton(),
               const SizedBox(width: 4),
               Badge(
                 isLabelVisible: _filtrosAtivos > 0,

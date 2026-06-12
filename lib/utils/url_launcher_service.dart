@@ -23,4 +23,19 @@ class UrlLauncherService {
       rethrow;
     }
   }
+
+  /// Abre uma URL qualquer em nova aba/app externo.
+  Future<void> abrirUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Não foi possível abrir o link.';
+      }
+    } catch (e) {
+      debugPrint('[UrlLauncher] Erro ao abrir $url: $e');
+      rethrow;
+    }
+  }
 }
