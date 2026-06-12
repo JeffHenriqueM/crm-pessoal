@@ -49,8 +49,8 @@ class ModelosMensagemScreen extends StatelessWidget {
                   padding: EdgeInsets.all(12),
                   child: Text(
                     'Use variáveis no texto: {nome}, {primeiroNome}, {esposa}, '
-                    '{responsavel}. Elas são preenchidas automaticamente ao '
-                    'enviar.',
+                    '{primeiroNomeEsposa}, {responsavel}. Elas são preenchidas '
+                    'automaticamente ao enviar.',
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
@@ -193,7 +193,13 @@ class _FormModeloDialogState extends State<_FormModeloDialog> {
   late bool _padrao = widget.existente?.padrao ?? false;
   bool _salvando = false;
 
-  static const _variaveis = ['{nome}', '{primeiroNome}', '{esposa}', '{responsavel}'];
+  static const _variaveis = [
+    '{nome}',
+    '{primeiroNome}',
+    '{esposa}',
+    '{primeiroNomeEsposa}',
+    '{responsavel}'
+  ];
 
   @override
   void dispose() {

@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// ou **individual** (criado por um usuário, visível só para ele).
 ///
 /// O texto pode conter variáveis que são substituídas no momento do envio:
-/// `{nome}`, `{primeiroNome}`, `{esposa}`, `{responsavel}`.
+/// `{nome}`, `{primeiroNome}`, `{esposa}`, `{primeiroNomeEsposa}`, `{responsavel}`.
 class ModeloMensagem {
   final String id;
   final String titulo;
@@ -67,8 +67,30 @@ class ModeloMensagem {
   }
 }
 
+/// Conectivos de nomes próprios que ficam em minúsculo (exceto se 1ª palavra).
+const _conectivosNome = {'da', 'de', 'do', 'das', 'dos', 'e', 'di', 'du'};
+
+/// Normaliza um nome para Title Case: 1ª letra de cada palavra em maiúscula e o
+/// restante em minúscula (os dados dos contratos vêm em CAIXA ALTA). Conectivos
+/// (`da`, `de`, `do`, …) ficam minúsculos, salvo na 1ª palavra.
+String capitalizarNome(String? s) {
+  final t = (s ?? '').trim();
+  if (t.isEmpty) return '';
+  final palavras = t.toLowerCase().split(RegExp(r'\s+'));
+  return [
+    for (var i = 0; i < palavras.length; i++)
+      if (palavras[i].isEmpty)
+        palavras[i]
+      else if (i != 0 && _conectivosNome.contains(palavras[i]))
+        palavras[i]
+      else
+        palavras[i][0].toUpperCase() + palavras[i].substring(1),
+  ].join(' ');
+}
+
 /// Substitui as variáveis suportadas no [texto] do modelo. Variáveis sem valor
-/// viram string vazia. Lógica pura para ser testável.
+/// viram string vazia. Nomes são normalizados para Title Case. Lógica pura para
+/// ser testável.
 String aplicarVariaveisMensagem(
   String texto, {
   String? nome,
@@ -82,8 +104,9 @@ String aplicarVariaveisMensagem(
   }
 
   return texto
-      .replaceAll('{primeiroNome}', primeiro(nome))
-      .replaceAll('{nome}', nome?.trim() ?? '')
-      .replaceAll('{esposa}', esposa?.trim() ?? '')
-      .replaceAll('{responsavel}', responsavel?.trim() ?? '');
+      .replaceAll('{primeiroNomeEsposa}', capitalizarNome(primeiro(esposa)))
+      .replaceAll('{primeiroNome}', capitalizarNome(primeiro(nome)))
+      .replaceAll('{nome}', capitalizarNome(nome))
+      .replaceAll('{esposa}', capitalizarNome(esposa))
+      .replaceAll('{responsavel}', capitalizarNome(responsavel));
 }

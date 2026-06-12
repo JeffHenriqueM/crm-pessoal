@@ -124,6 +124,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   // Telefone do comprador por localizador de contrato — alimenta o atalho de
   // WhatsApp na ficha do quarto (resolve mesmo associações antigas).
   Map<String, String> _telefonePorContrato = const {};
+  // Nome do cônjuge (comprador 2) por localizador — variável {esposa} nos modelos.
+  Map<String, String> _esposaPorContrato = const {};
 
   @override
   void initState() {
@@ -141,6 +143,11 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
             if (c.telefoneComprador.trim().isNotEmpty)
               c.localizador: c.telefoneComprador.trim(),
         };
+        _esposaPorContrato = {
+          for (final c in contratos)
+            if ((c.nomeComprador2 ?? '').trim().isNotEmpty)
+              c.localizador: c.nomeComprador2!.trim(),
+        };
       });
     } catch (e) {
       debugPrint('[Hospedagem] Falha ao carregar telefones: $e');
@@ -155,13 +162,21 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     return (tel != null && tel.isNotEmpty) ? tel : null;
   }
 
+  /// Nome do cônjuge do contrato associado ao quarto, se houver.
+  String? _esposaDoQuarto(FestaAssociacao? assoc) {
+    final id = assoc?.contratoId;
+    if (id == null) return null;
+    return _esposaPorContrato[id];
+  }
+
   Future<void> _abrirWhatsApp(BuildContext context, String telefone,
-      {String nome = ''}) async {
+      {String nome = '', String? esposa}) async {
     final messenger = ScaffoldMessenger.of(context);
     // Antes de abrir, oferece os modelos de mensagem (ou "sem mensagem").
     final escolha = await escolherMensagemWhatsApp(
       context,
       nome: nome,
+      esposa: esposa,
       fs: _service,
     );
     if (escolha == null) return; // usuário cancelou
@@ -839,7 +854,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                   onPressed: () => _abrirWhatsApp(context, telefone,
                       nome: (o?.ocupante ?? '')
                           .replaceFirst(RegExp(r'^\*'), '')
-                          .trim()),
+                          .trim(),
+                      esposa: _esposaDoQuarto(assoc)),
                   icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
                   label: const Text('Abrir WhatsApp'),
                   style: FilledButton.styleFrom(

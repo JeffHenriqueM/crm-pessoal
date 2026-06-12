@@ -33,6 +33,44 @@ void main() {
       const t = 'Mensagem fixa, sem variáveis.';
       expect(aplicarVariaveisMensagem(t, nome: 'X'), t);
     });
+
+    test('nomes em CAIXA ALTA viram Title Case (conectivos minúsculos)', () {
+      final r = aplicarVariaveisMensagem(
+        'Olá {nome}, e {esposa}?',
+        nome: 'LAIS FERREIRA DA SILVA',
+        esposa: 'MARIA DAS DORES',
+      );
+      expect(r, 'Olá Lais Ferreira da Silva, e Maria das Dores?');
+    });
+
+    test('{primeiroNome} e {primeiroNomeEsposa} também capitalizam', () {
+      final r = aplicarVariaveisMensagem(
+        '{primeiroNome} e {primeiroNomeEsposa}',
+        nome: 'PAULO HENRIQUE',
+        esposa: 'ANA CLARA',
+      );
+      expect(r, 'Paulo e Ana');
+    });
+
+    test('{primeiroNomeEsposa} sem esposa vira vazio', () {
+      final r = aplicarVariaveisMensagem('Oi {primeiroNomeEsposa}', nome: 'X');
+      expect(r, 'Oi ');
+    });
+  });
+
+  group('capitalizarNome', () {
+    test('1ª maiúscula, resto minúsculo por palavra', () {
+      expect(capitalizarNome('JOÃO PEDRO'), 'João Pedro');
+      expect(capitalizarNome('maria'), 'Maria');
+    });
+    test('conectivos ficam minúsculos, exceto na 1ª palavra', () {
+      expect(capitalizarNome('PEDRO DE ALCANTARA'), 'Pedro de Alcantara');
+      expect(capitalizarNome('DA SILVA'), 'Da Silva');
+    });
+    test('vazio/nulo vira vazio', () {
+      expect(capitalizarNome(null), '');
+      expect(capitalizarNome('   '), '');
+    });
   });
 
   group('ModeloMensagem', () {
