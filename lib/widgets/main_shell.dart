@@ -62,6 +62,7 @@ class _MainShellState extends State<MainShell> {
   bool get _isPosVenda => widget.userProfile == 'pós-venda';
   // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
   bool get _isReserva => widget.userProfile == 'reserva';
+  bool get _isRecepcao => widget.userProfile == 'recepcao';
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
@@ -119,13 +120,14 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── Vendedor/captador: Agenda primeiro ────────────────────────
+    // ── Vendedor/captador/recepção: Agenda primeiro ───────────────
     if (!_isListaProfile) {
-      return const [
-        _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,    label: 'Agenda'),
-        _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
+      return [
+        const _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,    label: 'Agenda'),
+        const _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
         _apresentacaoItem,
-        _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
+        const _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
+        if (_isRecepcao) _hospedagemItem,
         _ticketsItem,
         _recepcaoItem,
       ];
@@ -173,6 +175,7 @@ class _MainShellState extends State<MainShell> {
       ListaClientesScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       DashboardScreen(userProfile: widget.userProfile),
+      if (_isRecepcao) HospedagemScreen(userProfile: widget.userProfile),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoShell(),
     ] else if (_isPosVenda) ...[

@@ -6,6 +6,7 @@
 // TROCA; o gestor valida (aprovar/recusar) e pode ASSOCIAR manualmente um
 // quarto a um contrato/sócio. Tudo persiste no Firestore.
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../models/contrato_model.dart';
 import '../models/quarto_festa_socios.dart';
 import '../models/festa_ocupacao_gerado.dart';
@@ -15,6 +16,7 @@ import '../models/festa_espera.dart';
 import '../models/festa_regras.dart';
 import '../services/festa_pdf.dart';
 import '../services/firestore_service.dart';
+import '../utils/url_launcher_service.dart';
 
 const String _periodoFesta = '19 a 23 de julho';
 
@@ -116,6 +118,50 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   bool _todasExpandidas = true;
   int _versao = 0;
   bool _soTrocas = false;
+  // Telefone do comprador por localizador de contrato — alimenta o atalho de
+  // WhatsApp na ficha do quarto (resolve mesmo associações antigas).
+  Map<String, String> _telefonePorContrato = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarTelefones();
+  }
+
+  Future<void> _carregarTelefones() async {
+    try {
+      final contratos = await _service.getContratos();
+      if (!mounted) return;
+      setState(() {
+        _telefonePorContrato = {
+          for (final c in contratos)
+            if (c.telefoneComprador.trim().isNotEmpty)
+              c.localizador: c.telefoneComprador.trim(),
+        };
+      });
+    } catch (e) {
+      debugPrint('[Hospedagem] Falha ao carregar telefones: $e');
+    }
+  }
+
+  /// Telefone do ocupante de um quarto (via contrato associado), se houver.
+  String? _telefoneDoQuarto(FestaAssociacao? assoc) {
+    final id = assoc?.contratoId;
+    if (id == null) return null;
+    final tel = _telefonePorContrato[id];
+    return (tel != null && tel.isNotEmpty) ? tel : null;
+  }
+
+  Future<void> _abrirWhatsApp(BuildContext context, String telefone) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await UrlLauncherService().abrirWhatsApp(telefone);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir o WhatsApp.')),
+      );
+    }
+  }
 
   Map<CategoriaQuarto, List<QuartoFestaSocios>> get _porCategoria {
     final m = <CategoriaQuarto, List<QuartoFestaSocios>>{};
@@ -513,6 +559,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     final cs = Theme.of(context).colorScheme;
     final assoc = assocs[q.numero];
     final o = ocupacaoEfetiva(q, assocs);
+    final telefone = _telefoneDoQuarto(assoc);
     final autoTipo = (o?.ocupante.isNotEmpty ?? false)
         ? tipoEventoFesta(
             socio: o?.tier != null,
@@ -772,6 +819,20 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                               : Colors.orange.shade900)),
                 ),
             ]),
+            if (telefone != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _abrirWhatsApp(context, telefone),
+                  icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
+                  label: const Text('Abrir WhatsApp'),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white),
+                ),
+              ),
+            ],
             if (q.categoria == CategoriaQuarto.duplex ||
                 q.categoria == CategoriaQuarto.suiteDuplex) ...[
               const SizedBox(height: 8),
