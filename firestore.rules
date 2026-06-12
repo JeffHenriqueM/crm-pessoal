@@ -22,6 +22,12 @@ service cloud.firestore {
       return perfil() == 'super admin';
     }
 
+    // Acesso ao módulo de Hospedagem (Festa dos Sócios): gestores + o perfil
+    // restrito 'reserva' (que enxerga SOMENTE este módulo, nada de clientes).
+    function isHospedagem() {
+      return isGestor() || perfil() == 'reserva';
+    }
+
     // Edição de meta própria: o usuário pode alterar SOMENTE os campos de meta
     // e o contador de interações no seu próprio doc — nunca perfil/ativo (evita
     // escalonamento de privilégio).
@@ -165,17 +171,17 @@ service cloud.firestore {
     // Decisão humana (aprovar/recusar a troca sugerida). Apenas gestores
     // (admin/super admin/pós-venda/financeiro/recepção) leem e escrevem.
     match /festa_socios_validacoes/{numeroQuarto} {
-      allow read, write: if isAuth() && isGestor();
+      allow read, write: if isAuth() && isHospedagem();
     }
 
     // Associação manual de quarto → contrato (sócio).
     match /festa_socios_associacoes/{numeroQuarto} {
-      allow read, write: if isAuth() && isGestor();
+      allow read, write: if isAuth() && isHospedagem();
     }
 
     // Lista de espera por categoria (hóspedes aguardando vaga).
     match /festa_socios_espera/{esperaId} {
-      allow read, write: if isAuth() && isGestor();
+      allow read, write: if isAuth() && isHospedagem();
     }
 
     // ── Leads do site/quiosque (Villamor Tambaba) ───────────────────────────

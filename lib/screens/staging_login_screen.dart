@@ -80,6 +80,14 @@ const _usuarios = [
     icone: Icons.verified_user_outlined,
     descricao: 'Acesso completo + gerenciamento de usuários',
   ),
+  _MockUser(
+    nome: 'Lúcia',
+    perfil: 'reserva',
+    id: 'mock_lucia',
+    cor: Color(0xFF00838F),
+    icone: Icons.hotel_outlined,
+    descricao: 'Somente módulo de Hospedagem',
+  ),
 ];
 
 // ── Tela principal ────────────────────────────────────────────────────────────

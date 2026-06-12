@@ -60,6 +60,8 @@ class _MainShellState extends State<MainShell> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
   bool get _isPosVenda => widget.userProfile == 'pós-venda';
+  // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
+  bool get _isReserva => widget.userProfile == 'reserva';
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
@@ -98,6 +100,10 @@ class _MainShellState extends State<MainShell> {
 
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
+    // ── Reserva: somente Hospedagem ───────────────────────────────
+    if (_isReserva) {
+      return const [_hospedagemItem];
+    }
     // ── Admin: Dashboard primeiro ─────────────────────────────────
     if (_isAdmin) {
       return const [
@@ -149,7 +155,9 @@ class _MainShellState extends State<MainShell> {
 
   // ── Páginas (IndexedStack preserva o estado) ──────────────────────────────
   late final List<Widget> _pages = [
-    if (_isAdmin) ...[
+    if (_isReserva) ...[
+      HospedagemScreen(userProfile: widget.userProfile),
+    ] else if (_isAdmin) ...[
       DashboardScreen(userProfile: widget.userProfile),
       ListaClientesScreen(userProfile: widget.userProfile),
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),

@@ -34,6 +34,10 @@ beforeEach(async () => {
       perfil: 'vendedor',
       nome: 'A',
     });
+    await setDoc(doc(db, 'usuarios/reserva_u'), {
+      perfil: 'reserva',
+      nome: 'Reserva',
+    });
   });
 });
 
@@ -126,4 +130,49 @@ test('vendedor NÃO lê a lista de espera', async () => {
   });
   const db = contextoAutenticado(env, 'vendedor_a');
   await assertFails(getDoc(doc(db, 'festa_socios_espera/abc123')));
+});
+
+// ── Perfil 'reserva': acessa SOMENTE o módulo de Hospedagem ─────────────────
+
+test('reserva registra validação de troca', async () => {
+  const db = contextoAutenticado(env, 'reserva_u');
+  await assertSucceeds(
+    setDoc(doc(db, 'festa_socios_validacoes/151'), { status: 'aprovada' }),
+  );
+});
+
+test('reserva associa quarto a contrato', async () => {
+  const db = contextoAutenticado(env, 'reserva_u');
+  await assertSucceeds(
+    setDoc(doc(db, 'festa_socios_associacoes/135'), {
+      contratoId: 'abc',
+      ocupante: 'Fulano',
+      tier: 'ouro',
+      pct: 40,
+    }),
+  );
+});
+
+test('reserva escreve na lista de espera', async () => {
+  const db = contextoAutenticado(env, 'reserva_u');
+  await assertSucceeds(
+    setDoc(doc(db, 'festa_socios_espera/abc123'), {
+      ocupante: 'Fulano',
+      categoria: 'comfort',
+      tier: 'prata',
+      pct: 30,
+    }),
+  );
+});
+
+test('reserva NÃO lê clientes (menor privilégio: só hospedagem)', async () => {
+  await semRegras(env, async (db) => {
+    await setDoc(doc(db, 'clientes/lead1'), {
+      nome: 'Lead',
+      fase: 'prospeccao',
+      vendedorId: 'vendedor_a',
+    });
+  });
+  const db = contextoAutenticado(env, 'reserva_u');
+  await assertFails(getDoc(doc(db, 'clientes/lead1')));
 });

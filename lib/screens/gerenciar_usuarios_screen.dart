@@ -25,8 +25,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
 
   // Super admin pode atribuir qualquer perfil; admin vê todos exceto super admin
   List<String> get _perfisDisponiveis => _isSuperAdmin
-      ? ['super admin', 'admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao']
-      : ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao'];
+      ? ['super admin', 'admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao', 'reserva']
+      : ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao', 'reserva'];
 
   // ── Build principal ───────────────────────────────────────────────────────
   @override
