@@ -126,4 +126,65 @@ void main() {
       expect(doc.data()?['statusMensagem'], 'enviada_com_resposta');
     });
   });
+
+  group('FirestoreService.adicionarInteracao — data retroativa', () {
+    late FakeFirebaseFirestore db;
+    late FirestoreService service;
+
+    setUp(() async {
+      db = FakeFirebaseFirestore();
+      service = FirestoreService(
+        db: db,
+        auth: MockFirebaseAuth(
+          signedIn: true,
+          mockUser: MockUser(uid: 'vendedor_a', displayName: 'Vendedor A'),
+        ),
+      );
+      await db.collection('usuarios').doc('vendedor_a').set({
+        'nome': 'Vendedor A',
+        'perfil': 'vendedor',
+      });
+      await db.collection('clientes').doc('lead1').set({
+        'nome': 'Lead Teste',
+        'fase': 'prospeccao',
+      });
+    });
+
+    test('persiste a dataInteracao informada (não sobrescreve com "agora")',
+        () async {
+      final dataAntiga = DateTime(2025, 11, 3, 10, 0);
+      await service.adicionarInteracao(
+        'lead1',
+        Interacao(
+          nota: 'Conversa antiga importada do WhatsApp',
+          canal: Canal.whatsapp,
+          houveResposta: true,
+          dataInteracao: dataAntiga,
+        ),
+      );
+
+      final snap =
+          await db.collection('clientes').doc('lead1').collection('interacoes').get();
+      expect(snap.docs.length, 1);
+      final ts = snap.docs.first.data()['dataInteracao'] as Timestamp;
+      expect(ts.toDate(), dataAntiga);
+    });
+
+    test('ultimoContato reflete a data informada na interação', () async {
+      final dataAntiga = DateTime(2025, 11, 3, 10, 0);
+      await service.adicionarInteracao(
+        'lead1',
+        Interacao(
+          nota: 'Conversa antiga',
+          canal: Canal.whatsapp,
+          houveResposta: false,
+          dataInteracao: dataAntiga,
+        ),
+      );
+
+      final doc = await db.collection('clientes').doc('lead1').get();
+      final ts = doc.data()?['ultimoContato'] as Timestamp;
+      expect(ts.toDate(), dataAntiga);
+    });
+  });
 }

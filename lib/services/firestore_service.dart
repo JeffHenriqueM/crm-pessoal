@@ -593,7 +593,8 @@ class FirestoreService {
     final dados = interacao.toFirestore();
     dados['autorId']       = _currentUserId;
     dados['autorNome']     = _currentUserName;
-    dados['dataInteracao'] = FieldValue.serverTimestamp();
+    // `dataInteracao` já vem de toFirestore() — respeita a data informada (pode
+    // ser retroativa). `criadoEm` é a hora real do registro (auditoria).
     dados['criadoEm']      = FieldValue.serverTimestamp();
 
     final clienteRef = _db.collection(_colClientes).doc(clienteId);
@@ -602,7 +603,8 @@ class FirestoreService {
       clienteRef.update({
         'interaction_count': FieldValue.increment(1),
         // Marca a data do último contato real (base do "Risco de Silêncio").
-        'ultimoContato': FieldValue.serverTimestamp(),
+        // Usa a data informada na interação (retroativa, se for o caso).
+        'ultimoContato': Timestamp.fromDate(interacao.dataInteracao),
         // Registrar interação conta como mensagem enviada: tira o badge
         // vermelho "Msg. não enviada". Com resposta → encerra; sem resposta
         // → "aguardando resposta".

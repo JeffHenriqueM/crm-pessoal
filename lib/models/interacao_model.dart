@@ -104,6 +104,8 @@ class Interacao {
   Map<String, dynamic> toFirestore() => {
     if (titulo != null && titulo!.isNotEmpty) 'titulo': titulo,
     'nota':          nota,
+    // Data real da interação (pode ser retroativa: registrar conversa antiga).
+    'dataInteracao': Timestamp.fromDate(dataInteracao),
     'canal':         canal.valor,
     'modalidade':    modalidade.valor,
     'houveResposta': houveResposta,

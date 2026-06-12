@@ -832,6 +832,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     var canalSelecionado = interacao?.canal ?? Canal.whatsapp;
     var modalidadeSelecionada = interacao?.modalidade ?? Modalidade.online;
     var houveResposta = interacao?.houveResposta ?? false;
+    // Data/hora real da interação — permite registrar conversas anteriores.
+    var dataInteracao = interacao?.dataInteracao ?? DateTime.now();
     // Próximo contato sugerido ao registrar (tira o lead do "em atraso").
     // Só ao registrar uma interação nova — não ao editar uma existente.
     DateTime? proxContato =
@@ -885,6 +887,45 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                           visualDensity: VisualDensity.compact,
                         );
                       }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Data e hora da interação ───────────────────────────
+                    Text('Data e hora',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(ctx).colorScheme.primary)),
+                    const SizedBox(height: 6),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.schedule, size: 18),
+                      label: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(DateFormat('dd/MM/yyyy · HH:mm')
+                            .format(dataInteracao)),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44)),
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: dataInteracao,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now()
+                              .add(const Duration(days: 1)),
+                        );
+                        if (d == null || !ctx.mounted) return;
+                        final t = await showTimePicker(
+                          context: ctx,
+                          initialTime: TimeOfDay.fromDateTime(dataInteracao),
+                        );
+                        setStateDialog(() => dataInteracao = DateTime(
+                            d.year,
+                            d.month,
+                            d.day,
+                            t?.hour ?? dataInteracao.hour,
+                            t?.minute ?? dataInteracao.minute));
+                      },
                     ),
                     const SizedBox(height: 14),
 
@@ -1095,7 +1136,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       ? null
                       : tituloCtrl.text.trim(),
                   nota: notaCtrl.text.trim(),
-                  dataInteracao: interacao?.dataInteracao ?? DateTime.now(),
+                  dataInteracao: dataInteracao,
                   canal: canalSelecionado,
                   modalidade: modalidadeSelecionada,
                   houveResposta: houveResposta,
