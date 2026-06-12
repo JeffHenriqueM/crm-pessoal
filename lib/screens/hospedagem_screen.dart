@@ -17,6 +17,7 @@ import '../models/festa_regras.dart';
 import '../services/festa_pdf.dart';
 import '../services/firestore_service.dart';
 import '../utils/url_launcher_service.dart';
+import '../utils/whatsapp_modelos.dart';
 import '../widgets/esolution_button.dart';
 
 const String _periodoFesta = '19 a 23 de julho';
@@ -154,10 +155,19 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     return (tel != null && tel.isNotEmpty) ? tel : null;
   }
 
-  Future<void> _abrirWhatsApp(BuildContext context, String telefone) async {
+  Future<void> _abrirWhatsApp(BuildContext context, String telefone,
+      {String nome = ''}) async {
     final messenger = ScaffoldMessenger.of(context);
+    // Antes de abrir, oferece os modelos de mensagem (ou "sem mensagem").
+    final escolha = await escolherMensagemWhatsApp(
+      context,
+      nome: nome,
+      fs: _service,
+    );
+    if (escolha == null) return; // usuário cancelou
     try {
-      await UrlLauncherService().abrirWhatsApp(telefone);
+      await UrlLauncherService().abrirWhatsApp(telefone,
+          mensagem: escolha.texto.isEmpty ? null : escolha.texto);
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Não foi possível abrir o WhatsApp.')),
@@ -826,7 +836,10 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () => _abrirWhatsApp(context, telefone),
+                  onPressed: () => _abrirWhatsApp(context, telefone,
+                      nome: (o?.ocupante ?? '')
+                          .replaceFirst(RegExp(r'^\*'), '')
+                          .trim()),
                   icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
                   label: const Text('Abrir WhatsApp'),
                   style: FilledButton.styleFrom(
