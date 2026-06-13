@@ -164,7 +164,11 @@ List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
     // DateTime tipado, ou string MM/DD/YYYY (CSV).
     DateTime? parseData(int i) {
       final v = bruto(i);
-      if (v is DateTime) return v;
+      // Trunca a hora: a Central exporta o serial com fração de tempo (ex.:
+      // 46232.875 = 21:00, 46179.0004 = 00:00:35). Esses campos são datas de
+      // calendário — manter a hora empurra a data para o dia seguinte ao
+      // comparar/gravar em UTC e gera falsas "alterações" no import.
+      if (v is DateTime) return DateTime(v.year, v.month, v.day);
       if (v is num) return _serialExcelParaData(v);
       final s = (v?.toString() ?? '').trim();
       if (s.isEmpty) return null;
@@ -180,7 +184,7 @@ List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
     // Datas de nascimento: serial do Excel, DateTime, ou string DD/MM/YYYY.
     DateTime? parseDataNasc(int i) {
       final v = bruto(i);
-      if (v is DateTime) return v;
+      if (v is DateTime) return DateTime(v.year, v.month, v.day); // trunca hora
       if (v is num) return _serialExcelParaData(v);
       final s = (v?.toString() ?? '').trim();
       if (s.isEmpty) return null;

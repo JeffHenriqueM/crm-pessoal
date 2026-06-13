@@ -205,6 +205,28 @@ void main() {
       expect(c.dataContrato?.day, 1);
     });
 
+    test('data com hora embutida (serial .875 = 21:00) é truncada para o dia', () {
+      // A Central exporta vencimentos com fração de tempo no serial, que o
+      // pacote excel decodifica como DateTimeCellValue às 21:00. Manter a hora
+      // empurrava a data para o dia seguinte em UTC e gerava falsas alterações
+      // no import. O parser deve devolver a DATA pura (meia-noite).
+      final bytes = montarXlsx([
+        [TextCellValue('LOCALIZADOR'), TextCellValue('DATA PRÓXIMO VENCIMENTO')],
+        [
+          TextCellValue('LOC-1'),
+          DateTimeCellValue(
+              year: 2026, month: 7, day: 29, hour: 21, minute: 0, second: 0),
+        ],
+      ]);
+
+      final c = parsearExcelContratos(bytes).first;
+      expect(c.dataProximoVencimento?.year, 2026);
+      expect(c.dataProximoVencimento?.month, 7);
+      expect(c.dataProximoVencimento?.day, 29);
+      expect(c.dataProximoVencimento?.hour, 0); // hora truncada
+      expect(c.dataProximoVencimento?.minute, 0);
+    });
+
     test('serial inválido (negativo) preserva a data como nula', () {
       final bytes = montarXlsx([
         [TextCellValue('LOCALIZADOR'), TextCellValue('DATA')],
