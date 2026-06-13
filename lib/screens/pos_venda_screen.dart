@@ -1,6 +1,7 @@
 import 'dart:async';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -186,7 +187,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                 const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.upload_file_outlined),
-                  tooltip: 'Importar CSV',
+                  tooltip: 'Importar Excel/CSV',
                   onPressed: () => _abrirImportDialog(context),
                 ),
               ],
@@ -358,33 +359,51 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     );
   }
 
-  // ── Import CSV ─────────────────────────────────────────────────────────────
+  // ── Import Excel/CSV ───────────────────────────────────────────────────────
 
   void _abrirImportDialog(BuildContext context) {
-    final upload = html.FileUploadInputElement()..accept = '.csv';
+    final upload = html.FileUploadInputElement()..accept = '.xlsx,.csv';
     upload.click();
 
     upload.onChange.listen((_) {
       final file = upload.files?.first;
       if (file == null) return;
+      final nome = file.name;
+      final ehExcel = nome.toLowerCase().endsWith('.xlsx');
       final reader = html.FileReader();
-      reader.readAsText(file, 'UTF-8');
       reader.onLoadEnd.listen((_) {
-        final conteudo = reader.result as String?;
-        if (conteudo == null) return;
         // ignore: use_build_context_synchronously
-        if (context.mounted) _processarCsv(context, conteudo, file.name);
+        if (context.mounted) _processarArquivo(context, reader, nome, ehExcel);
       });
+      if (ehExcel) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file, 'UTF-8');
+      }
     });
   }
 
-  void _processarCsv(BuildContext context, String conteudo, String nomeArq) {
+  void _processarArquivo(
+      BuildContext context, html.FileReader reader, String nomeArq, bool ehExcel) {
     List<Contrato> contratos;
     try {
-      contratos = parsearCsvContratos(conteudo);
+      if (ehExcel) {
+        final res = reader.result;
+        final Uint8List bytes = res is ByteBuffer
+            ? res.asUint8List()
+            : res is Uint8List
+                ? res
+                : Uint8List.fromList(res as List<int>);
+        contratos = parsearExcelContratos(bytes);
+      } else {
+        contratos = parsearCsvContratos(reader.result as String? ?? '');
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao ler CSV: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Erro ao ler ${ehExcel ? 'Excel' : 'CSV'}: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -598,6 +617,7 @@ class _ImportPreviewDialog extends StatelessWidget {
     final quitados = contratos.where((c) => c.estaQuitado).length;
     final andamento = contratos.length - quitados;
     final comAtraso = contratos.where((c) => c.temAtrasos).length;
+    final revertidos = contratos.where((c) => c.revertido).length;
 
     return AlertDialog(
       title: const Text('Importar Contratos'),
@@ -614,6 +634,7 @@ class _ImportPreviewDialog extends StatelessWidget {
           _linha('Em andamento', '$andamento'),
           _linha('Quitados', '$quitados'),
           _linha('Com atraso', '$comAtraso', comAtraso > 0 ? Colors.red : null),
+          if (revertidos > 0) _linha('Revertidos', '$revertidos'),
           const SizedBox(height: 8),
           const Text(
             'Contratos com o mesmo localizador serão atualizados (merge).',

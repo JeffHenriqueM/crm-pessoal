@@ -1,38 +1,100 @@
+import 'dart:typed_data';
+
 import 'package:csv/csv.dart';
+import 'package:excel/excel.dart';
 
 import '../models/contrato_model.dart';
 
-/// Converte o conteúdo de um CSV de contratos em uma lista de [Contrato].
+/// Parsers de importação de contratos da Central de Contratos (Pós-venda).
 ///
-/// Função pura (sem dependência de UI/web), extraída de `PosVendaScreen` para
-/// ser testável. O comportamento é o mesmo do parser original.
+/// Dois formatos de entrada com o **mesmo** mapeamento de colunas → [Contrato]
+/// (ver [_mapearContratos]):
+/// - [parsearCsvContratos]: texto CSV (export "Salvar como CSV").
+/// - [parsearExcelContratos]: xlsx nativo (números e datas tipados — mais
+///   preciso; datas vêm como serial do Excel). Espelha o script Python
+///   `scripts/importar_contratos_central.py`.
+///
+/// O que é gravado/preservado no Firestore é decidido pelo `toFirestore()` do
+/// [Contrato] + `set(merge:true)` — ver `docs/importacao_contratos.md`.
+
+/// Converte o conteúdo de um CSV de contratos em uma lista de [Contrato].
 List<Contrato> parsearCsvContratos(String conteudo) {
   // Normaliza CRLF (export do Excel/Sheets) para evitar que o \r residual
   // desincronize o estado de quoting do CsvToListConverter.
   final normalizado = conteudo.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   final linhas = const CsvToListConverter(eol: '\n').convert(normalizado);
   if (linhas.isEmpty) throw Exception('Arquivo vazio');
+  return _mapearContratos(linhas);
+}
 
-  // Normaliza o cabeçalho removendo BOM e espaços
+/// Converte os bytes de um arquivo xlsx de contratos em uma lista de [Contrato].
+///
+/// Lê números e datas nativamente: dinheiro como `num` e datas como **serial do
+/// Excel** (dias desde 1899-12-30). Datas de nascimento podem vir como string
+/// `DD/MM/YYYY` ou como serial — ambos tratados em [_mapearContratos].
+List<Contrato> parsearExcelContratos(Uint8List bytes) {
+  final planilha = Excel.decodeBytes(bytes);
+  if (planilha.tables.isEmpty) throw Exception('Planilha vazia');
+
+  // Escolhe a aba que tem a coluna LOCALIZADOR; se nenhuma, a primeira.
+  Sheet? aba;
+  for (final t in planilha.tables.values) {
+    if (t.rows.isNotEmpty &&
+        t.rows.first.any((c) =>
+            _celulaParaValor(c).toString().trim().toLowerCase() ==
+            'localizador')) {
+      aba = t;
+      break;
+    }
+  }
+  aba ??= planilha.tables.values.first;
+
+  final linhas =
+      aba.rows.map((row) => row.map(_celulaParaValor).toList()).toList();
+  if (linhas.isEmpty) throw Exception('Planilha vazia');
+  return _mapearContratos(linhas);
+}
+
+/// Normaliza uma célula do xlsx para um valor Dart nativo (`String`, `num`,
+/// `bool` ou `DateTime`), base para os conversores de [_mapearContratos].
+dynamic _celulaParaValor(Data? cell) {
+  final v = cell?.value;
+  if (v == null) return '';
+  return switch (v) {
+    TextCellValue() => v.toString(),
+    IntCellValue() => v.value,
+    DoubleCellValue() => v.value,
+    BoolCellValue() => v.value,
+    DateCellValue() => DateTime(v.year, v.month, v.day),
+    DateTimeCellValue() =>
+      DateTime(v.year, v.month, v.day, v.hour, v.minute, v.second),
+    _ => v.toString(),
+  };
+}
+
+/// Converte um serial de data do Excel (dias desde 1899-12-30) em [DateTime].
+/// Seriais inválidos (negativos ou absurdos) viram `null` para preservar o
+/// campo no merge.
+DateTime? _serialExcelParaData(num serial) {
+  if (serial < 1 || serial > 80000) return null; // ~1900..~2119
+  return DateTime(1899, 12, 30).add(Duration(days: serial.floor()));
+}
+
+/// Núcleo compartilhado: recebe `linhas` (cabeçalho + dados, células já como
+/// valores nativos — `String` no CSV, tipadas no xlsx) e devolve os contratos.
+List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
+  // Normaliza o cabeçalho removendo BOM e espaços.
   final cabecalho = linhas.first
-      .map((e) => e.toString().trim().replaceAll('﻿', ''))
+      .map((e) => (e ?? '').toString().trim().replaceAll('﻿', ''))
       .toList();
 
-  int idx(String nome) {
-    final i = cabecalho.indexWhere(
-      (h) => h.toLowerCase().contains(nome.toLowerCase()),
-    );
-    return i; // -1 se não encontrado
-  }
+  int idx(String nome) =>
+      cabecalho.indexWhere((h) => h.toLowerCase().contains(nome.toLowerCase()));
 
   // Match exato (sem contains) — usado onde "contains" causaria ambiguidade,
   // ex.: "STATUS" casando com "STATUS ASSINATURA" ou "STATUS FINANCEIRO".
-  int idxExato(String nome) {
-    final i = cabecalho.indexWhere(
-      (h) => h.toLowerCase() == nome.toLowerCase(),
-    );
-    return i;
-  }
+  int idxExato(String nome) =>
+      cabecalho.indexWhere((h) => h.toLowerCase() == nome.toLowerCase());
 
   final iLoc = idxExato('LOCALIZADOR');
   if (iLoc < 0) throw Exception('Coluna LOCALIZADOR não encontrada');
@@ -43,59 +105,77 @@ List<Contrato> parsearCsvContratos(String conteudo) {
     final row = linhas[r];
     if (row.isEmpty) continue;
 
-    String cel(int i) =>
-        i >= 0 && i < row.length ? row[i].toString().trim() : '';
+    dynamic bruto(int i) => (i >= 0 && i < row.length) ? row[i] : null;
+
+    String cel(int i) {
+      final v = bruto(i);
+      return v == null ? '' : v.toString().trim();
+    }
+
     double dbl(int i) {
-      final s = cel(i).replaceAll('.', '').replaceAll(',', '.');
-      return double.tryParse(s) ?? 0.0;
+      final v = bruto(i);
+      if (v is num) return v.toDouble(); // xlsx: número nativo
+      final s = (v?.toString() ?? '').trim();
+      if (s.isEmpty) return 0.0;
+      // CSV: formato BR "1.234,56" → 1234.56
+      return double.tryParse(s.replaceAll('.', '').replaceAll(',', '.')) ?? 0.0;
     }
 
     final localizador = cel(iLoc);
     if (localizador.isEmpty || localizador.startsWith('Qtd:')) continue;
 
+    // Datas de contrato/quitação/vencimento: serial do Excel (xlsx),
+    // DateTime tipado, ou string MM/DD/YYYY (CSV).
     DateTime? parseData(int i) {
-      final s = cel(i);
+      final v = bruto(i);
+      if (v is DateTime) return v;
+      if (v is num) return _serialExcelParaData(v);
+      final s = (v?.toString() ?? '').trim();
       if (s.isEmpty) return null;
-      try {
-        // MM/DD/YYYY ou DD/MM/YYYY
-        final partes = s.split('/');
-        if (partes.length == 3) {
-          return DateTime(
-            int.parse(partes[2]),
-            int.parse(partes[0]),
-            int.parse(partes[1]),
-          );
-        }
-      } catch (_) {}
+      final p = s.split('/');
+      if (p.length == 3) {
+        try {
+          return DateTime(int.parse(p[2]), int.parse(p[0]), int.parse(p[1]));
+        } catch (_) {}
+      }
       return null;
     }
 
+    // Datas de nascimento: serial do Excel, DateTime, ou string DD/MM/YYYY.
     DateTime? parseDataNasc(int i) {
-      final s = cel(i);
+      final v = bruto(i);
+      if (v is DateTime) return v;
+      if (v is num) return _serialExcelParaData(v);
+      final s = (v?.toString() ?? '').trim();
       if (s.isEmpty) return null;
-      try {
-        // DD/MM/YYYY
-        final partes = s.split('/');
-        if (partes.length == 3) {
-          return DateTime(
-            int.parse(partes[2]),
-            int.parse(partes[1]),
-            int.parse(partes[0]),
-          );
-        }
-      } catch (_) {}
+      final p = s.split('/');
+      if (p.length == 3) {
+        try {
+          return DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+        } catch (_) {}
+      }
       return null;
     }
 
     final dataNasc1 = parseDataNasc(idx('DATA NASCIMENTO CESSIONÁRIO 1'));
     final dataNasc2 = parseDataNasc(idx('DATA NASCIMENTO CESSIONÁRIO 2'));
 
+    // Reversão de projeto: lida da planilha (REVERTIDO / ORIGEM REVERSÃO).
+    final revertido = const ['sim', 'true', '1', 'verdadeiro']
+        .contains(cel(idx('REVERTIDO')).toLowerCase());
+    final origemRaw = cel(idx('ORIGEM REVERSÃO'));
+    final origemReversao =
+        (revertido && origemRaw.isNotEmpty && origemRaw != '0')
+            ? origemRaw
+            : null;
+
+    final codigo = cel(idxExato('CÓDIGO'));
+
     contratos.add(
       Contrato(
         localizador: localizador,
         localizadorAtendimento: cel(idx('LOCALIZADOR ATENDIMENTO')),
-        codigoContrato:
-            cel(idxExato('CÓDIGO')).isEmpty ? null : cel(idxExato('CÓDIGO')),
+        codigoContrato: codigo.isEmpty ? null : codigo,
         dataContrato: parseData(idxExato('DATA')),
         nomeComprador: cel(idx('CESSIONÁRIO 1')),
         cpfComprador: cel(idx('CPF/CNPJ cessionário 1')),
@@ -104,9 +184,8 @@ List<Contrato> parsearCsvContratos(String conteudo) {
         dataNascimentoComprador: dataNasc1,
         diaNascimentoComprador: dataNasc1?.day,
         mesNascimentoComprador: dataNasc1?.month,
-        nomeComprador2: cel(idx('CESSIONÁRIO 2')).isEmpty
-            ? null
-            : cel(idx('CESSIONÁRIO 2')),
+        nomeComprador2:
+            cel(idx('CESSIONÁRIO 2')).isEmpty ? null : cel(idx('CESSIONÁRIO 2')),
         cpfComprador2: cel(idx('CPF/CNPJ cessionário 2')).isEmpty
             ? null
             : cel(idx('CPF/CNPJ cessionário 2')),
@@ -131,8 +210,11 @@ List<Contrato> parsearCsvContratos(String conteudo) {
         imovel: cel(idx('IMÓVEL')),
         produto: cel(idx('PRODUTO')),
         cota: cel(idx('COTA')),
+        revertido: revertido,
+        origemReversao: origemReversao,
         // idxExato evita que "STATUS" case "STATUS ASSINATURA"/"STATUS FINANCEIRO"
-        status: cel(idxExato('STATUS')).isEmpty ? 'Ativo' : cel(idxExato('STATUS')),
+        status:
+            cel(idxExato('STATUS')).isEmpty ? 'Ativo' : cel(idxExato('STATUS')),
         statusFinanceiro: cel(idxExato('STATUS FINANCEIRO')).isEmpty
             ? 'Em andamento'
             : cel(idxExato('STATUS FINANCEIRO')),
@@ -149,7 +231,8 @@ List<Contrato> parsearCsvContratos(String conteudo) {
         captador: cel(idx('CAPTADOR')),
         vendedorLiner: cel(idx('VENDEDOR LINER')),
         pontoCapatcao: cel(idx('PONTO DE CAPTAÇÃO')),
-        statusAssinatura: StatusAssinatura.fromCsvLabel(cel(idx('STATUS ASSINATURA'))),
+        statusAssinatura:
+            StatusAssinatura.fromCsvLabel(cel(idx('STATUS ASSINATURA'))),
       ),
     );
   }

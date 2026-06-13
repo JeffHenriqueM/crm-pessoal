@@ -13,7 +13,9 @@ sempre que surgir uma nova regra/decisão.
 ## Como rodar
 Dois caminhos equivalentes (mesmo resultado, ambos por **merge** que preserva os campos nossos):
 
-1. **In-app** (Pós-venda → importar): aceita **CSV** (texto). Use "Salvar como CSV" no Excel.
+1. **In-app** (Pós-venda → importar): aceita **Excel (.xlsx)** direto **ou CSV**. O
+   xlsx é o caminho recomendado — lê números e datas nativamente (datas como serial
+   do Excel), igual ao script. O CSV continua funcionando ("Salvar como CSV").
 2. **Script** (aceita **xlsx** direto, mais preciso com números/datas):
    ```bash
    python3 scripts/importar_contratos_central.py "<arquivo.xlsx>"            # dry-run (não grava)
@@ -66,12 +68,14 @@ A planilha tem `VALOR INTEGRALIZADO EFETIVO` / `PERCENTUAL INTEGRALIZADO EFETIVO
 uma métrica alternativa do sistema de origem (em geral **menor** que a base) e **não**
 representam a correção do quitado. O import não usa essas colunas.
 
-### 3. `revertido` / `origemReversao` — lidos do xlsx (o parser in-app não lê)
-O parser de CSV in-app (`contrato_csv_parser.dart`) **não preenche** `revertido`/
-`origemReversao` (grava sempre `false`). O **script** lê as colunas `REVERTIDO`/
-`ORIGEM REVERSÃO` corretamente (369 revertidos no import de 12/06). 
-> ⚠️ Pendência: alinhar o parser in-app para também ler essas colunas (evita que um
-> import via CSV zere o `revertido`).
+### 3. `revertido` / `origemReversao` — lidos da planilha (in-app e script)
+Tanto o **script** quanto o **parser in-app** (`contrato_csv_parser.dart`, CSV e xlsx)
+leem as colunas `REVERTIDO` / `ORIGEM REVERSÃO` (369 revertidos no import de 12/06).
+Regra (igual nos dois): `revertido` é true quando a célula é `sim`/`true`/`1`/
+`verdadeiro` (ou um booleano verdadeiro no xlsx); `origemReversao` só é gravada se
+`revertido` e o valor não for vazio nem `0`.
+> ✅ Resolvido: antes o parser in-app gravava `revertido = false` sempre e zerava os
+> revertidos num import. Agora ambos os caminhos preservam a reversão.
 
 ## Observações de formato (xlsx vs CSV)
 - No **xlsx**, dinheiro vem como número (`9084.43`) e datas como **serial do Excel**

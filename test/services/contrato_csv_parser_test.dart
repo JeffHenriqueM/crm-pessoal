@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:crm_pessoal/services/contrato_csv_parser.dart';
@@ -96,6 +99,129 @@ void main() {
         );
       },
     );
+  });
+
+  group('parsearCsvContratos — reversão (REVERTIDO / ORIGEM REVERSÃO)', () {
+    test('lê revertido=true e origemReversao da planilha', () {
+      const csv = 'LOCALIZADOR,CESSIONÁRIO 1,REVERTIDO,ORIGEM REVERSÃO\n'
+          'LOC-1,Maria,Sim,LOC-ANTIGO\n';
+
+      final c = parsearCsvContratos(csv).first;
+
+      expect(c.revertido, isTrue);
+      expect(c.origemReversao, 'LOC-ANTIGO');
+    });
+
+    test('revertido=false zera a origem (mesmo com coluna preenchida)', () {
+      const csv = 'LOCALIZADOR,CESSIONÁRIO 1,REVERTIDO,ORIGEM REVERSÃO\n'
+          'LOC-1,Maria,Não,LOC-ANTIGO\n';
+
+      final c = parsearCsvContratos(csv).first;
+
+      expect(c.revertido, isFalse);
+      expect(c.origemReversao, isNull);
+    });
+
+    test('sem coluna REVERTIDO → false (não quebra)', () {
+      const csv = 'LOCALIZADOR,CESSIONÁRIO 1\nLOC-1,Maria\n';
+      final c = parsearCsvContratos(csv).first;
+      expect(c.revertido, isFalse);
+      expect(c.origemReversao, isNull);
+    });
+  });
+
+  group('parsearExcelContratos — xlsx nativo', () {
+    /// Monta um xlsx em memória com cabeçalho + linhas e devolve os bytes.
+    Uint8List montarXlsx(List<List<CellValue?>> linhas) {
+      final excel = Excel.createExcel();
+      final aba = excel['Contratos'];
+      for (final linha in linhas) {
+        aba.appendRow(linha);
+      }
+      // Remove a aba padrão vazia ('Sheet1') para não confundir a seleção.
+      if (excel.tables.containsKey('Sheet1')) excel.delete('Sheet1');
+      return Uint8List.fromList(excel.encode()!);
+    }
+
+    test('mapeia números, datas (serial e tipada), texto e reversão', () {
+      final bytes = montarXlsx([
+        [
+          TextCellValue('LOCALIZADOR'),
+          TextCellValue('CESSIONÁRIO 1'),
+          TextCellValue('DATA'),
+          TextCellValue('VALOR INTEGRALIZADO'),
+          TextCellValue('PERCENTUAL INTEGRALIZADO'),
+          TextCellValue('STATUS FINANCEIRO'),
+          TextCellValue('REVERTIDO'),
+          TextCellValue('ORIGEM REVERSÃO'),
+          TextCellValue('DATA NASCIMENTO CESSIONÁRIO 1'),
+        ],
+        [
+          TextCellValue('4373'),
+          TextCellValue('MARIA SILVA'),
+          DateCellValue(year: 2026, month: 6, day: 13),
+          DoubleCellValue(9084.43),
+          DoubleCellValue(0),
+          TextCellValue('Quitado'),
+          BoolCellValue(true),
+          TextCellValue('LOC-ANTIGO'),
+          TextCellValue('15/03/1990'),
+        ],
+      ]);
+
+      final contratos = parsearExcelContratos(bytes);
+
+      expect(contratos, hasLength(1));
+      final c = contratos.first;
+      expect(c.localizador, '4373');
+      expect(c.nomeComprador, 'MARIA SILVA');
+      expect(c.valorIntegralizado, 9084.43);
+      expect(c.dataContrato?.year, 2026);
+      expect(c.dataContrato?.month, 6);
+      expect(c.dataContrato?.day, 13);
+      expect(c.dataNascimentoComprador?.year, 1990);
+      expect(c.dataNascimentoComprador?.month, 3);
+      expect(c.dataNascimentoComprador?.day, 15);
+      // Quitado com 0% integralizado → percentualEfetivo = 100 (regra de negócio).
+      expect(c.estaQuitado, isTrue);
+      expect(c.percentualEfetivo, 100);
+      expect(c.revertido, isTrue);
+      expect(c.origemReversao, 'LOC-ANTIGO');
+    });
+
+    test('DATA como serial do Excel converte para a data correta', () {
+      // Serial 44197 = 2021-01-01 (referência conhecida do Excel).
+      final bytes = montarXlsx([
+        [TextCellValue('LOCALIZADOR'), TextCellValue('DATA')],
+        [TextCellValue('LOC-1'), DoubleCellValue(44197)],
+      ]);
+
+      final c = parsearExcelContratos(bytes).first;
+
+      expect(c.dataContrato?.year, 2021);
+      expect(c.dataContrato?.month, 1);
+      expect(c.dataContrato?.day, 1);
+    });
+
+    test('serial inválido (negativo) preserva a data como nula', () {
+      final bytes = montarXlsx([
+        [TextCellValue('LOCALIZADOR'), TextCellValue('DATA')],
+        [TextCellValue('LOC-1'), DoubleCellValue(-693593)],
+      ]);
+
+      final c = parsearExcelContratos(bytes).first;
+      expect(c.dataContrato, isNull);
+    });
+
+    test('número como texto BR ("1.234,56") ainda é parseado', () {
+      final bytes = montarXlsx([
+        [TextCellValue('LOCALIZADOR'), TextCellValue('VALOR FINANCIADO')],
+        [TextCellValue('LOC-1'), TextCellValue('1.234,56')],
+      ]);
+
+      final c = parsearExcelContratos(bytes).first;
+      expect(c.valorFinanciado, 1234.56);
+    });
   });
 
   group('parsearCsvContratos — terminador de linha e rodapé (export real)', () {
