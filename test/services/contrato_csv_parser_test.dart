@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -221,6 +223,42 @@ void main() {
 
       final c = parsearExcelContratos(bytes).first;
       expect(c.valorFinanciado, 1234.56);
+    });
+
+    test('células numéricas vazias (<v></v>) não quebram a importação', () {
+      // O export real da Central grava células numéricas vazias como <v></v>,
+      // que faz num.parse('') estourar no leitor de xlsx. Aqui reproduzimos
+      // isso esvaziando o <v> de uma célula e conferimos que parsearExcel
+      // sanitiza e lê normalmente.
+      final limpo = montarXlsx([
+        [
+          TextCellValue('LOCALIZADOR'),
+          TextCellValue('VALOR INTEGRALIZADO'),
+          TextCellValue('EXTRA'),
+        ],
+        [TextCellValue('LOC-1'), DoubleCellValue(1234), IntCellValue(999999)],
+      ]);
+
+      // Esvazia o <v> da célula EXTRA (999999) → simula o bug do export.
+      final zip = ZipDecoder().decodeBytes(limpo);
+      final saida = Archive();
+      for (final f in zip.files) {
+        if (f.isFile && f.name.startsWith('xl/worksheets/')) {
+          final xml = utf8
+              .decode(f.content as List<int>)
+              .replaceAll('<v>999999</v>', '<v></v>');
+          final d = utf8.encode(xml);
+          saida.addFile(ArchiveFile(f.name, d.length, d));
+        } else {
+          saida.addFile(f);
+        }
+      }
+      final corrompido = Uint8List.fromList(ZipEncoder().encode(saida)!);
+
+      final contratos = parsearExcelContratos(corrompido);
+      expect(contratos, hasLength(1));
+      expect(contratos.first.localizador, 'LOC-1');
+      expect(contratos.first.valorIntegralizado, 1234);
     });
   });
 

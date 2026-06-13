@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart';
 
@@ -33,7 +35,7 @@ List<Contrato> parsearCsvContratos(String conteudo) {
 /// Excel** (dias desde 1899-12-30). Datas de nascimento podem vir como string
 /// `DD/MM/YYYY` ou como serial — ambos tratados em [_mapearContratos].
 List<Contrato> parsearExcelContratos(Uint8List bytes) {
-  final planilha = Excel.decodeBytes(bytes);
+  final planilha = Excel.decodeBytes(_xlsxSanitizado(bytes));
   if (planilha.tables.isEmpty) throw Exception('Planilha vazia');
 
   // Escolhe a aba que tem a coluna LOCALIZADOR; se nenhuma, a primeira.
@@ -53,6 +55,40 @@ List<Contrato> parsearExcelContratos(Uint8List bytes) {
       aba.rows.map((row) => row.map(_celulaParaValor).toList()).toList();
   if (linhas.isEmpty) throw Exception('Planilha vazia');
   return _mapearContratos(linhas);
+}
+
+/// Sanitiza os bytes de um xlsx antes de decodificar.
+///
+/// O export da Central grava milhares de células numéricas **vazias** como
+/// `<v></v>` (em vez de omitir a célula). O leitor de xlsx faz `num.parse('')`
+/// nesse valor e estoura `FormatException`, abortando a importação inteira.
+/// Aqui removemos os `<v>` vazios das planilhas (worksheets), de modo que a
+/// célula vira simplesmente vazia. Se algo falhar, devolve os bytes originais.
+Uint8List _xlsxSanitizado(Uint8List bytes) {
+  try {
+    final zip = ZipDecoder().decodeBytes(bytes);
+    final saida = Archive();
+    final vazioFechado = RegExp(r'<v[^>]*>\s*</v>');
+    final vazioAuto = RegExp(r'<v\s*/>');
+    for (final f in zip.files) {
+      if (f.isFile &&
+          f.name.startsWith('xl/worksheets/') &&
+          f.name.endsWith('.xml')) {
+        final xml = utf8
+            .decode(f.content as List<int>, allowMalformed: true)
+            .replaceAll(vazioFechado, '')
+            .replaceAll(vazioAuto, '');
+        final dados = utf8.encode(xml);
+        saida.addFile(ArchiveFile(f.name, dados.length, dados));
+      } else {
+        saida.addFile(f);
+      }
+    }
+    final out = ZipEncoder().encode(saida);
+    return out == null ? bytes : Uint8List.fromList(out);
+  } catch (_) {
+    return bytes; // melhor tentar decodificar o original do que falhar aqui
+  }
 }
 
 /// Normaliza uma célula do xlsx para um valor Dart nativo (`String`, `num`,
