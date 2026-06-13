@@ -387,6 +387,17 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   Future<void> _processarArquivo(BuildContext context, html.FileReader reader,
       String nomeArq, bool ehExcel) async {
     final messenger = ScaffoldMessenger.of(context);
+
+    // Loading desde o início: a leitura do .xlsx é síncrona e pesada para
+    // arquivos grandes; sem isso a tela fica congelada sem feedback.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _AnalisandoDialog(mensagem: 'Processando planilha…'),
+    );
+    // Cede um frame para o loading pintar antes do parse travar a UI thread.
+    await Future.delayed(const Duration(milliseconds: 50));
+
     List<Contrato> contratos;
     try {
       if (ehExcel) {
@@ -401,6 +412,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         contratos = parsearCsvContratos(reader.result as String? ?? '');
       }
     } catch (e) {
+      if (context.mounted) Navigator.of(context).pop(); // fecha o loading
       messenger.showSnackBar(
         SnackBar(
           content: Text('Erro ao ler ${ehExcel ? 'Excel' : 'CSV'}: $e'),
@@ -411,12 +423,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     }
 
     // Análise: compara a planilha com o estado atual da base e separa o que
-    // realmente muda. Mostra um loading enquanto carrega os contratos atuais.
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _AnalisandoDialog(),
-    );
+    // realmente muda. O mesmo loading segue aberto enquanto carrega a base.
     DiffImportContratos diff;
     try {
       final atuais = await _fs.getContratos();
@@ -636,20 +643,21 @@ class _ContratoCard extends StatelessWidget {
 // ── Loading enquanto a importação é analisada ────────────────────────────────
 
 class _AnalisandoDialog extends StatelessWidget {
-  const _AnalisandoDialog();
+  final String mensagem;
+  const _AnalisandoDialog({this.mensagem = 'Analisando alterações…'});
 
   @override
   Widget build(BuildContext context) {
-    return const AlertDialog(
+    return AlertDialog(
       content: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
+          const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 16),
-          Flexible(child: Text('Analisando alterações…')),
+          const SizedBox(width: 16),
+          Flexible(child: Text(mensagem)),
         ],
       ),
     );

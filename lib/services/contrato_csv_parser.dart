@@ -79,12 +79,15 @@ Uint8List _xlsxSanitizado(Uint8List bytes) {
             .replaceAll(vazioFechado, '')
             .replaceAll(vazioAuto, '');
         final dados = utf8.encode(xml);
-        saida.addFile(ArchiveFile(f.name, dados.length, dados));
+        saida.addFile(ArchiveFile(f.name, dados.length, dados)..compress = false);
       } else {
-        saida.addFile(f);
+        saida.addFile(f..compress = false);
       }
     }
-    final out = ZipEncoder().encode(saida);
+    // STORE (sem deflate): este zip é descartável, descomprimido logo a seguir
+    // pelo Excel.decodeBytes. Recomprimir só desperdiçaria a thread da UI —
+    // o deflate da planilha inteira é o que mais trava a importação na web.
+    final out = ZipEncoder().encode(saida, level: Deflate.NO_COMPRESSION);
     return out == null ? bytes : Uint8List.fromList(out);
   } catch (_) {
     return bytes; // melhor tentar decodificar o original do que falhar aqui
