@@ -16,6 +16,7 @@ import '../models/festa_espera.dart';
 import '../models/festa_regras.dart';
 import '../services/festa_pdf.dart';
 import '../services/firestore_service.dart';
+import 'ficha_contrato_screen.dart';
 import '../utils/url_launcher_service.dart';
 import '../utils/whatsapp_modelos.dart';
 import '../widgets/esolution_button.dart';
@@ -148,6 +149,9 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   // Atraso atual por localizador (valorAtrasado > 0) — deixa o sinal "ATRASADO"
   // do mapa ao vivo, refletindo a última importação de contratos.
   Map<String, bool> _atrasoPorContrato = const {};
+  // Contrato completo por localizador — alimenta o botão "Ver contrato" do
+  // modal do quarto (abre a ficha do contrato sem nova ida ao Firestore).
+  Map<String, Contrato> _contratoPorLocalizador = const {};
 
   @override
   void initState() {
@@ -173,6 +177,9 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
         _atrasoPorContrato = {
           for (final c in contratos) c.localizador: c.valorAtrasado > 0,
         };
+        _contratoPorLocalizador = {
+          for (final c in contratos) c.localizador: c,
+        };
       });
     } catch (e) {
       debugPrint('[Hospedagem] Falha ao carregar telefones: $e');
@@ -192,6 +199,13 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     final id = assoc?.contratoId;
     if (id == null) return null;
     return _esposaPorContrato[id];
+  }
+
+  /// Contrato vinculado ao quarto, se houver (para abrir a ficha do contrato).
+  Contrato? _contratoDoQuarto(FestaAssociacao? assoc) {
+    final id = assoc?.contratoId;
+    if (id == null) return null;
+    return _contratoPorLocalizador[id];
   }
 
   Future<void> _abrirWhatsApp(BuildContext context, String telefone,
@@ -622,6 +636,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     final o =
         ocupacaoEfetiva(q, assocs, atrasoPorContrato: _atrasoPorContrato);
     final telefone = _telefoneDoQuarto(assoc);
+    final contrato = _contratoDoQuarto(assoc);
     final autoTipo = (o?.ocupante.isNotEmpty ?? false)
         ? tipoEventoFesta(
             socio: o?.tier != null,
@@ -900,6 +915,28 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                   style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF25D366),
                       foregroundColor: Colors.white),
+                ),
+              ),
+            ],
+            if (contrato != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  // Fecha o modal e abre a ficha do contrato (tela cheia). Ao
+                  // voltar, a Hospedagem reaparece com filtros/expansão intactos
+                  // — o estado é preservado pela própria pilha de navegação.
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FichaContratoScreen(contrato: contrato),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.description_outlined, size: 18),
+                  label: const Text('Ver contrato'),
                 ),
               ),
             ],
