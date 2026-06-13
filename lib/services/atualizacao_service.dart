@@ -57,6 +57,29 @@ class AtualizacaoService {
     }
   }
 
-  /// Recarrega a página para carregar a nova versão.
-  void recarregar() => web.window.location.reload();
+  /// Recarrega a página **descartando os caches do app** antes de recarregar,
+  /// garantindo que a nova versão seja realmente carregada.
+  ///
+  /// Um `location.reload()` puro equivale a um Ctrl+R: o service worker do
+  /// Flutter (`flutter_service_worker.js`) continua servindo o `main.dart.js`
+  /// antigo do CacheStorage e o app não troca de versão. Aqui desregistramos o
+  /// service worker e limpamos o CacheStorage (efeito do Ctrl+Shift+R) e só
+  /// então recarregamos. Tudo best-effort: qualquer falha cai no reload comum.
+  Future<void> recarregar() async {
+    try {
+      final sw = web.window.navigator.serviceWorker;
+      final regs = (await sw.getRegistrations().toDart).toDart;
+      for (final reg in regs) {
+        await reg.unregister().toDart;
+      }
+    } catch (_) {/* navegador sem service worker ou bloqueado → segue */}
+    try {
+      final caches = web.window.caches;
+      final chaves = (await caches.keys().toDart).toDart;
+      for (final chave in chaves) {
+        await caches.delete(chave.toDart).toDart;
+      }
+    } catch (_) {/* sem CacheStorage → segue */}
+    web.window.location.reload();
+  }
 }
