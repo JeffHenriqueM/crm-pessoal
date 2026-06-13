@@ -2,6 +2,43 @@ import 'package:flutter/material.dart';
 
 import '../models/interacao_model.dart';
 
+/// Pede o texto da resposta do cliente (registrada depois da interação).
+/// Retorna o texto digitado, ou `null` se o usuário cancelar.
+Future<String?> pedirRespostaCliente(BuildContext context,
+    {String? inicial}) async {
+  final ctrl = TextEditingController(text: inicial ?? '');
+  return showDialog<String>(
+    context: context,
+    builder: (dctx) => AlertDialog(
+      title: const Text('Resposta do cliente'),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        maxLines: 4,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: const InputDecoration(
+          hintText: 'O que o cliente respondeu?',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dctx),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final t = ctrl.text.trim();
+            if (t.isEmpty) return;
+            Navigator.pop(dctx, t);
+          },
+          child: const Text('Salvar resposta'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Dialog reutilizável de "Nova Interação".
 ///
 /// Usado na ficha do contrato (FAB) e no fluxo de WhatsApp (aniversariantes /

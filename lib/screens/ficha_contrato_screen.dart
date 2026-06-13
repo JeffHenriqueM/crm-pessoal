@@ -105,6 +105,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
           _InteracoesTab(
             interacoes: _interacoes,
             onItemTap: (i) => _menuInteracao(i),
+            onRegistrarResposta: _registrarResposta,
           ),
         ],
       ),
@@ -229,6 +230,33 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
         );
       },
     );
+  }
+
+  /// Registra a resposta que o cliente deu DEPOIS de uma interação sem resposta.
+  /// Guarda o texto, marca houveResposta=true e carimba a data.
+  Future<void> _registrarResposta(Interacao interacao) async {
+    if (interacao.id == null) return;
+    final texto = await pedirRespostaCliente(context);
+    if (texto == null || !mounted) return;
+    final nova = interacao.copyWith(
+      respostaCliente: texto,
+      respostaEm: DateTime.now(),
+      houveResposta: true,
+    );
+    try {
+      await _fs.atualizarInteracaoContrato(widget.contrato.localizador, nova);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Resposta do cliente registrada.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível salvar a resposta: $e')),
+        );
+      }
+    }
   }
 
   void _menuInteracao(Interacao interacao) {
@@ -722,10 +750,12 @@ class _DadosTab extends StatelessWidget {
 class _InteracoesTab extends StatefulWidget {
   final List<Interacao> interacoes;
   final void Function(Interacao) onItemTap;
+  final void Function(Interacao) onRegistrarResposta;
 
   const _InteracoesTab({
     required this.interacoes,
     required this.onItemTap,
+    required this.onRegistrarResposta,
   });
 
   @override
@@ -740,6 +770,7 @@ class _InteracoesTabState extends State<_InteracoesTab> {
       interacoes: widget.interacoes,
       isNovo: false,
       onItemTap: widget.onItemTap,
+      onRegistrarResposta: widget.onRegistrarResposta,
     );
   }
 }

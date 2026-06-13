@@ -123,6 +123,12 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // Interações de contrato (subcoleção) — registradas no pós-venda.
+    // Regras NÃO cascateiam: a subcoleção precisa do seu próprio match.
+    match /contratos/{contratoId}/interacoes/{docId} {
+      allow read, write: if isAuth();
+    }
+
     // ── Contatos do embaixador (Recepção → Contatos/Tentativas) ───────────────
     // Leitura/escrita: qualquer autenticado (quem acessa a Recepção).
     match /contatos_embaixador/{docId} {

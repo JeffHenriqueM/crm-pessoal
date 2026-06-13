@@ -10,11 +10,17 @@ class FichaTimelineTab extends StatelessWidget {
   /// Chamado ao tocar em um item manual — o parent exibe o bottom sheet de opções.
   final void Function(Interacao interacao) onItemTap;
 
+  /// Chamado ao tocar em "Registrar resposta do cliente" num item que ainda
+  /// não teve resposta. Opcional — quando null, o atalho não aparece (ex.: na
+  /// criação de um cliente novo, antes de salvar).
+  final void Function(Interacao interacao)? onRegistrarResposta;
+
   const FichaTimelineTab({
     super.key,
     required this.interacoes,
     required this.isNovo,
     required this.onItemTap,
+    this.onRegistrarResposta,
   });
 
   @override
@@ -318,6 +324,67 @@ class FichaTimelineTab extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ],
+
+              // ── Resposta do cliente (registrada depois) ───────────────────
+              if (item.respostaCliente != null &&
+                  item.respostaCliente!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: item.canal.cor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: item.canal.cor.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.reply, size: 13, color: item.canal.cor),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Resposta do cliente',
+                                style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: item.canal.cor)),
+                            const SizedBox(height: 2),
+                            Text(
+                              item.respostaCliente!,
+                              style: TextStyle(
+                                  fontSize: 12, color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ]
+              // Atalho: registrar a resposta que chegou depois (só quando ainda
+              // não houve resposta e o item já está salvo).
+              else if (onRegistrarResposta != null &&
+                  !item.houveResposta &&
+                  item.id != null) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => onRegistrarResposta!(item),
+                    icon: const Icon(Icons.reply, size: 15),
+                    label: const Text('Registrar resposta do cliente'),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
                   ),
                 ),
               ],

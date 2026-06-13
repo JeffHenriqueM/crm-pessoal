@@ -1544,6 +1544,20 @@ class FirestoreService {
         .delete();
   }
 
+  /// Atualiza uma interação de contrato (ex.: registrar a resposta do cliente
+  /// que chegou depois). O id da interação precisa estar preenchido.
+  Future<void> atualizarInteracaoContrato(
+    String contratoId,
+    Interacao interacao,
+  ) async {
+    await _db
+        .collection(_colContratos)
+        .doc(contratoId)
+        .collection('interacoes')
+        .doc(interacao.id)
+        .update(interacao.toFirestore());
+  }
+
   /// Atualiza apenas o status de assinatura de um contrato.
   /// Quando o contrato entra no grupo "Formalizados" (transição a partir de um
   /// status não-formalizado), conta a formalização conseguida para o usuário

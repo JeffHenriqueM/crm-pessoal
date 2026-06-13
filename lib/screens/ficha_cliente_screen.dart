@@ -17,6 +17,7 @@ import '../utils/whatsapp_modelos.dart';
 import '../widgets/aba_negociacoes.dart';
 import '../widgets/ficha/ficha_dados_tab.dart';
 import '../widgets/ficha/ficha_timeline_tab.dart';
+import '../widgets/interacao_form_dialog.dart';
 
 final _moedaCompacta =
     NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 0);
@@ -1182,6 +1183,32 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     );
   }
 
+  /// Registra a resposta que o cliente deu DEPOIS de uma interação sem resposta.
+  /// Guarda o texto, marca houveResposta=true e carimba a data.
+  Future<void> _registrarRespostaInteracao(Interacao interacao) async {
+    final texto = await pedirRespostaCliente(context);
+    if (texto == null || !mounted) return;
+    final nova = interacao.copyWith(
+      respostaCliente: texto,
+      respostaEm: DateTime.now(),
+      houveResposta: true,
+    );
+    try {
+      await _service.atualizarInteracao(_clienteId!, nova);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Resposta do cliente registrada.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível salvar a resposta: $e')),
+        );
+      }
+    }
+  }
+
   void _mostrarOpcoesInteracao(Interacao interacao) {
     showModalBottomSheet(
       context: context,
@@ -1471,6 +1498,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
             interacoes: _interacoes,
             isNovo: _isNovo,
             onItemTap: _mostrarOpcoesInteracao,
+            onRegistrarResposta: _registrarRespostaInteracao,
           ),
 
           // ── Aba 2: Negociações ──────────────────────────────────────────────

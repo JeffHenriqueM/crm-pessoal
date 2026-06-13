@@ -83,6 +83,11 @@ class Interacao {
   final Modalidade modalidade;
   final bool houveResposta;
   final String? oQueCombinamos;
+  // Resposta do cliente registrada DEPOIS da interação (quando ela foi criada
+  // sem resposta). Preenchê-la marca houveResposta=true. respostaEm = quando
+  // foi registrada.
+  final String? respostaCliente;
+  final DateTime? respostaEm;
   final String? autorId;
   final String? autorNome;
 
@@ -95,11 +100,39 @@ class Interacao {
     this.modalidade = Modalidade.online,
     this.houveResposta = false,
     this.oQueCombinamos,
+    this.respostaCliente,
+    this.respostaEm,
     this.autorId,
     this.autorNome,
   });
 
   bool get isSistema => canal == Canal.sistema;
+
+  Interacao copyWith({
+    String? titulo,
+    String? nota,
+    DateTime? dataInteracao,
+    Canal? canal,
+    Modalidade? modalidade,
+    bool? houveResposta,
+    String? oQueCombinamos,
+    String? respostaCliente,
+    DateTime? respostaEm,
+  }) =>
+      Interacao(
+        id: id,
+        titulo: titulo ?? this.titulo,
+        nota: nota ?? this.nota,
+        dataInteracao: dataInteracao ?? this.dataInteracao,
+        canal: canal ?? this.canal,
+        modalidade: modalidade ?? this.modalidade,
+        houveResposta: houveResposta ?? this.houveResposta,
+        oQueCombinamos: oQueCombinamos ?? this.oQueCombinamos,
+        respostaCliente: respostaCliente ?? this.respostaCliente,
+        respostaEm: respostaEm ?? this.respostaEm,
+        autorId: autorId,
+        autorNome: autorNome,
+      );
 
   Map<String, dynamic> toFirestore() => {
     if (titulo != null && titulo!.isNotEmpty) 'titulo': titulo,
@@ -111,6 +144,9 @@ class Interacao {
     'houveResposta': houveResposta,
     if (oQueCombinamos != null && oQueCombinamos!.isNotEmpty)
       'oQueCombinamos': oQueCombinamos,
+    if (respostaCliente != null && respostaCliente!.isNotEmpty)
+      'respostaCliente': respostaCliente,
+    if (respostaEm != null) 'respostaEm': Timestamp.fromDate(respostaEm!),
   };
 
   factory Interacao.fromFirestore(DocumentSnapshot doc) {
@@ -146,6 +182,12 @@ class Interacao {
       oQueCombinamos: (data['oQueCombinamos'] as String?)?.isNotEmpty == true
           ? data['oQueCombinamos'] as String
           : data['proximoPasso'] as String?,
+      respostaCliente: (data['respostaCliente'] as String?)?.isNotEmpty == true
+          ? data['respostaCliente'] as String
+          : null,
+      respostaEm: data['respostaEm'] is Timestamp
+          ? (data['respostaEm'] as Timestamp).toDate()
+          : null,
       autorId: data['autorId'] as String?,
       autorNome: data['autorNome'] as String? ?? data['user_name'] as String?,
     );
