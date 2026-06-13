@@ -184,6 +184,11 @@ service cloud.firestore {
       allow read, write: if isAuth() && isHospedagem();
     }
 
+    // Confirmação de presença do hóspede na festa (sim/não), por quarto.
+    match /festa_socios_presencas/{numeroQuarto} {
+      allow read, write: if isAuth() && isHospedagem();
+    }
+
     // ── Leads do site/quiosque (Villamor Tambaba) ───────────────────────────
     // Gravados por páginas públicas (sem login) → 'create' liberado COM validação.
     // Leitura/edição só para gestores autenticados; exclusão só super admin.

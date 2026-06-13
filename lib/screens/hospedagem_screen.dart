@@ -5,6 +5,8 @@
 // cruzados com os contratos. Quem deve mudar de categoria recebe um SINAL DE
 // TROCA; o gestor valida (aprovar/recusar) e pode ASSOCIAR manualmente um
 // quarto a um contrato/sócio. Tudo persiste no Firestore.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../models/contrato_model.dart';
@@ -152,11 +154,24 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   // Contrato completo por localizador — alimenta o botão "Ver contrato" do
   // modal do quarto (abre a ficha do contrato sem nova ida ao Firestore).
   Map<String, Contrato> _contratoPorLocalizador = const {};
+  // Confirmação de presença na festa por quarto (true=Sim, false=Não, ausente=
+  // não perguntado). Alimentado ao vivo pela coleção festa_socios_presencas.
+  Map<String, bool> _presencaPorQuarto = const {};
+  StreamSubscription<Map<String, bool>>? _subPresencas;
 
   @override
   void initState() {
     super.initState();
     _carregarTelefones();
+    _subPresencas = _service.getPresencasFestaStream().listen((m) {
+      if (mounted) setState(() => _presencaPorQuarto = m);
+    });
+  }
+
+  @override
+  void dispose() {
+    _subPresencas?.cancel();
+    super.dispose();
   }
 
   Future<void> _carregarTelefones() async {
@@ -1002,6 +1017,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
               ],
               const SizedBox(height: 12),
               _blocoSugestao(context, q, o),
+              const SizedBox(height: 12),
+              _blocoPresenca(context, q.numero),
               if (o.flags.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Wrap(
@@ -1169,6 +1186,81 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Pergunta "Cliente confirmou a presença na festa?" com botões Sim/Não.
+  /// O estado vive na coleção festa_socios_presencas (por quarto); tocar no
+  /// botão já marcado limpa a resposta (volta a "não perguntado").
+  Widget _blocoPresenca(BuildContext context, String numeroQuarto) {
+    final cs = Theme.of(context).colorScheme;
+    bool? local = _presencaPorQuarto[numeroQuarto];
+    return StatefulBuilder(
+      builder: (context, setSheet) {
+        Future<void> definir(bool v) async {
+          final novo = (local == v) ? null : v; // toca de novo → limpa
+          setSheet(() => local = novo);
+          await _service.setPresencaFesta(numeroQuarto, novo);
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(Icons.celebration_outlined, size: 18, color: cs.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Cliente confirmou a presença na festa?',
+                      style: TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: local == true
+                      ? FilledButton.icon(
+                          onPressed: () => definir(true),
+                          icon: const Icon(Icons.check_circle, size: 18),
+                          label: const Text('Sim'),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: Colors.green),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: () => definir(true),
+                          icon: const Icon(Icons.check_circle_outline, size: 18),
+                          label: const Text('Sim'),
+                        ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: local == false
+                      ? FilledButton.icon(
+                          onPressed: () => definir(false),
+                          icon: const Icon(Icons.cancel, size: 18),
+                          label: const Text('Não'),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: () => definir(false),
+                          icon: const Icon(Icons.cancel_outlined, size: 18),
+                          label: const Text('Não'),
+                        ),
+                ),
+              ]),
+            ],
+          ),
+        );
+      },
     );
   }
 

@@ -132,6 +132,37 @@ test('vendedor NÃO lê a lista de espera', async () => {
   await assertFails(getDoc(doc(db, 'festa_socios_espera/abc123')));
 });
 
+// ── Confirmação de presença na festa (festa_socios_presencas) ───────────────
+
+test('pós-venda registra confirmação de presença', async () => {
+  const db = contextoAutenticado(env, 'posvenda');
+  await assertSucceeds(
+    setDoc(doc(db, 'festa_socios_presencas/151'), { confirmou: true }),
+  );
+});
+
+test('vendedor NÃO escreve confirmação de presença', async () => {
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertFails(
+    setDoc(doc(db, 'festa_socios_presencas/151'), { confirmou: true }),
+  );
+});
+
+test('vendedor NÃO lê confirmação de presença', async () => {
+  await semRegras(env, async (db) => {
+    await setDoc(doc(db, 'festa_socios_presencas/151'), { confirmou: true });
+  });
+  const db = contextoAutenticado(env, 'vendedor_a');
+  await assertFails(getDoc(doc(db, 'festa_socios_presencas/151')));
+});
+
+test('reserva registra confirmação de presença', async () => {
+  const db = contextoAutenticado(env, 'reserva_u');
+  await assertSucceeds(
+    setDoc(doc(db, 'festa_socios_presencas/151'), { confirmou: false }),
+  );
+});
+
 // ── Perfil 'reserva': acessa SOMENTE o módulo de Hospedagem ─────────────────
 
 test('reserva registra validação de troca', async () => {

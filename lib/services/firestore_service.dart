@@ -32,6 +32,7 @@ class FirestoreService {
   static const _colFestaValidacoes = 'festa_socios_validacoes';
   static const _colFestaAssociacoes = 'festa_socios_associacoes';
   static const _colFestaEspera = 'festa_socios_espera';
+  static const _colFestaPresencas = 'festa_socios_presencas';
 
   /// Permite injetar instâncias falsas em testes. Sem argumentos, usa as
   /// instâncias reais do Firebase (comportamento de produção inalterado).
@@ -115,6 +116,39 @@ class FirestoreService {
       'validadoPorId': _currentUserId,
       'associadoEm': FieldValue.serverTimestamp(),
     }));
+  }
+
+  // --- FESTA DOS SÓCIOS: confirmação de presença ---
+
+  /// Stream das confirmações de presença, indexadas pelo número do quarto.
+  /// `true` = confirmou, `false` = não vem; ausente = ainda não perguntado.
+  Stream<Map<String, bool>> getPresencasFestaStream() {
+    return _db.collection(_colFestaPresencas).snapshots().map((snap) {
+      final m = <String, bool>{};
+      for (final d in snap.docs) {
+        final v = d.data()['confirmou'];
+        if (v is bool) m[d.id] = v;
+      }
+      return m;
+    });
+  }
+
+  /// Registra (ou limpa) a confirmação de presença de um quarto.
+  /// [confirmou] = true/false; null remove (volta a "não perguntado").
+  Future<void> setPresencaFesta(String numeroQuarto, bool? confirmou) async {
+    final ref = _db.collection(_colFestaPresencas).doc(numeroQuarto);
+    if (confirmou == null) {
+      await ref.delete();
+      return;
+    }
+    await ref.set(
+      _flagTeste({
+        'confirmou': confirmou,
+        'registradoPorId': _currentUserId,
+        'registradoPorNome': _currentUserName,
+        'registradoEm': FieldValue.serverTimestamp(),
+      }),
+    );
   }
 
   /// Move (manualmente) o ocupante de [origem] para [destino].
