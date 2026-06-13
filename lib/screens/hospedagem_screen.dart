@@ -41,14 +41,33 @@ int _porNumero(QuartoFestaSocios a, QuartoFestaSocios b) =>
 
 /// Ocupação efetiva do quarto: associação manual (se houver) tem prioridade
 /// sobre o dado gerado automaticamente.
+///
+/// [atrasoPorContrato] (localizador → tem atraso) deixa o sinal "ATRASADO" **ao
+/// vivo**: quando informado e o quarto tem contrato vinculado, o atraso é
+/// recalculado a partir do `valorAtrasado` atual do contrato (atualizado pela
+/// importação), em vez do snapshot congelado na associação. Sem o mapa (ou para
+/// quartos sem vínculo), mantém o `a.atrasado` salvo.
 OcupacaoQuarto? ocupacaoEfetiva(
-    QuartoFestaSocios q, Map<String, FestaAssociacao> assocs) {
+    QuartoFestaSocios q, Map<String, FestaAssociacao> assocs,
+    {Map<String, bool> atrasoPorContrato = const {}}) {
   final a = assocs[q.numero];
   if (a == null) return ocupacaoFesta[q.numero];
   // Quarto esvaziado por uma movimentação manual → fica vago.
   if (a.vago) return null;
   final base = ocupacaoFesta[q.numero];
   final ocupante = a.ocupante.isNotEmpty ? a.ocupante : (base?.ocupante ?? '—');
+
+  // Atraso ao vivo: se conhecemos o status de algum contrato vinculado, usamos
+  // ele; senão, preservamos o snapshot da associação.
+  final ids = [
+    if ((a.contratoId ?? '').isNotEmpty) a.contratoId!,
+    ...a.contratosIds,
+  ];
+  final conhecidos = ids.where(atrasoPorContrato.containsKey).toList();
+  final atrasado = conhecidos.isEmpty
+      ? a.atrasado
+      : conhecidos.any((id) => atrasoPorContrato[id] == true);
+
   // Categoria definida manualmente (hóspede sem contrato)
   if (a.ehManual) {
     final acao = acaoFesta(categoriaKey(q.categoria), a.categoriaManual);
@@ -56,11 +75,11 @@ OcupacaoQuarto? ocupacaoEfetiva(
       ocupante: ocupante,
       tier: a.tier,
       pct: a.pct?.round(),
-      atrasado: a.atrasado,
+      atrasado: atrasado,
       acao: acao,
       recomendada: a.categoriaManual,
       confianca: 'manual',
-      flags: [if (a.atrasado) 'ATRASADO'],
+      flags: [if (atrasado) 'ATRASADO'],
     );
   }
   // Vínculo com contrato → recalcula pela regra
@@ -70,11 +89,11 @@ OcupacaoQuarto? ocupacaoEfetiva(
     ocupante: ocupante,
     tier: a.tier,
     pct: a.pct?.round(),
-    atrasado: a.atrasado,
+    atrasado: atrasado,
     acao: acao,
     recomendada: rec.categoria,
     confianca: 'manual',
-    flags: [...rec.flags, if (a.atrasado) 'ATRASADO'],
+    flags: [...rec.flags, if (atrasado) 'ATRASADO'],
   );
 }
 
@@ -126,6 +145,9 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   Map<String, String> _telefonePorContrato = const {};
   // Nome do cônjuge (comprador 2) por localizador — variável {esposa} nos modelos.
   Map<String, String> _esposaPorContrato = const {};
+  // Atraso atual por localizador (valorAtrasado > 0) — deixa o sinal "ATRASADO"
+  // do mapa ao vivo, refletindo a última importação de contratos.
+  Map<String, bool> _atrasoPorContrato = const {};
 
   @override
   void initState() {
@@ -147,6 +169,9 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
           for (final c in contratos)
             if ((c.nomeComprador2 ?? '').trim().isNotEmpty)
               c.localizador: c.nomeComprador2!.trim(),
+        };
+        _atrasoPorContrato = {
+          for (final c in contratos) c.localizador: c.valorAtrasado > 0,
         };
       });
     } catch (e) {
@@ -202,7 +227,9 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
 
   bool _passaFiltro(QuartoFestaSocios q, Map<String, FestaAssociacao> a) {
     if (!_soTrocas) return true;
-    return ocupacaoEfetiva(q, a)?.deveTrocar ?? false;
+    return ocupacaoEfetiva(q, a, atrasoPorContrato: _atrasoPorContrato)
+            ?.deveTrocar ??
+        false;
   }
 
   static int _tierRank(String? t) =>
@@ -217,9 +244,11 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     if (origem == destino) return;
     final qOrig = quartosFestaSocios.firstWhere((q) => q.numero == origem);
     final qDest = quartosFestaSocios.firstWhere((q) => q.numero == destino);
-    final oOrig = ocupacaoEfetiva(qOrig, assocs);
+    final oOrig =
+        ocupacaoEfetiva(qOrig, assocs, atrasoPorContrato: _atrasoPorContrato);
     if (oOrig == null) return;
-    final oDest = ocupacaoEfetiva(qDest, assocs);
+    final oDest =
+        ocupacaoEfetiva(qDest, assocs, atrasoPorContrato: _atrasoPorContrato);
     final assocOrig = assocs[origem];
 
     FestaAssociacao snap(
@@ -291,6 +320,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
       builder: (_) => _SeletorQuartoDestino(
         origem: '',
         associacoes: assocs,
+        atrasoPorContrato: _atrasoPorContrato,
         titulo: 'Colocar ${e.ocupante} em…',
       ),
     );
@@ -301,7 +331,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   Future<void> _colocarDaEspera(BuildContext context, FestaEspera e,
       String destino, Map<String, FestaAssociacao> assocs) async {
     final qDest = quartosFestaSocios.firstWhere((q) => q.numero == destino);
-    final oDest = ocupacaoEfetiva(qDest, assocs);
+    final oDest =
+        ocupacaoEfetiva(qDest, assocs, atrasoPorContrato: _atrasoPorContrato);
 
     FestaAssociacao base({String? nome, String? tier, double? pct, bool aj = true}) =>
         FestaAssociacao(
@@ -364,7 +395,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
       for (final entry in _porCategoria.entries) {
         final linhas = <LinhaQuarto>[];
         for (final q in entry.value) {
-          final o = ocupacaoEfetiva(q, assocs);
+          final o =
+              ocupacaoEfetiva(q, assocs, atrasoPorContrato: _atrasoPorContrato);
           if (o == null || o.ocupante.isEmpty) continue;
           final tipoLinha = assocs[q.numero]?.tipo ??
               tipoEventoFesta(
@@ -479,7 +511,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                       snapAssoc.data ?? const <String, FestaAssociacao>{};
                   var trocas = 0, semContrato = 0, decididas = 0;
                   for (final q in quartosFestaSocios) {
-                    final o = ocupacaoEfetiva(q, assocs);
+                    final o = ocupacaoEfetiva(q, assocs,
+                        atrasoPorContrato: _atrasoPorContrato);
                     if (o == null) continue;
                     if (o.deveTrocar) {
                       trocas++;
@@ -546,6 +579,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                                       .toList(),
                                   validacoes: val,
                                   associacoes: assocs,
+                                  atrasoPorContrato: _atrasoPorContrato,
                                   inicialExpandida: _todasExpandidas,
                                   onTapQuarto: (q) => _abrirDetalhe(
                                       context, q, val[q.numero], assocs),
@@ -585,7 +619,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
       FestaValidacao? val, Map<String, FestaAssociacao> assocs) {
     final cs = Theme.of(context).colorScheme;
     final assoc = assocs[q.numero];
-    final o = ocupacaoEfetiva(q, assocs);
+    final o =
+        ocupacaoEfetiva(q, assocs, atrasoPorContrato: _atrasoPorContrato);
     final telefone = _telefoneDoQuarto(assoc);
     final autoTipo = (o?.ocupante.isNotEmpty ?? false)
         ? tipoEventoFesta(
@@ -714,7 +749,10 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
         context: context,
         isScrollControlled: true,
         builder: (_) =>
-            _SeletorQuartoDestino(origem: q.numero, associacoes: assocs),
+            _SeletorQuartoDestino(
+                origem: q.numero,
+                associacoes: assocs,
+                atrasoPorContrato: _atrasoPorContrato),
       );
       if (destino == null || !context.mounted) return;
       await _mover(context, q.numero, destino, assocs);
@@ -753,6 +791,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
         builder: (_) => _SeletorQuartoDestino(
           origem: q.numero,
           associacoes: assocs,
+          atrasoPorContrato: _atrasoPorContrato,
           titulo: 'Quarto desejado (opcional)',
           permitirSemPreferencia: true,
         ),
@@ -1160,6 +1199,7 @@ class _CategoriaSection extends StatelessWidget {
   final List<QuartoFestaSocios> quartos;
   final Map<String, FestaValidacao> validacoes;
   final Map<String, FestaAssociacao> associacoes;
+  final Map<String, bool> atrasoPorContrato;
   final bool inicialExpandida;
   final ValueChanged<QuartoFestaSocios> onTapQuarto;
   final Future<void> Function(String origem, String destino) onMover;
@@ -1169,6 +1209,7 @@ class _CategoriaSection extends StatelessWidget {
     required this.quartos,
     required this.validacoes,
     required this.associacoes,
+    this.atrasoPorContrato = const {},
     required this.inicialExpandida,
     required this.onTapQuarto,
     required this.onMover,
@@ -1178,7 +1219,10 @@ class _CategoriaSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final trocas = quartos
-        .where((q) => ocupacaoEfetiva(q, associacoes)?.deveTrocar ?? false)
+        .where((q) =>
+            ocupacaoEfetiva(q, associacoes, atrasoPorContrato: atrasoPorContrato)
+                ?.deveTrocar ??
+            false)
         .length;
     return Card(
       elevation: 0,
@@ -1236,7 +1280,8 @@ class _CategoriaSection extends StatelessWidget {
                 final assocQ = associacoes[quartos[i].numero];
                 return _QuartoCard(
                   quarto: quartos[i],
-                  ocupacao: ocupacaoEfetiva(quartos[i], associacoes),
+                  ocupacao: ocupacaoEfetiva(quartos[i], associacoes,
+                      atrasoPorContrato: atrasoPorContrato),
                   validacao: validacoes[quartos[i].numero],
                   associado: assocQ != null &&
                       !assocQ.vago &&
@@ -1777,11 +1822,13 @@ class _PainelEspera extends StatelessWidget {
 class _SeletorQuartoDestino extends StatefulWidget {
   final String origem;
   final Map<String, FestaAssociacao> associacoes;
+  final Map<String, bool> atrasoPorContrato;
   final String? titulo;
   final bool permitirSemPreferencia;
   const _SeletorQuartoDestino(
       {required this.origem,
       required this.associacoes,
+      this.atrasoPorContrato = const {},
       this.titulo,
       this.permitirSemPreferencia = false});
   @override
@@ -1808,7 +1855,8 @@ class _SeletorQuartoDestinoState extends State<_SeletorQuartoDestino> {
     for (final c in CategoriaQuarto.values) {
       final lista = quartosFestaSocios.where((q) {
         if (q.numero == widget.origem) return false;
-        final o = ocupacaoEfetiva(q, widget.associacoes);
+        final o = ocupacaoEfetiva(q, widget.associacoes,
+            atrasoPorContrato: widget.atrasoPorContrato);
         if (_soVagos && o != null) return false;
         if (qn.isNotEmpty) {
           final alvo = '${q.numero} ${o?.ocupante ?? ''}'.toLowerCase();
@@ -1918,7 +1966,8 @@ class _SeletorQuartoDestinoState extends State<_SeletorQuartoDestino> {
 
   Widget _tileQuarto(BuildContext context, QuartoFestaSocios q) {
     final cs = Theme.of(context).colorScheme;
-    final o = ocupacaoEfetiva(q, widget.associacoes);
+    final o = ocupacaoEfetiva(q, widget.associacoes,
+            atrasoPorContrato: widget.atrasoPorContrato);
     final vago = o == null;
     return ListTile(
       dense: true,
