@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../models/contrato_model.dart';
 import '../services/contrato_csv_parser.dart';
+import '../services/contrato_import_diff.dart';
 import '../services/firestore_service.dart';
 import '../widgets/esolution_button.dart';
 import 'ficha_contrato_screen.dart';
@@ -383,8 +384,9 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     });
   }
 
-  void _processarArquivo(
-      BuildContext context, html.FileReader reader, String nomeArq, bool ehExcel) {
+  Future<void> _processarArquivo(BuildContext context, html.FileReader reader,
+      String nomeArq, bool ehExcel) async {
+    final messenger = ScaffoldMessenger.of(context);
     List<Contrato> contratos;
     try {
       if (ehExcel) {
@@ -399,7 +401,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         contratos = parsearCsvContratos(reader.result as String? ?? '');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Erro ao ler ${ehExcel ? 'Excel' : 'CSV'}: $e'),
           backgroundColor: Colors.red,
@@ -408,19 +410,51 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       return;
     }
 
+    // Análise: compara a planilha com o estado atual da base e separa o que
+    // realmente muda. Mostra um loading enquanto carrega os contratos atuais.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _AnalisandoDialog(),
+    );
+    DiffImportContratos diff;
+    try {
+      final atuais = await _fs.getContratos();
+      final porLoc = {for (final c in atuais) c.localizador: c};
+      diff = analisarImportContratos(contratos, porLoc);
+    } catch (e) {
+      if (context.mounted) Navigator.of(context).pop(); // fecha o loading
+      messenger.showSnackBar(
+        SnackBar(
+            content: Text('Erro ao analisar: $e'),
+            backgroundColor: Colors.red),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // fecha o loading
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => _ImportPreviewDialog(
-        contratos: contratos,
+        diff: diff,
+        totalArquivo: contratos.length,
         nomeArquivo: nomeArq,
-        onConfirmar: () => _importar(context, contratos),
+        onConfirmar: () => _importar(context, diff.paraGravar),
       ),
     );
   }
 
   Future<void> _importar(BuildContext context, List<Contrato> contratos) async {
     Navigator.of(context).pop();
+
+    if (contratos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nada a atualizar — tudo já está igual.')),
+      );
+      return;
+    }
 
     final overlay = _ProgressOverlay(context: context, total: contratos.length);
     overlay.show();
@@ -436,7 +470,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${contratos.length} contratos importados com sucesso!'),
+            content: Text('${contratos.length} contrato(s) atualizado(s) com sucesso!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -599,122 +633,109 @@ class _ContratoCard extends StatelessWidget {
   }
 }
 
-// ── Dialog de preview de importação ──────────────────────────────────────────
+// ── Loading enquanto a importação é analisada ────────────────────────────────
+
+class _AnalisandoDialog extends StatelessWidget {
+  const _AnalisandoDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AlertDialog(
+      content: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 16),
+          Flexible(child: Text('Analisando alterações…')),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Dialog de confirmação: mostra o diff real contra a base ──────────────────
 
 class _ImportPreviewDialog extends StatelessWidget {
-  final List<Contrato> contratos;
+  final DiffImportContratos diff;
+  final int totalArquivo;
   final String nomeArquivo;
   final VoidCallback onConfirmar;
 
   const _ImportPreviewDialog({
-    required this.contratos,
+    required this.diff,
+    required this.totalArquivo,
     required this.nomeArquivo,
     required this.onConfirmar,
   });
 
-  /// Campos sobrescritos a cada import (vêm da planilha). Resumo legível —
-  /// a política completa está em docs/importacao_contratos.md.
-  static const _camposAtualizados =
-      'Financeiro (status, valores, % integralizado, datas de quitação e '
-      'vencimento), identificação e contato (nome, CPF, e-mail, telefone, '
-      'endereço, nascimento), dados comerciais (vendedor, captador, liner, '
-      'produto, cota, status) e reversão.';
-
-  /// Campos do CRM que o import nunca toca (preservados pelo merge).
-  static const _camposPreservados =
-      'Status de assinatura, link do PDF, código do contrato, interações, '
-      'upgrade e reajuste.';
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final quitados = contratos.where((c) => c.estaQuitado).length;
-    final andamento = contratos.length - quitados;
-    final comAtraso = contratos.where((c) => c.temAtrasos).length;
-    final revertidos = contratos.where((c) => c.revertido).length;
+    final aGravar = diff.paraGravar.length;
 
     return AlertDialog(
       title: const Text('Confirmar importação'),
       content: SizedBox(
-        width: 460,
+        width: 480,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Arquivo: $nomeArquivo',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+              Text('Arquivo: $nomeArquivo',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 12),
-              _linha('Total de contratos', '${contratos.length}'),
-              _linha('Em andamento', '$andamento'),
-              _linha('Quitados', '$quitados'),
-              _linha('Com atraso', '$comAtraso',
-                  comAtraso > 0 ? Colors.red : null),
-              if (revertidos > 0) _linha('Revertidos', '$revertidos'),
-              const SizedBox(height: 12),
-              _bloco(
-                context,
-                icone: Icons.edit_outlined,
-                cor: cs.primary,
-                titulo: 'Serão ATUALIZADOS',
-                texto: _camposAtualizados,
-              ),
+              _linha('Lidos na planilha', '$totalArquivo'),
+              _linha('Com alteração', '${diff.alterados.length}',
+                  diff.alterados.isNotEmpty ? cs.primary : null),
+              _linha('Novos (não existiam)', '${diff.novos.length}',
+                  diff.novos.isNotEmpty ? Colors.teal : null),
+              _linha('Sem alteração', '${diff.inalterados}', cs.outline),
               const SizedBox(height: 8),
-              _bloco(
-                context,
-                icone: Icons.lock_outline,
-                cor: Colors.green,
-                titulo: 'Preservados (NÃO serão tocados)',
-                texto: _camposPreservados,
-              ),
-              const SizedBox(height: 8),
-              Theme(
-                data: Theme.of(context)
-                    .copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  title: Text(
-                    'Ver contratos afetados (${contratos.length})',
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                  children: [
-                    SizedBox(
-                      height: 180,
-                      child: Scrollbar(
-                        child: ListView.builder(
-                          itemCount: contratos.length,
-                          itemBuilder: (_, i) {
-                            final c = contratos[i];
-                            final nome = c.nomeComprador.isEmpty
-                                ? '(sem nome)'
-                                : c.nomeComprador;
-                            return Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 3),
-                              child: Text(
-                                '${c.localizador} — $nome',
-                                style: const TextStyle(fontSize: 12),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
+              if (aGravar == 0)
+                Text(
+                  'Nada mudou em relação aos dados atuais — não há o que gravar.',
+                  style: TextStyle(fontSize: 12, color: cs.outline),
+                )
+              else ...[
+                Text(
+                  'Só os $aGravar contrato(s) abaixo serão gravados. '
+                  'Os "sem alteração" não são tocados; campos nossos '
+                  '(assinatura, link, código…) são sempre preservados.',
+                  style: TextStyle(fontSize: 11, color: cs.outline),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Contratos com o mesmo localizador são atualizados (merge); '
-                'os que não existirem são criados.',
-                style: TextStyle(fontSize: 11, color: cs.outline),
-              ),
+                const SizedBox(height: 4),
+                if (diff.alterados.isNotEmpty)
+                  _grupo(
+                    context,
+                    icone: Icons.edit_outlined,
+                    cor: cs.primary,
+                    titulo: 'Alterados (${diff.alterados.length})',
+                    itens: [
+                      for (final a in diff.alterados)
+                        _ItemDiff(
+                          '${a.contrato.localizador} — '
+                          '${_nome(a.contrato)}',
+                          a.campos.join(', '),
+                        ),
+                    ],
+                  ),
+                if (diff.novos.isNotEmpty)
+                  _grupo(
+                    context,
+                    icone: Icons.add_circle_outline,
+                    cor: Colors.teal,
+                    titulo: 'Novos (${diff.novos.length})',
+                    itens: [
+                      for (final c in diff.novos)
+                        _ItemDiff('${c.localizador} — ${_nome(c)}',
+                            'contrato novo'),
+                    ],
+                  ),
+              ],
             ],
           ),
         ),
@@ -726,35 +747,57 @@ class _ImportPreviewDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: onConfirmar,
-          child: Text('Atualizar ${contratos.length} contratos'),
+          child: Text(aGravar == 0 ? 'Fechar' : 'Gravar $aGravar contrato(s)'),
         ),
       ],
     );
   }
 
-  Widget _bloco(BuildContext context,
+  static String _nome(Contrato c) =>
+      c.nomeComprador.isEmpty ? '(sem nome)' : c.nomeComprador;
+
+  Widget _grupo(BuildContext context,
       {required IconData icone,
       required Color cor,
       required String titulo,
-      required String texto}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icone, size: 16, color: cor),
-            const SizedBox(width: 6),
-            Text(titulo,
-                style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700, color: cor)),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Padding(
-          padding: const EdgeInsets.only(left: 22),
-          child: Text(texto, style: const TextStyle(fontSize: 12)),
-        ),
-      ],
+      required List<_ItemDiff> itens}) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        initiallyExpanded: itens.length <= 30,
+        leading: Icon(icone, color: cor, size: 20),
+        title: Text(titulo,
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w700, color: cor)),
+        children: [
+          SizedBox(
+            height: itens.length > 6 ? 200 : null,
+            child: Scrollbar(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: itens.length,
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(itens[i].titulo,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      Text(itens[i].detalhe,
+                          style: TextStyle(fontSize: 11, color: cor)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -765,17 +808,19 @@ class _ImportPreviewDialog extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label),
-          Text(
-            valor,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: cor,
-            ),
-          ),
+          Text(valor,
+              style: TextStyle(fontWeight: FontWeight.w600, color: cor)),
         ],
       ),
     );
   }
+}
+
+/// Linha da lista de diff: título (localizador — nome) + detalhe (campos).
+class _ItemDiff {
+  final String titulo;
+  final String detalhe;
+  const _ItemDiff(this.titulo, this.detalhe);
 }
 
 // ── Overlay de progresso durante importação ────────────────────────────────
