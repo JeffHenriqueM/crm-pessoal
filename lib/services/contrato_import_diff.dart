@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/contrato_model.dart';
 
 /// Resultado da análise de uma importação de contratos: o que **realmente**
@@ -80,10 +82,20 @@ List<String> _camposAlterados(Contrato novo, Contrato atual) {
   return rotulos;
 }
 
-/// Igualdade tolerante a tipos de valor de campo do Firestore (Timestamp, num,
-/// String, bool). `0 == 0.0` é verdadeiro em Dart; Timestamp implementa `==`.
+/// Igualdade tolerante a tipos de valor de campo do Firestore.
+///
+/// Datas (campos `Timestamp`) são comparadas por **dia de calendário (UTC)**, e
+/// não pelo instante exato: os campos do contrato são datas (sem hora) e o
+/// horário gravado varia com o fuso de quem importa (a base foi escrita à
+/// meia-noite de Brasília = `T03:00:00Z`). Comparar o instante marcaria quase
+/// todo contrato como alterado por uma diferença de horas no mesmo dia.
+/// `0 == 0.0` é verdadeiro em Dart, então num cruza tipo sem ajuste.
 bool _iguais(Object? x, Object? y) {
-  if (x == null || y == null) return x == y;
+  if (x is Timestamp && y is Timestamp) {
+    final dx = x.toDate().toUtc();
+    final dy = y.toDate().toUtc();
+    return dx.year == dy.year && dx.month == dy.month && dx.day == dy.day;
+  }
   return x == y;
 }
 

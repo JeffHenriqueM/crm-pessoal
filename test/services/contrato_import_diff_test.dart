@@ -71,6 +71,33 @@ void main() {
     expect(r.alterados.first.campos, contains('reversão'));
   });
 
+  Contrato comData(DateTime data) => Contrato(
+        localizador: 'LOC-1',
+        localizadorAtendimento: 'AT-1',
+        nomeComprador: 'MARIA',
+        dataContrato: data,
+      );
+
+  test('data igual no dia mas com horário/fuso diferente → inalterado', () {
+    // Base foi gravada à meia-noite de Brasília (T03:00Z); o navegador remonta
+    // a data com outro horário no mesmo dia. Não pode contar como alteração.
+    final r = analisarImportContratos(
+      [comData(DateTime.utc(2026, 6, 6, 0))], // 2026-06-06T00:00Z
+      {'LOC-1': comData(DateTime.utc(2026, 6, 6, 3))}, // 2026-06-06T03:00Z
+    );
+    expect(r.inalterados, 1);
+    expect(r.alterados, isEmpty);
+  });
+
+  test('data em dia diferente → alterado', () {
+    final r = analisarImportContratos(
+      [comData(DateTime.utc(2026, 6, 7, 0))],
+      {'LOC-1': comData(DateTime.utc(2026, 6, 6, 3))},
+    );
+    expect(r.alterados, hasLength(1));
+    expect(r.alterados.first.campos, contains('data do contrato'));
+  });
+
   test('rótulos não se repetem (endereço colapsa vários campos)', () {
     final novo = Contrato(
       localizador: 'LOC-1',
