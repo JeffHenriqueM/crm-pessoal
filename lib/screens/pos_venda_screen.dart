@@ -612,35 +612,112 @@ class _ImportPreviewDialog extends StatelessWidget {
     required this.onConfirmar,
   });
 
+  /// Campos sobrescritos a cada import (vêm da planilha). Resumo legível —
+  /// a política completa está em docs/importacao_contratos.md.
+  static const _camposAtualizados =
+      'Financeiro (status, valores, % integralizado, datas de quitação e '
+      'vencimento), identificação e contato (nome, CPF, e-mail, telefone, '
+      'endereço, nascimento), dados comerciais (vendedor, captador, liner, '
+      'produto, cota, status) e reversão.';
+
+  /// Campos do CRM que o import nunca toca (preservados pelo merge).
+  static const _camposPreservados =
+      'Status de assinatura, link do PDF, código do contrato, interações, '
+      'upgrade e reajuste.';
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final quitados = contratos.where((c) => c.estaQuitado).length;
     final andamento = contratos.length - quitados;
     final comAtraso = contratos.where((c) => c.temAtrasos).length;
     final revertidos = contratos.where((c) => c.revertido).length;
 
     return AlertDialog(
-      title: const Text('Importar Contratos'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Arquivo: $nomeArquivo',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
+      title: const Text('Confirmar importação'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Arquivo: $nomeArquivo',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              _linha('Total de contratos', '${contratos.length}'),
+              _linha('Em andamento', '$andamento'),
+              _linha('Quitados', '$quitados'),
+              _linha('Com atraso', '$comAtraso',
+                  comAtraso > 0 ? Colors.red : null),
+              if (revertidos > 0) _linha('Revertidos', '$revertidos'),
+              const SizedBox(height: 12),
+              _bloco(
+                context,
+                icone: Icons.edit_outlined,
+                cor: cs.primary,
+                titulo: 'Serão ATUALIZADOS',
+                texto: _camposAtualizados,
+              ),
+              const SizedBox(height: 8),
+              _bloco(
+                context,
+                icone: Icons.lock_outline,
+                cor: Colors.green,
+                titulo: 'Preservados (NÃO serão tocados)',
+                texto: _camposPreservados,
+              ),
+              const SizedBox(height: 8),
+              Theme(
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  title: Text(
+                    'Ver contratos afetados (${contratos.length})',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  children: [
+                    SizedBox(
+                      height: 180,
+                      child: Scrollbar(
+                        child: ListView.builder(
+                          itemCount: contratos.length,
+                          itemBuilder: (_, i) {
+                            final c = contratos[i];
+                            final nome = c.nomeComprador.isEmpty
+                                ? '(sem nome)'
+                                : c.nomeComprador;
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 3),
+                              child: Text(
+                                '${c.localizador} — $nome',
+                                style: const TextStyle(fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Contratos com o mesmo localizador são atualizados (merge); '
+                'os que não existirem são criados.',
+                style: TextStyle(fontSize: 11, color: cs.outline),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          _linha('Total de contratos', '${contratos.length}'),
-          _linha('Em andamento', '$andamento'),
-          _linha('Quitados', '$quitados'),
-          _linha('Com atraso', '$comAtraso', comAtraso > 0 ? Colors.red : null),
-          if (revertidos > 0) _linha('Revertidos', '$revertidos'),
-          const SizedBox(height: 8),
-          const Text(
-            'Contratos com o mesmo localizador serão atualizados (merge).',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ],
+        ),
       ),
       actions: [
         TextButton(
@@ -649,7 +726,33 @@ class _ImportPreviewDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: onConfirmar,
-          child: const Text('Importar'),
+          child: Text('Atualizar ${contratos.length} contratos'),
+        ),
+      ],
+    );
+  }
+
+  Widget _bloco(BuildContext context,
+      {required IconData icone,
+      required Color cor,
+      required String titulo,
+      required String texto}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icone, size: 16, color: cor),
+            const SizedBox(width: 6),
+            Text(titulo,
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700, color: cor)),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Padding(
+          padding: const EdgeInsets.only(left: 22),
+          child: Text(texto, style: const TextStyle(fontSize: 12)),
         ),
       ],
     );
