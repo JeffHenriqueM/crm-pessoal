@@ -143,6 +143,9 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   bool _todasExpandidas = true;
   int _versao = 0;
   bool _soTrocas = false;
+  // Busca livre por número do quarto, nome do hóspede ou localizador.
+  final _buscaCtrl = TextEditingController();
+  String _busca = '';
   // Telefone do comprador por localizador de contrato — alimenta o atalho de
   // WhatsApp na ficha do quarto (resolve mesmo associações antigas).
   Map<String, String> _telefonePorContrato = const {};
@@ -171,6 +174,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   @override
   void dispose() {
     _subPresencas?.cancel();
+    _buscaCtrl.dispose();
     super.dispose();
   }
 
@@ -254,11 +258,22 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
     return m;
   }
 
+  bool get _buscando => _busca.trim().isNotEmpty;
+
   bool _passaFiltro(QuartoFestaSocios q, Map<String, FestaAssociacao> a) {
-    if (!_soTrocas) return true;
-    return ocupacaoEfetiva(q, a, atrasoPorContrato: _atrasoPorContrato)
-            ?.deveTrocar ??
-        false;
+    if (_soTrocas) {
+      final deve = ocupacaoEfetiva(q, a, atrasoPorContrato: _atrasoPorContrato)
+              ?.deveTrocar ??
+          false;
+      if (!deve) return false;
+    }
+    final termo = _busca.trim().toLowerCase();
+    if (termo.isEmpty) return true;
+    if (q.numero.toLowerCase().contains(termo)) return true;
+    final o = ocupacaoEfetiva(q, a, atrasoPorContrato: _atrasoPorContrato);
+    if ((o?.ocupante ?? '').toLowerCase().contains(termo)) return true;
+    final loc = a[q.numero]?.contratoId ?? '';
+    return loc.toLowerCase().contains(termo);
   }
 
   static int _tierRank(String? t) =>
@@ -528,6 +543,31 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
             const SizedBox(width: 8),
           ]),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 12, 6),
+          child: TextField(
+            controller: _buscaCtrl,
+            onChanged: (v) => setState(() => _busca = v),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Buscar por quarto, hóspede ou localizador…',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _busca.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 20),
+                      tooltip: 'Limpar',
+                      onPressed: () => setState(() {
+                        _buscaCtrl.clear();
+                        _busca = '';
+                      }),
+                    ),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
         Expanded(
           child: StreamBuilder<Map<String, FestaValidacao>>(
             stream: _service.getValidacoesFestaStream(),
@@ -585,7 +625,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                           children: [
-                            if (espera.isNotEmpty)
+                            if (espera.isNotEmpty && _busca.trim().isEmpty)
                               _PainelEspera(
                                 espera: espera,
                                 onMover: (e) =>
@@ -601,7 +641,7 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                                   .isNotEmpty)
                                 _CategoriaSection(
                                   key: ValueKey(
-                                      '${entry.key}-$_versao-$_soTrocas'),
+                                      '${entry.key}-$_versao-$_soTrocas-$_buscando'),
                                   categoria: entry.key,
                                   quartos: entry.value
                                       .where((q) => _passaFiltro(q, assocs))
@@ -609,12 +649,30 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                                   validacoes: val,
                                   associacoes: assocs,
                                   atrasoPorContrato: _atrasoPorContrato,
-                                  inicialExpandida: _todasExpandidas,
+                                  inicialExpandida:
+                                      _todasExpandidas || _buscando,
                                   onTapQuarto: (q) => _abrirDetalhe(
                                       context, q, val[q.numero], assocs),
                                   onMover: (origem, destino) =>
                                       _mover(context, origem, destino, assocs),
                                 ),
+                            if (_buscando &&
+                                !grupos.entries.any((e) => e.value
+                                    .any((q) => _passaFiltro(q, assocs))))
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(8, 40, 8, 8),
+                                child: Column(children: [
+                                  Icon(Icons.search_off,
+                                      size: 40, color: cs.onSurfaceVariant),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Nenhum quarto encontrado para "$_busca".',
+                                    textAlign: TextAlign.center,
+                                    style:
+                                        TextStyle(color: cs.onSurfaceVariant),
+                                  ),
+                                ]),
+                              ),
                           ],
                         ),
                       ),
