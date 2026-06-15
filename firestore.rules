@@ -73,6 +73,14 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // Habilita queries collection-group de interações (relatórios do dashboard).
+    // Um match aninhado NÃO autoriza collectionGroup: é preciso o wildcard
+    // recursivo. Aqui só liberamos LEITURA; as escritas continuam regidas pelos
+    // matches específicos (clientes/* e contratos/*).
+    match /{caminho=**}/interacoes/{docId} {
+      allow read: if isAuth();
+    }
+
     // ── Campanhas ───────────────────────────────────────────────────────────
     match /campanhas/{docId} {
       allow read, write: if isAuth();

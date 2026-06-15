@@ -141,8 +141,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               // 4 — Estatísticas
               AbaEstatisticas(clientes: todos),
-              // 5 — Relatórios
-              AbaRelatorios(clientes: todos),
+              // 5 — Relatórios (admin: filtro interno Geral/por vendedor)
+              AbaRelatorios(
+                clientes: todos,
+                vendedorId: null,
+                todosVendedores: _todosVendedores,
+              ),
               // 6 — Perdas
               AbaMotivosPerda(clientes: todos),
               // 7 — Risco de Silêncio (churn)
@@ -204,7 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   clientes: clientes,
                   userId: _vendedorIdFiltro,
                   perfil: _userProfile),
-              AbaRelatorios(clientes: clientes),
+              AbaRelatorios(clientes: clientes, vendedorId: _vendedorIdFiltro),
               AbaMotivosPerda(clientes: clientes),
               AbaRiscoSilencio(
                 clientes: clientes,

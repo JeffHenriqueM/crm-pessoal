@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/agendamento_model.dart';
+import '../models/atividade_interacao.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
 import '../models/contato_embaixador_model.dart';
@@ -602,6 +603,51 @@ class FirestoreService {
   }
 
   // --- INTERAÇÕES ---
+
+  /// Atividade de interações de TODOS os leads (collection-group), para os
+  /// relatórios do dashboard. Traz apenas interações de `clientes/*/interacoes`
+  /// (ignora as de contratos) e exclui os eventos automáticos do sistema.
+  ///
+  /// Limitado aos últimos ~13 meses (`dataInteracao`) para não varrer o
+  /// histórico inteiro. O recorte por período (semana/mês/...) é feito na UI.
+  /// Quando [autorId] é informado (perfil vendedor), conta só as interações
+  /// que aquele usuário registrou.
+  Stream<List<AtividadeInteracao>> getAtividadeInteracoesStream({
+    String? autorId,
+  }) {
+    final corte = DateTime.now().subtract(const Duration(days: 400));
+    return _db
+        .collectionGroup('interacoes')
+        .where('dataInteracao',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(corte))
+        .snapshots()
+        .map((snap) {
+      final out = <AtividadeInteracao>[];
+      for (final d in snap.docs) {
+        // collectionGroup pega clientes/* e contratos/* — só queremos leads.
+        final clienteRef = d.reference.parent.parent;
+        if (clienteRef == null || clienteRef.parent.id != _colClientes) {
+          continue;
+        }
+        final data = d.data();
+        final canal = CanalExt.fromString(data['canal'] as String?);
+        if (canal == Canal.sistema) continue; // eventos do sistema não contam
+        final aId = data['autorId'] as String?;
+        if (autorId != null && aId != autorId) continue;
+        final raw = data['dataInteracao'];
+        final dt = raw is Timestamp ? raw.toDate() : null;
+        if (dt == null) continue;
+        out.add(AtividadeInteracao(
+          clienteId: clienteRef.id,
+          dataInteracao: dt,
+          canal: canal,
+          houveResposta: (data['houveResposta'] as bool?) ?? false,
+          autorId: aId,
+        ));
+      }
+      return out;
+    });
+  }
 
   Stream<List<Interacao>> getInteracoesStream(String clienteId) {
     return _db
