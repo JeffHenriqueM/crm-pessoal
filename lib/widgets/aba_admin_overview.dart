@@ -3,6 +3,7 @@ import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../screens/lista_clientes_screen.dart';
+import '../utils/perfis.dart';
 import 'secao_recolhivel.dart';
 
 // ── Modelo interno de stats por vendedor ────────────────────────────────────
@@ -144,8 +145,15 @@ class _AbaAdminOverviewState extends State<AbaAdminOverview> {
         .toList()
       ..sort((a, b) => b.atrasados.compareTo(a.atrasados));
 
-    final rankingFechados = [...stats]
-      ..sort((a, b) => b.fechados.compareTo(a.fechados));
+    // Ranking conta SOMENTE vendedores/captadores (ticket #60) — exclui
+    // admin/financeiro/pós-venda/recepção e o agrupador "Sem vendedor".
+    final idsVendas = widget.todosVendedores
+        .where((u) => ehPerfilVendas(u.perfil))
+        .map((u) => u.id)
+        .toSet();
+    final rankingFechados =
+        stats.where((s) => idsVendas.contains(s.vendedorId)).toList()
+          ..sort((a, b) => b.fechados.compareTo(a.fechados));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
