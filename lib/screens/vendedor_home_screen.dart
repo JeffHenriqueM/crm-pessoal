@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import '../models/agendamento_model.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
+import '../models/fila_atendimento_model.dart';
 import '../screens/ficha_cliente_screen.dart';
+import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/aba_agenda.dart';
 
@@ -105,6 +107,8 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
 
         return Column(
           children: [
+            if (!widget.showAllVendedores && widget.currentUserId != null)
+              _buildDisponibilidadeToggle(cs),
             _buildHojeStrip(context, cs, contatosHoje, visitasHoje, atrasados),
             Expanded(
               child: StreamBuilder<List<Agendamento>>(
@@ -121,6 +125,73 @@ class _VendedorHomeScreenState extends State<VendedorHomeScreen> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  // ── Toggle "Disponível para atendimento" (Linha de atendimento) ────────────
+  // O próprio vendedor entra/sai da fila da sala de vendas. Ao ficar
+  // disponível, entra no fim da fila (posicaoEm = agora).
+  Widget _buildDisponibilidadeToggle(ColorScheme cs) {
+    final uid = widget.currentUserId!;
+    return StreamBuilder<List<FilaAtendimento>>(
+      stream: _firestoreService.getFilaAtendimentoStream(),
+      builder: (context, snap) {
+        final fila = snap.data ?? [];
+        FilaAtendimento? meu;
+        for (final f in fila) {
+          if (f.vendedorId == uid) {
+            meu = f;
+            break;
+          }
+        }
+        final disponivel = meu?.disponivel ?? false;
+        final cor = disponivel ? Colors.green.shade700 : cs.onSurfaceVariant;
+
+        // Posição na fila entre os disponíveis (1-based), se estiver disponível.
+        int? posicao;
+        if (disponivel) {
+          final ordenados = fila.where((f) => f.disponivel).toList();
+          final idx = ordenados.indexWhere((f) => f.vendedorId == uid);
+          if (idx >= 0) posicao = idx + 1;
+        }
+
+        return Material(
+          color: disponivel
+              ? Colors.green.withValues(alpha: 0.08)
+              : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+          child: SwitchListTile(
+            value: disponivel,
+            onChanged: (v) async {
+              final nome = meu?.vendedorNome ??
+                  AuthService().getCurrentUser()?.displayName ??
+                  'Vendedor';
+              await _firestoreService
+                  .definirDisponibilidadeFila(uid, nome, disponivel: v);
+            },
+            secondary: Icon(
+              disponivel
+                  ? Icons.headset_mic
+                  : Icons.headset_mic_outlined,
+              color: cor,
+            ),
+            title: Text(
+              disponivel ? 'Disponível para atendimento' : 'Indisponível',
+              style: TextStyle(fontWeight: FontWeight.w600, color: cor),
+            ),
+            subtitle: Text(
+              disponivel
+                  ? (posicao != null
+                      ? (posicao == 1
+                          ? 'Você é o próximo a atender'
+                          : '$posicaoº na fila')
+                      : 'Na fila de atendimento')
+                  : 'Ative para entrar na fila da sala de vendas',
+              style: TextStyle(fontSize: 12, color: cs.outline),
+            ),
+            dense: true,
+          ),
         );
       },
     );

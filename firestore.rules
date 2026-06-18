@@ -133,6 +133,16 @@ service cloud.firestore {
       allow read, write: if isAuth() && request.auth.uid == uid;
     }
 
+    // ── Linha de atendimento (fila da sala de vendas) ─────────────────────────
+    // Todos autenticados leem (ver a fila). Escreve: gestores/recepção (operar
+    // a fila — reordenar, mandar pro fim) OU o próprio vendedor (marcar a
+    // própria disponibilidade). Sem delete.
+    match /fila_atendimento/{uid} {
+      allow read:           if isAuth();
+      allow create, update: if isAuth() && (isGestor() || request.auth.uid == uid);
+      allow delete:         if false;
+    }
+
     // ── Contratos pós-venda ───────────────────────────────────────────────────
     match /contratos/{docId} {
       allow read, write: if isAuth();

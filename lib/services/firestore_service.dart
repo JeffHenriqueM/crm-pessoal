@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/agendamento_model.dart';
+import '../models/fila_atendimento_model.dart';
 import '../models/atividade_interacao.dart';
 import '../models/campanha_model.dart';
 import '../models/cliente_model.dart';
@@ -466,6 +467,70 @@ class FirestoreService {
   Future<void> marcarCompareceu(String agendamentoId, String clienteId) =>
       atualizarStatusAgendamento(agendamentoId, 'compareceu',
           clienteVinculadoId: clienteId);
+
+  // ── LINHA DE ATENDIMENTO (fila da sala de vendas) ──────────────────────────
+  static const _colFila = 'fila_atendimento';
+
+  /// Stream da fila (todos os docs), ordenada por `posicaoEm` ascendente
+  /// (quem entrou disponível há mais tempo vai na frente). Ordenação em Dart
+  /// → sem índice composto. Os indisponíveis vêm junto (a UI separa).
+  Stream<List<FilaAtendimento>> getFilaAtendimentoStream() {
+    return _db.collection(_colFila).snapshots().map((s) {
+      final r = s.docs.map(FilaAtendimento.fromFirestore).toList();
+      r.sort((a, b) {
+        final pa = a.posicaoEm, pb = b.posicaoEm;
+        if (pa == null && pb == null) return 0;
+        if (pa == null) return 1; // sem posição vai pro fim
+        if (pb == null) return -1;
+        return pa.compareTo(pb);
+      });
+      return r;
+    });
+  }
+
+  /// Vendedor marca/desmarca a própria disponibilidade. Ao ficar disponível,
+  /// entra no FIM da fila (`posicaoEm` = agora).
+  Future<void> definirDisponibilidadeFila(
+    String vendedorId,
+    String vendedorNome, {
+    required bool disponivel,
+  }) async {
+    await _db.collection(_colFila).doc(vendedorId).set(
+      _flagTeste({
+        'vendedorNome': vendedorNome,
+        'disponivel': disponivel,
+        if (disponivel) 'posicaoEm': FieldValue.serverTimestamp(),
+        'atualizadoEm': FieldValue.serverTimestamp(),
+      }),
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Joga o vendedor para o FIM da fila (re-timestampa `posicaoEm`). Usado pelo
+  /// rodízio: "atendeu" (automático no cadastro) e "atrasado" (botão).
+  Future<void> mandarParaFimDaFila(String vendedorId) async {
+    final ref = _db.collection(_colFila).doc(vendedorId);
+    final doc = await ref.get();
+    if (!doc.exists) return; // só reordena quem está na fila
+    await ref.update({
+      'posicaoEm': FieldValue.serverTimestamp(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Reordenação manual (híbrido): troca o `posicaoEm` entre dois vendedores,
+  /// invertendo a ordem relativa entre eles.
+  Future<void> trocarPosicaoFila(String vendedorIdA, String vendedorIdB) async {
+    final refA = _db.collection(_colFila).doc(vendedorIdA);
+    final refB = _db.collection(_colFila).doc(vendedorIdB);
+    final docs = await Future.wait([refA.get(), refB.get()]);
+    final posA = docs[0].data()?['posicaoEm'];
+    final posB = docs[1].data()?['posicaoEm'];
+    final batch = _db.batch();
+    batch.update(refA, {'posicaoEm': posB});
+    batch.update(refB, {'posicaoEm': posA});
+    await batch.commit();
+  }
 
   Future<String> adicionarCliente(Cliente cliente) async {
     final dados = cliente.toFirestore();

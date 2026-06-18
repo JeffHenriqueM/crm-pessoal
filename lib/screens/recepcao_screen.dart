@@ -12,6 +12,7 @@ import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../services/ficha_pdf.dart';
 import '../services/firestore_service.dart';
+import '../widgets/aba_linha_atendimento.dart';
 import '../widgets/contatos_embaixador_tab.dart';
 import 'ficha_cliente_screen.dart';
 
@@ -62,7 +63,7 @@ class RecepcaoShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -75,6 +76,7 @@ class RecepcaoShell extends StatelessWidget {
               Tab(icon: Icon(Icons.event_outlined), text: 'Agendamentos'),
               Tab(icon: Icon(Icons.people_outline), text: 'Meus Leads'),
               Tab(icon: Icon(Icons.contacts_outlined), text: 'Contatos'),
+              Tab(icon: Icon(Icons.format_list_numbered), text: 'Linha'),
             ],
             indicatorColor: cs.primary,
             labelColor: cs.primary,
@@ -87,6 +89,7 @@ class RecepcaoShell extends StatelessWidget {
             _RecepcaoAgendamentosTab(),
             _RecepcaoLeadsTab(),
             ContatosEmbaixadorTab(),
+            AbaLinhaAtendimento(),
           ],
         ),
       ),
@@ -352,6 +355,12 @@ class _RecepcaoScreenState extends State<RecepcaoScreen> {
       );
 
       final clienteId = await _service.adicionarCliente(cliente);
+
+      // Linha de atendimento: quem atendeu vai pro FIM da fila (no-op se o
+      // vendedor não estiver na linha). Não bloqueia o fluxo se falhar.
+      if (_liner != null) {
+        await _service.mandarParaFimDaFila(_liner!.id);
+      }
 
       // Conversão: se veio de um agendamento, marca como compareceu.
       if (_agendamentoOrigemId != null) {
