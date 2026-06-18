@@ -1,5 +1,6 @@
 // lib/models/cliente_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'fase_enum.dart';
 
 class Cliente {
@@ -165,23 +166,38 @@ class Cliente {
     };
   }
 
+  // Aliases de fases LEGADAS importadas do NeuroCRM, que não existem no enum
+  // FaseCliente mas precisam ser mapeadas para a fase equivalente (ticket #47).
+  //   • 'fechamento' → vendas GANHAS (confirmado pelo usuário) → fechado.
+  //   • 'sondagem'   → estágio inicial → prospeccao.
+  static const Map<String, FaseCliente> _aliasesFaseLegada = {
+    'fechamento': FaseCliente.fechado,
+    'sondagem': FaseCliente.prospeccao,
+  };
+
+  // Converte o rótulo de fase gravado no Firestore para o enum. Resolve aliases
+  // legados e, para rótulos DESCONHECIDOS, cai em prospeccao com um aviso —
+  // nunca mais mascarar silenciosamente um rótulo inesperado (ticket #47).
+  static FaseCliente _parseFase(String? rotulo, String docId) {
+    if (rotulo == null || rotulo.isEmpty) return FaseCliente.prospeccao;
+
+    for (final fase in FaseCliente.values) {
+      if (fase.toString().split('.').last == rotulo) return fase;
+    }
+
+    final alias = _aliasesFaseLegada[rotulo];
+    if (alias != null) return alias;
+
+    debugPrint('⚠️ Cliente $docId: fase desconhecida "$rotulo" — '
+        'caindo em prospeccao. Adicionar ao enum ou ao mapa de aliases.');
+    return FaseCliente.prospeccao;
+  }
+
   // Cria um objeto Cliente a partir de um Documento do Firestore
   factory Cliente.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    final stringFase = data['fase'] as String?;
-    FaseCliente faseRecuperada = FaseCliente.prospeccao;
-
-    if (stringFase != null) {
-      try {
-        faseRecuperada = FaseCliente.values.firstWhere(
-              (e) => e.toString().split('.').last == stringFase,
-          orElse: () => FaseCliente.prospeccao,
-        );
-      } catch (_) {
-        faseRecuperada = FaseCliente.prospeccao;
-      }
-    }
+    final faseRecuperada = _parseFase(data['fase'] as String?, doc.id);
 
     return Cliente(
       id: doc.id,
