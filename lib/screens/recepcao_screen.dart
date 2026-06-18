@@ -914,18 +914,77 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
   final _searchCtrl = TextEditingController();
   String _busca = '';
 
+  String _perfil = '';
+  bool get _isAdmin => _perfil == 'admin' || _perfil == 'super admin';
+
   static final _dataFmt = DateFormat('dd/MM/yyyy HH:mm');
 
   @override
   void initState() {
     super.initState();
     _searchCtrl.addListener(() => setState(() => _busca = _searchCtrl.text));
+    AuthService().getCurrentUserProfile().then((p) {
+      if (mounted) setState(() => _perfil = p);
+    });
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  // Soft-delete de um atendimento direto da recepção (admin/super admin, #43).
+  Future<void> _confirmarExcluir(Cliente c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir atendimento'),
+        content: Text(
+            'Excluir "${c.nome}"? O registro fica oculto da recepção, mas pode '
+            'ser restaurado por um administrador.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || c.id == null) return;
+    try {
+      await _service.deletarCliente(c.id!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('"${c.nome}" excluído.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao excluir: $e')));
+      }
+    }
+  }
+
+  // Restaura um atendimento soft-deleted (admin/super admin, #43).
+  Future<void> _restaurar(Cliente c) async {
+    if (c.id == null) return;
+    try {
+      await _service.restaurarCliente(c.id!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('"${c.nome}" restaurado.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao restaurar: $e')));
+      }
+    }
   }
 
   @override
@@ -988,7 +1047,9 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
               separatorBuilder: (_, __) => const SizedBox(height: 6),
               itemBuilder: (context, i) {
                 final c = leads[i];
-                return Card(
+                return Opacity(
+                  opacity: c.deletado ? 0.6 : 1.0,
+                  child: Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -1022,9 +1083,33 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
                           child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                            Text(c.nome,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 14)),
+                            Row(children: [
+                              Flexible(
+                                child: Text(c.nome,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14)),
+                              ),
+                              if (c.deletado) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: Colors.red.shade200),
+                                  ),
+                                  child: Text('Excluído',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.red.shade700)),
+                                ),
+                              ],
+                            ]),
                             if (c.nomeEsposa?.isNotEmpty == true)
                               Text('+ ${c.nomeEsposa}',
                                   style: TextStyle(
@@ -1080,8 +1165,44 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
                                     fontSize: 11,
                                     color: cs.onSurfaceVariant)),
                         ]),
+                        if (_isAdmin)
+                          PopupMenuButton<String>(
+                            icon: Icon(Icons.more_vert,
+                                size: 20, color: cs.onSurfaceVariant),
+                            tooltip: 'Ações',
+                            onSelected: (v) {
+                              if (v == 'excluir') _confirmarExcluir(c);
+                              if (v == 'restaurar') _restaurar(c);
+                            },
+                            itemBuilder: (_) => [
+                              if (c.deletado)
+                                const PopupMenuItem(
+                                  value: 'restaurar',
+                                  child: ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(Icons.restore),
+                                    title: Text('Restaurar'),
+                                  ),
+                                )
+                              else
+                                PopupMenuItem(
+                                  value: 'excluir',
+                                  child: ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(Icons.delete_outline,
+                                        color: Colors.red.shade700),
+                                    title: Text('Excluir',
+                                        style: TextStyle(
+                                            color: Colors.red.shade700)),
+                                  ),
+                                ),
+                            ],
+                          ),
                       ]),
                     ),
+                  ),
                   ),
                 );
               },

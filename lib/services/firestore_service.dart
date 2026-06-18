@@ -318,7 +318,14 @@ class FirestoreService {
   /// Outros perfis: apenas os atendimentos vinculados ao usuário logado.
   Stream<List<Cliente>> getClientesRecepcaoStream() {
     return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
-      if (perfil == 'recepcao') {
+      // admin/super admin veem TODOS os atendimentos, INCLUSIVE os excluídos
+      // (soft-deleted), para auditar e restaurar (#43). 'recepcao' também vê
+      // todos, porém sem os excluídos.
+      final veTodos =
+          perfil == 'recepcao' || perfil == 'admin' || perfil == 'super admin';
+      final incluirDeletados = perfil == 'admin' || perfil == 'super admin';
+
+      if (veTodos) {
         return _db
             .collection(_colClientes)
             .where('fase', isEqualTo: 'atendimento')
@@ -326,7 +333,7 @@ class FirestoreService {
             .map((s) {
               final result = s.docs
                   .map<Cliente>(Cliente.fromFirestore)
-                  .where((c) => !c.deletado)
+                  .where((c) => incluirDeletados || !c.deletado)
                   .toList();
               result.sort((a, b) {
                 final da = a.dataEntradaSala ?? a.dataCadastro;
@@ -660,6 +667,37 @@ class FirestoreService {
       });
       tx.set(auditRef, {
         'tipo': 'exclusao_cliente',
+        'clienteId': id,
+        'clienteNome': nomeCliente,
+        'autorId': _currentUserId,
+        'autorNome': _currentUserName,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  /// Restaura um cliente soft-deleted (#43): reverte `deletado` e registra a
+  /// operação no audit_log. Espelha [deletarCliente] em transação atômica.
+  Future<void> restaurarCliente(String id) async {
+    final nomeCliente = await _db
+        .collection(_colClientes)
+        .doc(id)
+        .get()
+        .then((d) => d.data()?['nome'] as String? ?? 'Cliente');
+
+    final clienteRef = _db.collection(_colClientes).doc(id);
+    final auditRef = _db.collection('audit_log').doc();
+
+    await _db.runTransaction((tx) async {
+      tx.update(clienteRef, {
+        'deletado': false,
+        'restauradoPorId': _currentUserId,
+        'restauradoPorNome': _currentUserName,
+        'dataRestauracao': FieldValue.serverTimestamp(),
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+      });
+      tx.set(auditRef, {
+        'tipo': 'restauracao_cliente',
         'clienteId': id,
         'clienteNome': nomeCliente,
         'autorId': _currentUserId,
