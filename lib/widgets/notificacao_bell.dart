@@ -8,6 +8,7 @@ import '../models/notificacao_inapp_model.dart';
 import '../screens/ficha_cliente_screen.dart';
 import '../screens/ficha_ticket_screen.dart';
 import '../services/firestore_service.dart';
+import 'grupo_notificacao_colapsavel.dart';
 
 // ── Modelos internos ──────────────────────────────────────────────────────────
 class _NotifCategoria {
@@ -207,12 +208,14 @@ class NotificacaoBell extends StatelessWidget {
     final ativos = todos.where((c) =>
         c.fase != FaseCliente.fechado && c.fase != FaseCliente.perdido);
 
-    // 1. Contatos para hoje
-    final contatosHoje = ativos
-        .where((c) =>
-            c.proximoContato != null &&
-            !c.proximoContato!.isBefore(inicioDoDia) &&
-            c.proximoContato!.isBefore(fimDoDia))
+    // 1. Contatos para hoje (mais recentes primeiro, #50)
+    final contatosHoje = (ativos
+            .where((c) =>
+                c.proximoContato != null &&
+                !c.proximoContato!.isBefore(inicioDoDia) &&
+                c.proximoContato!.isBefore(fimDoDia))
+            .toList()
+          ..sort((a, b) => b.proximoContato!.compareTo(a.proximoContato!)))
         .map((c) => _NotifItem(
               cliente: c,
               subtitulo: vendedorId == null && c.vendedorNome != null
@@ -221,13 +224,13 @@ class NotificacaoBell extends StatelessWidget {
             ))
         .toList();
 
-    // 2. Contatos atrasados (mais antigo primeiro)
+    // 2. Contatos atrasados (mais recentes primeiro, #50)
     final atrasados = ativos
         .where((c) =>
             c.proximoContato != null &&
             c.proximoContato!.isBefore(inicioDoDia))
         .toList()
-      ..sort((a, b) => a.proximoContato!.compareTo(b.proximoContato!));
+      ..sort((a, b) => b.proximoContato!.compareTo(a.proximoContato!));
     final itensAtrasados = atrasados.map((c) {
       final dias = inicioDoDia.difference(c.proximoContato!).inDays;
       final quem = vendedorId == null && c.vendedorNome != null
@@ -239,12 +242,14 @@ class NotificacaoBell extends StatelessWidget {
       );
     }).toList();
 
-    // 3. Visitas hoje
-    final visitasHoje = todos
-        .where((c) =>
-            c.dataVisita != null &&
-            !c.dataVisita!.isBefore(inicioDoDia) &&
-            c.dataVisita!.isBefore(fimDoDia))
+    // 3. Visitas hoje (mais recentes primeiro, #50)
+    final visitasHoje = (todos
+            .where((c) =>
+                c.dataVisita != null &&
+                !c.dataVisita!.isBefore(inicioDoDia) &&
+                c.dataVisita!.isBefore(fimDoDia))
+            .toList()
+          ..sort((a, b) => b.dataVisita!.compareTo(a.dataVisita!)))
         .map((c) {
       final hora = DateFormat('HH:mm').format(c.dataVisita!);
       final quem = vendedorId == null && c.vendedorNome != null
@@ -260,7 +265,7 @@ class NotificacaoBell extends StatelessWidget {
             c.fase == FaseCliente.negociacao &&
             hoje.difference(c.dataAtualizacao).inDays >= 7)
         .toList()
-      ..sort((a, b) => a.dataAtualizacao.compareTo(b.dataAtualizacao));
+      ..sort((a, b) => b.dataAtualizacao.compareTo(a.dataAtualizacao));
     final itensSemUpdate = semUpdate.map((c) {
       final dias = hoje.difference(c.dataAtualizacao).inDays;
       final quem = vendedorId == null && c.vendedorNome != null
@@ -494,52 +499,13 @@ class _PainelLateral extends StatelessWidget {
   Widget _buildCategoriaLembretes(
       BuildContext context, List<NotificacaoInApp> itens, ColorScheme cs) {
     final cor = Colors.orange.shade700;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Icon(Icons.alarm_outlined, color: cor, size: 14),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Lembretes',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: cor,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${itens.length}',
-                  style: TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.bold, color: cor),
-                ),
-              ),
-            ],
-          ),
-        ),
-        ...itens.map((n) => _buildItemLembrete(context, n, cor, cs)),
-        Divider(
-            height: 1, indent: 20, endIndent: 20, color: cs.outlineVariant),
-      ],
+    return GrupoNotificacaoColapsavel(
+      titulo: 'Lembretes',
+      icone: Icons.alarm_outlined,
+      cor: cor,
+      contador: itens.length,
+      children:
+          itens.map((n) => _buildItemLembrete(context, n, cor, cs)).toList(),
     );
   }
 
@@ -619,56 +585,13 @@ class _PainelLateral extends StatelessWidget {
   Widget _buildCategoriaTickets(
       BuildContext context, List<NotificacaoInApp> itens, ColorScheme cs) {
     final cor = Colors.indigo.shade600;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Icon(Icons.confirmation_number_outlined,
-                    color: cor, size: 14),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Tickets',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: cor,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${itens.length}',
-                  style: TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.bold, color: cor),
-                ),
-              ),
-            ],
-          ),
-        ),
-        ...itens.map((n) => _buildItemTicket(context, n, cor, cs)),
-        Divider(
-            height: 1,
-            indent: 20,
-            endIndent: 20,
-            color: cs.outlineVariant),
-      ],
+    return GrupoNotificacaoColapsavel(
+      titulo: 'Tickets',
+      icone: Icons.confirmation_number_outlined,
+      cor: cor,
+      contador: itens.length,
+      children:
+          itens.map((n) => _buildItemTicket(context, n, cor, cs)).toList(),
     );
   }
 
@@ -752,56 +675,12 @@ class _PainelLateral extends StatelessWidget {
   // ── Categoria de campanhas vigentes ────────────────────────────────────────
   Widget _buildCategoriaCampanha(BuildContext context, ColorScheme cs) {
     final cor = Colors.green.shade700;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Icon(Icons.campaign_outlined, color: cor, size: 14),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Condições Vigentes',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: cor,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${campanhas.length}',
-                  style: TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.bold, color: cor),
-                ),
-              ),
-            ],
-          ),
-        ),
-        ...campanhas
-            .map((c) => _buildItemCampanha(c, cor, cs)),
-        Divider(
-            height: 1,
-            indent: 20,
-            endIndent: 20,
-            color: cs.outlineVariant),
-      ],
+    return GrupoNotificacaoColapsavel(
+      titulo: 'Condições Vigentes',
+      icone: Icons.campaign_outlined,
+      cor: cor,
+      contador: campanhas.length,
+      children: campanhas.map((c) => _buildItemCampanha(c, cor, cs)).toList(),
     );
   }
 
@@ -861,58 +740,13 @@ class _PainelLateral extends StatelessWidget {
   // ── Categoria de clientes ──────────────────────────────────────────────────
   Widget _buildCategoria(
       BuildContext context, _NotifCategoria cat, ColorScheme cs) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: cat.cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Icon(cat.icone, color: cat.cor, size: 14),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                cat.titulo,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: cat.cor,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: cat.cor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${cat.itens.length}',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: cat.cor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        ...cat.itens.map((item) => _buildItem(context, item, cat.cor, cs)),
-        Divider(
-            height: 1,
-            indent: 20,
-            endIndent: 20,
-            color: cs.outlineVariant),
-      ],
+    return GrupoNotificacaoColapsavel(
+      titulo: cat.titulo,
+      icone: cat.icone,
+      cor: cat.cor,
+      contador: cat.itens.length,
+      children:
+          cat.itens.map((item) => _buildItem(context, item, cat.cor, cs)).toList(),
     );
   }
 
