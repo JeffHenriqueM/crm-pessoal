@@ -125,6 +125,14 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // Itens de notificação in-app (central do sino). As regras NÃO cascateiam,
+    // então a subcoleção precisa do seu próprio match (ticket #11): sem ele, o
+    // app não conseguia LER os itens — o push chegava no dispositivo mas nada
+    // aparecia na central. Escopado ao dono: cada um vê/atualiza só os seus.
+    match /notificacoes/{uid}/itens/{itemId} {
+      allow read, write: if isAuth() && request.auth.uid == uid;
+    }
+
     // ── Contratos pós-venda ───────────────────────────────────────────────────
     match /contratos/{docId} {
       allow read, write: if isAuth();
