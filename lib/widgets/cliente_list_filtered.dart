@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../services/firestore_service.dart';
+import '../services/tempo_sem_contato.dart';
+import 'chip_tempo_sem_contato.dart';
 
 class ClienteListFiltered extends StatelessWidget {
   final List<Cliente> clientes;
@@ -120,6 +122,8 @@ class ClienteListFiltered extends StatelessWidget {
     bool contatoAtrasado,
   ) {
     final cs = Theme.of(context).colorScheme;
+    final tempoContato =
+        avaliarTempoSemContatoCliente(cliente, agora: DateTime.now());
 
     return Card(
       shape: RoundedRectangleBorder(
@@ -195,6 +199,8 @@ class ClienteListFiltered extends StatelessWidget {
                             cs.errorContainer,
                             cs.onErrorContainer,
                           ),
+                        if (tempoContato.temAlerta)
+                          ChipTempoSemContato(tempoContato),
                       ],
                     ),
 

@@ -14,6 +14,7 @@ import '../widgets/aba_motivos_perda.dart';
 import '../widgets/aba_lead_score.dart';
 import '../widgets/aba_relatorios.dart';
 import '../widgets/aba_risco_silencio.dart';
+import '../widgets/aba_tempo_sem_contato.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userProfile;
@@ -80,7 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 11 : 5,
+      length: isAdmin ? 12 : 6,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -104,6 +105,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
             Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
             Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
+            Tab(text: 'Sem contato',  icon: Icon(Icons.schedule_outlined)),
             Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
             Tab(text: 'Desempenho',   icon: Icon(Icons.speed_outlined)),
             Tab(text: 'Calibração',   icon: Icon(Icons.science_outlined)),
@@ -155,18 +157,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
-              // 8 — Potencial (Lead Score)
+              // 8 — Tempo sem contato (15/20/30 dias — ticket #48)
+              AbaTempoSemContato(
+                clientes: todos,
+                todosVendedores: _todosVendedores,
+                userProfile: _userProfile,
+              ),
+              // 9 — Potencial (Lead Score)
               AbaLeadScore(
                 clientes: todos,
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
-              // 9 — Desempenho de Vendedor (diagnóstico vs média do time)
+              // 10 — Desempenho de Vendedor (diagnóstico vs média do time)
               AbaDesempenhoVendedor(
                 todosClientes: todos,
                 todosVendedores: _todosVendedores,
               ),
-              // 10 — Calibração dos sinais (backtest dos pesos)
+              // 11 — Calibração dos sinais (backtest dos pesos)
               AbaCalibracao(todosClientes: todos),
             ],
           );
@@ -190,6 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
             Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
             Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
+            Tab(text: 'Sem contato',  icon: Icon(Icons.schedule_outlined)),
             Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
           ],
         ),
@@ -211,6 +220,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               AbaRelatorios(clientes: clientes, vendedorId: _vendedorIdFiltro),
               AbaMotivosPerda(clientes: clientes),
               AbaRiscoSilencio(
+                clientes: clientes,
+                userProfile: _userProfile,
+              ),
+              AbaTempoSemContato(
                 clientes: clientes,
                 userProfile: _userProfile,
               ),

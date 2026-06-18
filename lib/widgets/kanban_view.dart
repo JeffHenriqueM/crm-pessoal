@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../services/firestore_service.dart';
+import '../services/tempo_sem_contato.dart';
+import 'chip_tempo_sem_contato.dart';
 import 'vincular_contrato_dialog.dart';
 
 // ── Kanban com drag-and-drop ──────────────────────────────────────────────────
@@ -365,6 +367,7 @@ class _KanbanCard extends StatelessWidget {
     final inicioDoDia = DateTime(hoje.year, hoje.month, hoje.day);
     final contatoAtrasado = cliente.proximoContato != null &&
         cliente.proximoContato!.isBefore(inicioDoDia);
+    final tempoContato = avaliarTempoSemContatoCliente(cliente, agora: hoje);
 
     return Card(
       elevation: isDragging ? 0 : 1,
@@ -415,6 +418,12 @@ class _KanbanCard extends StatelessWidget {
                   ),
                 ],
               ),
+
+              // ── Tempo sem contato (ticket #48) ───────────────────
+              if (tempoContato.temAlerta) ...[
+                const SizedBox(height: 7),
+                ChipTempoSemContato(tempoContato, compacto: true),
+              ],
 
               // ── Origem ───────────────────────────────────────────
               if (cliente.origem?.isNotEmpty == true) ...[

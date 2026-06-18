@@ -11,6 +11,7 @@ import '../models/negociacao_model.dart';
 import '../models/usuario_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/tempo_sem_contato.dart';
 import '../utils/datas_uteis.dart';
 import '../utils/url_launcher_service.dart';
 import '../utils/whatsapp_modelos.dart';
@@ -1423,7 +1424,11 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           ],
         ),
       ),
-      body: TabBarView(
+      body: Column(
+        children: [
+          _bannerTempoSemContato(),
+          Expanded(
+            child: TabBarView(
         controller: _tabController,
         children: [
           // ── Aba 0: Dados ────────────────────────────────────────────────────
@@ -1504,10 +1509,50 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
           // ── Aba 2: Negociações ──────────────────────────────────────────────
           _buildNegociacoesTab(),
         ],
+            ),
+          ),
+        ],
       ),
       floatingActionButton: AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
         child: _buildFab(),
+      ),
+    );
+  }
+
+  // Banner de "Tempo sem contato" (ticket #48): faixa colorida no topo da
+  // ficha quando o lead ativo está há ≥ 15 dias sem contato. Usa a fase
+  // selecionada (some se mover para fechado/perdido) e o último contato salvo.
+  Widget _bannerTempoSemContato() {
+    final c = widget.cliente;
+    if (_isNovo || c == null) return const SizedBox.shrink();
+
+    final aval = avaliarTempoSemContato(
+      fase: _fase,
+      ultimoContato: c.ultimoContato ?? c.dataAtualizacao,
+      agora: DateTime.now(),
+    );
+    final cor = aval.faixa.cor;
+    if (cor == null) return const SizedBox.shrink();
+
+    return Material(
+      color: cor.withValues(alpha: 0.12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.schedule, size: 18, color: cor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${aval.diasSemContato} dias sem contato · ${aval.faixa.rotulo}'
+                ' — registre uma interação.',
+                style: TextStyle(
+                    color: cor, fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
