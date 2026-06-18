@@ -14,6 +14,7 @@ import '../screens/recepcao_screen.dart';
 import 'aba_analise_imoveis.dart';
 import 'aba_pos_venda.dart';
 import '../screens/tickets_screen.dart';
+import '../screens/tutorial_screen.dart';
 import '../screens/vendedor_home_screen.dart';
 import '../screens/ficha_ticket_screen.dart';
 import '../services/atualizacao_service.dart';
@@ -266,6 +267,14 @@ class _MainShellState extends State<MainShell> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ConfiguracoesScreen()),
+    );
+  }
+
+  // ── Tutoriais (#33) ─────────────────────────────────────────────────────────
+  void _abrirTutorial(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TutorialScreen()),
     );
   }
 
@@ -581,6 +590,27 @@ class _MainShellState extends State<MainShell> {
                 ),
               ),
 
+            // Tutoriais (#33)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+              child: ListTile(
+                leading: Icon(Icons.help_outline,
+                    color: cs.onSurfaceVariant, size: 22),
+                title: Text('Tutoriais',
+                    style: TextStyle(fontSize: 15, color: cs.onSurface)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                horizontalTitleGap: 8,
+                dense: true,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _abrirTutorial(context);
+                },
+              ),
+            ),
+
             // Configurações
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
@@ -769,6 +799,37 @@ class _MainShellState extends State<MainShell> {
 
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 4),
+
+          // ── Tutoriais (#33) ────────────────────────────────────────────
+          if (_sidebarExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+              child: ListTile(
+                leading: Icon(Icons.help_outline,
+                    color: cs.onSurfaceVariant, size: 20),
+                title: Text('Tutoriais',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                horizontalTitleGap: 8,
+                dense: true,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onTap: () => _abrirTutorial(context),
+              ),
+            )
+          else
+            Center(
+              child: Tooltip(
+                message: 'Tutoriais',
+                preferBelow: false,
+                child: IconButton(
+                  icon: Icon(Icons.help_outline,
+                      color: cs.onSurfaceVariant, size: 20),
+                  onPressed: () => _abrirTutorial(context),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
 
           // ── Configurações ──────────────────────────────────────────────
           if (_sidebarExpanded)
