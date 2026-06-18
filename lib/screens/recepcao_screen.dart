@@ -11,6 +11,7 @@ import '../models/cliente_model.dart';
 import '../models/fase_enum.dart';
 import '../models/usuario_model.dart';
 import '../services/ficha_pdf.dart';
+import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/aba_linha_atendimento.dart';
 import '../widgets/contatos_embaixador_tab.dart';
@@ -1105,6 +1106,102 @@ class _RecepcaoAgendamentosTabState extends State<_RecepcaoAgendamentosTab> {
   final _service = FirestoreService();
   static final _fmt = DateFormat("dd/MM/yyyy 'às' HH:mm");
 
+  String _perfil = '';
+  bool get _isAdmin => _perfil == 'admin' || _perfil == 'super admin';
+
+  @override
+  void initState() {
+    super.initState();
+    AuthService().getCurrentUserProfile().then((p) {
+      if (mounted) setState(() => _perfil = p);
+    });
+  }
+
+  // Remarcar: escolhe nova data/hora e exige motivo. Bloqueia ao atingir o
+  // limite (ticket #63).
+  Future<void> _remarcar(Agendamento a) async {
+    final novaData = await showDatePicker(
+      context: context,
+      initialDate: a.dataHora,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (novaData == null || !mounted) return;
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(a.dataHora),
+    );
+    if (hora == null || !mounted) return;
+    final novaDataHora = DateTime(
+        novaData.year, novaData.month, novaData.day, hora.hour, hora.minute);
+
+    final motivoCtrl = TextEditingController();
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remarcar agendamento'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Nova data: ${_fmt.format(novaDataHora)}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: motivoCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Motivo da remarcação *',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remarcar')),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+    final motivo = motivoCtrl.text.trim();
+    if (motivo.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Informe o motivo da remarcação.')),
+        );
+      }
+      return;
+    }
+    try {
+      await _service.remarcarAgendamento(a.id, novaDataHora, motivo);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Remarcado para ${_fmt.format(novaDataHora)}.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e is StateError ? e.message : 'Erro: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _liberarRemarcacao(Agendamento a) async {
+    await _service.liberarRemarcacaoAgendamento(a.id);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Remarcação liberada (+1).')),
+      );
+    }
+  }
+
   Future<void> _registrarAtendimento(Agendamento a) async {
     await Navigator.push(
       context,
@@ -1192,6 +1289,23 @@ class _RecepcaoAgendamentosTabState extends State<_RecepcaoAgendamentosTab> {
                                   fontSize: 12, color: cs.onSurfaceVariant)),
                         ]),
                       ],
+                      if (a.remarcacoes > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Icon(Icons.history, size: 13, color: cs.tertiary),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Remarcado ${a.remarcacoes}/${a.limiteRemarcacoes}'
+                            '${a.podeRemarcar ? '' : ' · bloqueado'}',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: a.podeRemarcar
+                                    ? cs.tertiary
+                                    : cs.error,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ]),
+                      ],
                       const SizedBox(height: 12),
                       Wrap(spacing: 8, runSpacing: 4, children: [
                         FilledButton.icon(
@@ -1200,6 +1314,26 @@ class _RecepcaoAgendamentosTabState extends State<_RecepcaoAgendamentosTab> {
                               const Icon(Icons.meeting_room_outlined, size: 18),
                           label: const Text('Registrar atendimento'),
                         ),
+                        if (a.podeRemarcar)
+                          OutlinedButton.icon(
+                            onPressed: () => _remarcar(a),
+                            icon: const Icon(Icons.event_repeat_outlined,
+                                size: 16),
+                            label: const Text('Remarcar'),
+                          )
+                        else if (_isAdmin)
+                          OutlinedButton.icon(
+                            onPressed: () => _liberarRemarcacao(a),
+                            icon: const Icon(Icons.lock_open_outlined, size: 16),
+                            label: const Text('Liberar remarcação'),
+                          )
+                        else
+                          OutlinedButton.icon(
+                            onPressed: null,
+                            icon: const Icon(Icons.event_busy_outlined,
+                                size: 16),
+                            label: const Text('Remarcação bloqueada'),
+                          ),
                         OutlinedButton(
                           onPressed: () => _mudarStatus(a, 'faltou', 'faltou'),
                           child: const Text('Faltou'),

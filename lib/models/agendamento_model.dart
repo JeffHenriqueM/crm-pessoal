@@ -42,6 +42,15 @@ class Agendamento {
   /// Preenchido na conversão: id do `Cliente` criado quando o cliente comparece.
   final String? clienteVinculadoId;
 
+  /// Remarcação (ticket #63): quantas vezes já foi remarcado, e o teto
+  /// permitido (default 2). Ao atingir o teto, bloqueia; admin "libera"
+  /// aumentando o teto em 1.
+  final int remarcacoes;
+  final int limiteRemarcacoes;
+
+  /// Histórico de remarcações: cada item {de, para, motivo, em, porNome}.
+  final List<Map<String, dynamic>> historicoRemarcacoes;
+
   // Auditoria
   final String? criadoPorId;
   final String? criadoPorNome;
@@ -72,6 +81,9 @@ class Agendamento {
     required this.dataHoraAgendamento,
     this.status = 'agendado',
     this.clienteVinculadoId,
+    this.remarcacoes = 0,
+    this.limiteRemarcacoes = 2,
+    this.historicoRemarcacoes = const [],
     this.criadoPorId,
     this.criadoPorNome,
     this.criadoEm,
@@ -83,6 +95,15 @@ class Agendamento {
   DateTime get dataHora => dataHoraAgendamento;
 
   bool get isAgendado => status == 'agendado';
+
+  /// Ainda pode remarcar (não atingiu o teto).
+  bool get podeRemarcar => remarcacoes < limiteRemarcacoes;
+
+  /// Remarcações restantes antes do bloqueio.
+  int get remarcacoesRestantes {
+    final r = limiteRemarcacoes - remarcacoes;
+    return r < 0 ? 0 : r;
+  }
 
   Map<String, dynamic> toFirestore() => {
         'nome': nome,
@@ -106,6 +127,10 @@ class Agendamento {
         'dataHoraAgendamento': Timestamp.fromDate(dataHoraAgendamento),
         'status': status,
         if (clienteVinculadoId != null) 'clienteVinculadoId': clienteVinculadoId,
+        'remarcacoes': remarcacoes,
+        'limiteRemarcacoes': limiteRemarcacoes,
+        if (historicoRemarcacoes.isNotEmpty)
+          'historicoRemarcacoes': historicoRemarcacoes,
         if (deletado) 'deletado': true,
       };
 
@@ -135,6 +160,13 @@ class Agendamento {
           (d['dataHoraAgendamento'] as Timestamp?)?.toDate() ?? DateTime.now(),
       status: d['status'] as String? ?? 'agendado',
       clienteVinculadoId: d['clienteVinculadoId'] as String?,
+      remarcacoes: (d['remarcacoes'] as num?)?.toInt() ?? 0,
+      limiteRemarcacoes: (d['limiteRemarcacoes'] as num?)?.toInt() ?? 2,
+      historicoRemarcacoes: (d['historicoRemarcacoes'] as List?)
+              ?.whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList() ??
+          const [],
       criadoPorId: d['criadoPorId'] as String?,
       criadoPorNome: d['criadoPorNome'] as String?,
       criadoEm: (d['criadoEm'] as Timestamp?)?.toDate(),

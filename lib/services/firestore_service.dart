@@ -468,6 +468,50 @@ class FirestoreService {
       atualizarStatusAgendamento(agendamentoId, 'compareceu',
           clienteVinculadoId: clienteId);
 
+  /// Remarca um agendamento para uma nova data/hora, informando o motivo
+  /// (ticket #63). Incrementa `remarcacoes`, registra no histórico e bloqueia
+  /// ao atingir o limite — lança [StateError] se já bloqueado.
+  Future<void> remarcarAgendamento(
+    String agendamentoId,
+    DateTime novaDataHora,
+    String motivo,
+  ) async {
+    final ref = _db.collection(_colAgendamentos).doc(agendamentoId);
+    final snap = await ref.get();
+    if (!snap.exists) throw StateError('Agendamento não encontrado.');
+    final a = Agendamento.fromFirestore(snap);
+    if (!a.podeRemarcar) {
+      throw StateError(
+          'Limite de remarcações atingido — só um admin pode liberar.');
+    }
+    final entrada = {
+      'de': Timestamp.fromDate(a.dataHoraAgendamento),
+      'para': Timestamp.fromDate(novaDataHora),
+      'motivo': motivo,
+      'em': Timestamp.now(),
+      'porId': _currentUserId,
+      'porNome': _currentUserName,
+    };
+    await ref.update({
+      'dataHoraAgendamento': Timestamp.fromDate(novaDataHora),
+      'remarcacoes': FieldValue.increment(1),
+      'historicoRemarcacoes': FieldValue.arrayUnion([entrada]),
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
+  /// Admin libera mais uma remarcação após o limite (aumenta o teto em 1).
+  Future<void> liberarRemarcacaoAgendamento(String agendamentoId) async {
+    await _db.collection(_colAgendamentos).doc(agendamentoId).update({
+      'limiteRemarcacoes': FieldValue.increment(1),
+      'dataAtualizacao': FieldValue.serverTimestamp(),
+      'atualizadoPorId': _currentUserId,
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
   // ── LINHA DE ATENDIMENTO (fila da sala de vendas) ──────────────────────────
   static const _colFila = 'fila_atendimento';
 
