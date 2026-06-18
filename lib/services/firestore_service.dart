@@ -432,61 +432,19 @@ class FirestoreService {
   }
 
   /// Stream de agendamentos.
-  /// Perfil 'recepcao': vê todos. Demais: apenas os vinculados a si
-  /// (criador/captador/liner). Ordena por data/hora crescente (próximos
-  /// primeiro). Filtro/ordenação em Dart → sem índice composto.
+  /// TODOS os perfis veem TODOS os agendamentos (ticket #62): a captadora/
+  /// recepção lança o agendamento e o vendedor precisa enxergá-lo na sua
+  /// agenda mesmo sem ser o criador. Ordena por data/hora crescente (próximos
+  /// primeiro). Ordenação em Dart → sem índice composto.
   Stream<List<Agendamento>> getAgendamentosStream() {
-    return Stream.fromFuture(_getCurrentUserProfile()).asyncMap((perfil) {
-      if (perfil == 'recepcao') {
-        return _db.collection(_colAgendamentos).snapshots().map((s) {
-          final r = s.docs
-              .map(Agendamento.fromFirestore)
-              .where((a) => !a.deletado)
-              .toList();
-          r.sort(
-              (a, b) => a.dataHoraAgendamento.compareTo(b.dataHoraAgendamento));
-          return r;
-        });
-      }
-
-      final uid = _currentUserId;
-      List<Agendamento> fromSnap(s) =>
-          s.docs.map<Agendamento>(Agendamento.fromFirestore).toList();
-
-      final sCriados = _db
-          .collection(_colAgendamentos)
-          .where('criadoPorId', isEqualTo: uid)
-          .snapshots()
-          .map(fromSnap);
-      final sCaptador = _db
-          .collection(_colAgendamentos)
-          .where('captadorId', isEqualTo: uid)
-          .snapshots()
-          .map(fromSnap);
-      final sLiner = _db
-          .collection(_colAgendamentos)
-          .where('linerId', isEqualTo: uid)
-          .snapshots()
-          .map(fromSnap);
-
-      return Rx.combineLatest3<List<Agendamento>, List<Agendamento>,
-          List<Agendamento>, List<Agendamento>>(
-        sCriados,
-        sCaptador,
-        sLiner,
-        (criados, captados, liners) {
-          final vistos = <String>{};
-          final r = <Agendamento>[];
-          for (final a in [...criados, ...captados, ...liners]) {
-            if (a.id.isNotEmpty && vistos.add(a.id)) r.add(a);
-          }
-          r.removeWhere((a) => a.deletado);
-          r.sort(
-              (a, b) => a.dataHoraAgendamento.compareTo(b.dataHoraAgendamento));
-          return r;
-        },
-      );
-    }).switchMap((stream) => stream);
+    return _db.collection(_colAgendamentos).snapshots().map((s) {
+      final r = s.docs
+          .map(Agendamento.fromFirestore)
+          .where((a) => !a.deletado)
+          .toList();
+      r.sort((a, b) => a.dataHoraAgendamento.compareTo(b.dataHoraAgendamento));
+      return r;
+    });
   }
 
   /// Atualiza o status do agendamento (agendado|compareceu|faltou|cancelado).

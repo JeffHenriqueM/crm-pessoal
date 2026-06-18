@@ -8,8 +8,8 @@ import 'package:crm_pessoal/services/firestore_service.dart';
 
 /// Comportamento esperado da feature "Agendamento" (atendimento futuro que
 /// ainda NÃO é lead): criar grava na coleção `agendamentos` com status
-/// `agendado`, o stream respeita o escopo por perfil, e comparecer vincula o
-/// cliente criado.
+/// `agendado`, o stream entrega todos os agendamentos a todos os perfis
+/// (ticket #62), e comparecer vincula o cliente criado.
 void main() {
   FirestoreService serviceCom(FakeFirebaseFirestore db, String uid,
           {String nome = 'Usuário'}) =>
@@ -93,10 +93,12 @@ void main() {
       expect(lista.map((a) => a.id), ['ag_a', 'ag_b']);
     });
 
-    test('vendedor vê apenas os seus', () async {
+    // Ticket #62: todos os perfis enxergam todos os agendamentos (a captadora
+    // lança e o vendedor precisa ver na agenda mesmo sem ser o dono).
+    test('vendedor também vê todos os agendamentos', () async {
       final service = serviceCom(db, 'vend_a', nome: 'Vend A');
       final lista = await service.getAgendamentosStream().first;
-      expect(lista.map((a) => a.id), ['ag_a']);
+      expect(lista.map((a) => a.id), ['ag_a', 'ag_b']);
     });
   });
 

@@ -8,9 +8,9 @@ import {
 } from './setup.js';
 
 // Escopo de `agendamentos` (atendimento futuro, ainda não é lead):
-// - recepção/admin (gestores) veem e operam tudo.
-// - vendedor/captador apenas os seus (dono = uid em vendedorId/linerId/
-//   criadoPorId/captadorId). Delete sempre bloqueado.
+// - TODOS os autenticados leem, criam e operam qualquer agendamento (ticket
+//   #62): a recepção lança e o vendedor precisa ver/converter mesmo sem ser o
+//   dono. Delete sempre bloqueado (soft-delete/auditoria).
 
 let env;
 
@@ -57,14 +57,14 @@ test('vendedor lê o próprio agendamento', async () => {
   await assertSucceeds(getDoc(doc(db, 'agendamentos/ag_de_a')));
 });
 
-test('vendedor NÃO lê agendamento de outro', async () => {
+test('vendedor lê agendamento de outro (ticket #62)', async () => {
   const db = contextoAutenticado(env, 'vendedor_b');
-  await assertFails(getDoc(doc(db, 'agendamentos/ag_de_a')));
+  await assertSucceeds(getDoc(doc(db, 'agendamentos/ag_de_a')));
 });
 
-test('vendedor NÃO altera agendamento de outro', async () => {
+test('vendedor altera agendamento de outro (ticket #62)', async () => {
   const db = contextoAutenticado(env, 'vendedor_b');
-  await assertFails(
+  await assertSucceeds(
     updateDoc(doc(db, 'agendamentos/ag_de_a'), { status: 'cancelado' }),
   );
 });

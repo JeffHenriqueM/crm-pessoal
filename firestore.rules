@@ -54,12 +54,11 @@ service cloud.firestore {
     }
 
     // ── Agendamentos (atendimento futuro, ainda não é lead) ──────────────────
-    // Gestores (inclui recepção) veem todos; vendedor/captador apenas os seus.
-    // Sem delete (padrão soft-delete/auditoria).
+    // TODOS os autenticados veem e operam todos os agendamentos (ticket #62):
+    // a recepção lança e o vendedor precisa enxergar na agenda e converter em
+    // atendimento, mesmo sem ser o dono. Sem delete (soft-delete/auditoria).
     match /agendamentos/{docId} {
-      allow read:   if isAuth() && (isGestor() || isDono(resource.data));
-      allow create: if isAuth() && (isGestor() || isDono(request.resource.data));
-      allow update: if isAuth() && (isGestor() || isDono(resource.data));
+      allow read, create, update: if isAuth();
       allow delete: if false;
     }
 
