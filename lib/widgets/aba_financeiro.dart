@@ -573,24 +573,12 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     return Row(
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Financeiro',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: cs.onSurface,
-                ),
-              ),
-              if (_baixas.isNotEmpty)
-                Text(
+          child: _baixas.isNotEmpty
+              ? Text(
                   '${_baixas.length} baixas carregadas',
                   style: TextStyle(fontSize: 12, color: cs.outline),
-                ),
-            ],
-          ),
+                )
+              : const SizedBox.shrink(),
         ),
         Wrap(
           spacing: 8,
