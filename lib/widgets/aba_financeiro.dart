@@ -12,6 +12,7 @@ import '../models/cliente_model.dart';
 import '../models/contrato_model.dart';
 import '../services/financeiro_excel_parser.dart';
 import '../services/firestore_service.dart';
+import '../screens/ficha_contrato_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AbaFinanceiro
@@ -180,6 +181,17 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     final anterior = r[keys[idx - 1]]!;
     if (anterior == 0) return null;
     return (r[keys[idx]]! - anterior) / anterior * 100;
+  }
+
+  /// Rótulos [mêsRef, mêsAnterior] comparados na variação; null se não há base.
+  List<String>? get _mesesVariacao {
+    final r = _receitaPorMes;
+    if (r.length < 2) return null;
+    final keys = r.keys.toList();
+    final refKey = _mesFiltro != null ? _labelParaKey(_mesFiltro!) : keys.last;
+    final idx = keys.indexOf(refKey);
+    if (idx <= 0) return null;
+    return [_labelMesCreditoKey(keys[idx]), _labelMesCreditoKey(keys[idx - 1])];
   }
 
   // ── Receita por mês (série completa, ignora filtro de mês) ────────────────
@@ -563,12 +575,10 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
           Icons.calendar_month_outlined,
           Colors.indigo.shade400,
         ),
-        if (_variacaoMensal != null)
+        if (_variacaoMensal != null && _mesesVariacao != null)
           _kpiCard(
             cs,
-            _mesFiltro != null
-                ? 'Variação ($_mesFiltro vs. mês anterior)'
-                : 'Variação (último mês vs. anterior)',
+            'Variação (${_mesesVariacao![0]} vs. ${_mesesVariacao![1]})',
             _formatarPct(_variacaoMensal!),
             _variacaoMensal! >= 0
                 ? Icons.arrow_upward_rounded
@@ -673,44 +683,56 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
               )
             else
               ...lista.map(
-                (c) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                (c) => InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FichaContratoScreen(contrato: c),
+                    ),
+                  ),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                c.nomeComprador,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                              Text(
+                                '${(c.codigoContrato ?? '').isEmpty ? c.localizador : c.codigoContrato} · ${c.produto}',
+                                style: TextStyle(
+                                    fontSize: 11, color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              c.nomeComprador,
+                              'Saldo ${_formatarMoedaCompacta(c.saldoRestante)}',
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 13),
+                                  fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              '${(c.codigoContrato ?? '').isEmpty ? c.localizador : c.codigoContrato} · ${c.produto}',
-                              style: TextStyle(
-                                  fontSize: 11, color: cs.onSurfaceVariant),
+                              c.status,
+                              style: TextStyle(fontSize: 10, color: cs.outline),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Saldo ${_formatarMoedaCompacta(c.saldoRestante)}',
-                            style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                          Text(
-                            c.status,
-                            style: TextStyle(fontSize: 10, color: cs.outline),
-                          ),
-                        ],
-                      ),
-                    ],
+                        Icon(Icons.chevron_right,
+                            size: 18, color: cs.outline),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -888,7 +910,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Série completa (independente do filtro de mês)',
+              _mesFiltro == null ? 'Todos os meses' : 'Mês: $_mesFiltro',
               style: TextStyle(fontSize: 11, color: cs.outline),
             ),
             const SizedBox(height: 20),
