@@ -241,25 +241,33 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   double get _saldoAReceberContratos => contratosEfetivos(_contratos)
       .fold<double>(0.0, (s, c) => s + c.saldoRestante);
 
-  /// Recebido no mês de referência: o mês filtrado, ou o mais recente quando
-  /// não há filtro.
-  double get _recebidoMesReferencia {
-    if (_mesFiltro != null) return _totalRecebido; // já é o mês filtrado
+  /// Mês mais recente com baixas (o "mês atual" da base), SEMPRE — independe do
+  /// filtro. Os % abaixo usam o saldo/valor ATUAL, então só fazem sentido contra
+  /// o recebimento do mês corrente (um mês passado dividido pelo saldo de hoje
+  /// daria um percentual distorcido).
+  String? get _mesAtualKey {
     final r = _receitaPorMes;
-    if (r.isEmpty) return 0.0;
-    return r[r.keys.last]!;
+    return r.isEmpty ? null : r.keys.last;
   }
 
-  /// % do recebido no mês sobre o saldo a receber. null se não há base.
+  String get _mesAtualLabel =>
+      _mesAtualKey == null ? '' : _labelMesCreditoKey(_mesAtualKey!);
+
+  double get _recebidoMesAtual {
+    final k = _mesAtualKey;
+    return k == null ? 0.0 : _receitaPorMes[k]!;
+  }
+
+  /// % do recebido no MÊS ATUAL sobre o saldo a receber. null se não há base.
   double? get _percRecebidoSobreSaldo {
     final y = _saldoAReceberContratos;
-    return y <= 0 ? null : _recebidoMesReferencia / y * 100;
+    return y <= 0 ? null : _recebidoMesAtual / y * 100;
   }
 
-  /// % do recebido no mês sobre o valor total atualizado. null se não há base.
+  /// % do recebido no MÊS ATUAL sobre o valor total atualizado.
   double? get _percRecebidoSobreAtualizado {
     final y = _valorAtualizadoContratos;
-    return y <= 0 ? null : _recebidoMesReferencia / y * 100;
+    return y <= 0 ? null : _recebidoMesAtual / y * 100;
   }
 
   // ── Contratos sem pagamento registrado ─────────────────────────────────────
@@ -747,7 +755,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
         if (_percRecebidoSobreSaldo != null)
           _kpiCard(
             cs,
-            'Recebido no mês / saldo a receber',
+            'Recebido em $_mesAtualLabel / saldo a receber',
             _formatarPctSimples(_percRecebidoSobreSaldo!),
             Icons.savings_outlined,
             Colors.teal.shade700,
@@ -755,7 +763,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
         if (_percRecebidoSobreAtualizado != null)
           _kpiCard(
             cs,
-            'Recebido no mês / valor atualizado',
+            'Recebido em $_mesAtualLabel / valor atualizado',
             _formatarPctSimples(_percRecebidoSobreAtualizado!),
             Icons.percent_rounded,
             Colors.indigo.shade600,
