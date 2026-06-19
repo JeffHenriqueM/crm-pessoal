@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/baixa_financeira_model.dart';
 import '../models/contrato_model.dart';
 import '../models/interacao_model.dart';
 import '../services/auth_service.dart';
@@ -38,16 +39,29 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   // refletir na mesma tela (a tela não faz stream do contrato).
   late StatusAssinatura _statusAssinatura = widget.contrato.statusAssinatura;
 
+  /// Último pagamento do cliente (carregado assincronamente; null = sem dados).
+  BaixaFinanceira? _ultimoPagamento;
+
   StreamSubscription<List<Interacao>>? _interSub;
 
   @override
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
-    _auth.getCurrentUserProfile().then((p) => setState(() => _perfil = p));
+    _auth.getCurrentUserProfile().then((p) {
+      if (!mounted) return;
+      setState(() => _perfil = p);
+      // Carrega último pagamento apenas para perfis autorizados.
+      if (p == 'admin' || p == 'financeiro' || p == 'super admin') {
+        _carregarUltimoPagamento();
+      }
+    });
     _interSub = _fs
         .getInteracoesContrato(widget.contrato.localizador)
-        .listen((lista) => setState(() => _interacoes = lista));
+        .listen((lista) {
+      if (!mounted) return;
+      setState(() => _interacoes = lista);
+    });
   }
 
   @override
@@ -59,6 +73,21 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
 
   bool get _isAdmin =>
       _perfil == 'admin' || _perfil == 'super admin' || _perfil == 'pós-venda';
+
+  bool get _podeVerFinanceiro =>
+      _perfil == 'admin' ||
+      _perfil == 'financeiro' ||
+      _perfil == 'super admin';
+
+  Future<void> _carregarUltimoPagamento() async {
+    try {
+      final baixa = await _fs
+          .getUltimoPagamentoCliente(widget.contrato.nomeComprador);
+      if (mounted) setState(() => _ultimoPagamento = baixa);
+    } catch (e) {
+      debugPrint('[FichaContratoScreen] Erro ao buscar último pagamento: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +130,8 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
             linkPdf: _linkPdf,
             onAbrirPdf: _abrirPdf,
             onEditarLinkPdf: _editarLinkPdf,
+            ultimoPagamento:
+                _podeVerFinanceiro ? _ultimoPagamento : null,
           ),
           _InteracoesTab(
             interacoes: _interacoes,
@@ -327,6 +358,10 @@ class _DadosTab extends StatelessWidget {
   final VoidCallback onAbrirPdf;
   final VoidCallback onEditarLinkPdf;
 
+  /// Último pagamento do cliente. Null = não disponível (perfil sem acesso
+  /// ou nenhuma baixa encontrada).
+  final BaixaFinanceira? ultimoPagamento;
+
   const _DadosTab({
     required this.contrato,
     required this.isAdmin,
@@ -339,6 +374,7 @@ class _DadosTab extends StatelessWidget {
     required this.linkPdf,
     required this.onAbrirPdf,
     required this.onEditarLinkPdf,
+    this.ultimoPagamento,
   });
 
   @override
@@ -346,6 +382,7 @@ class _DadosTab extends StatelessWidget {
     final c = contrato;
     final fmtMoeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
     final fmtData = DateFormat('dd/MM/yyyy');
+    final fmtMesAno = DateFormat('MM/yyyy');
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -572,6 +609,47 @@ class _DadosTab extends StatelessWidget {
             _campo('Data quitação', fmtData.format(c.dataQuitacao!)),
         ]),
         const SizedBox(height: 8),
+
+        // Último Pagamento (visível apenas para admin, financeiro, super admin)
+        if (ultimoPagamento != null) ...[
+          _secao('Último Pagamento', [
+            Builder(builder: (_) {
+              final ult = ultimoPagamento!;
+              final diasAgo =
+                  DateTime.now().difference(ult.dataCredito).inDays;
+              final corValor =
+                  diasAgo <= 60 ? Colors.green.shade700 : null;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.payments_outlined,
+                          size: 16, color: Colors.grey),
+                      const SizedBox(width: 6),
+                      Text(
+                        fmtMoeda.format(ult.valorPago),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: corValor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  _campo('Data', fmtData.format(ult.dataCredito)),
+                  _campo(
+                      'Competência', fmtMesAno.format(ult.dataCredito)),
+                  if (ult.tipo.isNotEmpty) _campo('Forma', ult.tipo),
+                  if (ult.documentoCar.isNotEmpty)
+                    _campo('Documento', ult.documentoCar),
+                ],
+              );
+            }),
+          ]),
+          const SizedBox(height: 8),
+        ],
 
         // Comprador
         _secao('Comprador Principal', [

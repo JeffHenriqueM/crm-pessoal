@@ -4,6 +4,7 @@ import '../screens/apresentacao_screen.dart';
 import '../screens/campanhas_screen.dart';
 import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/financeiro_screen.dart';
 import '../screens/fluxo_cliente_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
@@ -61,6 +62,10 @@ class _MainShellState extends State<MainShell> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
   bool get _isPosVenda => widget.userProfile == 'pós-venda';
+  bool get _podeVerFinanceiro =>
+      widget.userProfile == 'financeiro' ||
+      widget.userProfile == 'admin' ||
+      widget.userProfile == 'super admin';
   // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
   bool get _isReserva => widget.userProfile == 'reserva';
   bool get _isRecepcao => widget.userProfile == 'recepcao';
@@ -523,6 +528,35 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
 
+            // Financeiro (financeiro, admin, super admin)
+            if (_podeVerFinanceiro)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: ListTile(
+                  leading: Icon(Icons.account_balance_outlined,
+                      color: cs.onSurfaceVariant, size: 22),
+                  title: Text('Financeiro',
+                      style: TextStyle(fontSize: 15, color: cs.onSurface)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  horizontalTitleGap: 8,
+                  dense: true,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FinanceiroScreen(
+                          userProfile: widget.userProfile,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
             Divider(height: 1, color: cs.outlineVariant),
             const SizedBox(height: 4),
 
@@ -794,6 +828,54 @@ class _MainShellState extends State<MainShell> {
               ),
             );
           }),
+
+          // ── Financeiro (financeiro, admin, super admin) ────────────────
+          if (_podeVerFinanceiro)
+            if (_sidebarExpanded)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: ListTile(
+                  leading: Icon(Icons.account_balance_outlined,
+                      color: cs.onSurfaceVariant, size: 20),
+                  title: Text('Financeiro',
+                      style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  horizontalTitleGap: 8,
+                  dense: true,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FinanceiroScreen(
+                        userProfile: widget.userProfile,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Center(
+                child: Tooltip(
+                  message: 'Financeiro',
+                  preferBelow: false,
+                  child: IconButton(
+                    icon: Icon(Icons.account_balance_outlined,
+                        color: cs.onSurfaceVariant, size: 20),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FinanceiroScreen(
+                          userProfile: widget.userProfile,
+                        ),
+                      ),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
 
           const Spacer(),
 

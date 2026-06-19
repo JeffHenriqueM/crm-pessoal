@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/baixa_financeira_model.dart';
 import '../models/contrato_model.dart';
 import '../services/contrato_csv_parser.dart';
 import '../services/contrato_import_diff.dart';
@@ -36,20 +37,39 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   List<Contrato> _todos = [];
   bool _carregando = true;
 
+  /// Mapa de último pagamento indexado por nomeComprador.
+  Map<String, BaixaFinanceira> _ultimosPagamentos = {};
+
   StreamSubscription<List<Contrato>>? _sub;
 
   @override
   void initState() {
     super.initState();
     _sub = _fs.getContratosStream().listen(
-      (lista) => setState(() {
-        _todos = lista;
-        _carregando = false;
-      }),
+      (lista) {
+        if (!mounted) return;
+        setState(() {
+          _todos = lista;
+          _carregando = false;
+        });
+        _carregarUltimosPagamentos(lista);
+      },
       onError: (_) {
         if (mounted) setState(() => _carregando = false);
       },
     );
+  }
+
+  /// Busca em batch os últimos pagamentos para os contratos visíveis.
+  /// Roda em background — falha silenciosa (não bloqueia a tela).
+  Future<void> _carregarUltimosPagamentos(List<Contrato> lista) async {
+    try {
+      final nomes = lista.map((c) => c.nomeComprador).toList();
+      final mapa = await _fs.getUltimosPagamentosClientes(nomes);
+      if (mounted) setState(() => _ultimosPagamentos = mapa);
+    } catch (e) {
+      debugPrint('[PosVendaScreen] Erro ao buscar últimos pagamentos: $e');
+    }
   }
 
   @override
@@ -225,7 +245,11 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
                   itemCount: filtrados.length,
-                  itemBuilder: (ctx, i) => _ContratoCard(contrato: filtrados[i]),
+                  itemBuilder: (ctx, i) => _ContratoCard(
+                    contrato: filtrados[i],
+                    ultimoPagamento:
+                        _ultimosPagamentos[filtrados[i].nomeComprador],
+                  ),
                 ),
         ),
       ],
@@ -498,13 +522,15 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
 
 class _ContratoCard extends StatelessWidget {
   final Contrato contrato;
-  const _ContratoCard({required this.contrato});
+  final BaixaFinanceira? ultimoPagamento;
+  const _ContratoCard({required this.contrato, this.ultimoPagamento});
 
   @override
   Widget build(BuildContext context) {
     final c = contrato;
     final pct = c.percentualEfetivo;
     final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+    final fmtData = DateFormat('dd/MM/yyyy');
 
     Color statusColor;
     switch (c.statusAssinatura.grupo) {
@@ -632,6 +658,32 @@ class _ContratoCard extends StatelessWidget {
                   ),
                 ],
               ),
+              // Último pagamento (visível apenas se houver registro)
+              if (ultimoPagamento != null) ...[
+                const SizedBox(height: 6),
+                Builder(builder: (_) {
+                  final ult = ultimoPagamento!;
+                  final diasAgo = DateTime.now()
+                      .difference(ult.dataCredito)
+                      .inDays;
+                  final cor =
+                      diasAgo <= 60 ? Colors.green.shade700 : Colors.grey;
+                  return Row(
+                    children: [
+                      Icon(Icons.payments_outlined, size: 13, color: cor),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${fmt.format(ult.valorPago)} em ${fmtData.format(ult.dataCredito)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ],
             ],
           ),
         ),

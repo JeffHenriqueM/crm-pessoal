@@ -1,273 +1,513 @@
-import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
-import '../models/cliente_model.dart';
-import '../models/fase_enum.dart';
-import 'filtro_periodo.dart';
-import 'secao_recolhivel.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+import 'dart:typed_data';
 
+import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../models/baixa_financeira_model.dart';
+import '../models/cliente_model.dart';
+import '../services/financeiro_excel_parser.dart';
+import '../services/firestore_service.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AbaFinanceiro
+// ─────────────────────────────────────────────────────────────────────────────
+/// Aba de análise financeira de baixas.
+///
+/// Permissões: 'admin', 'financeiro', 'super admin'.
+/// Recebe [clientes] para manter a assinatura do DashboardScreen inalterada,
+/// mas os KPIs desta aba vêm das [_baixas] carregadas do Firestore
+/// (coleção `baixas_financeiras`) ou importadas via Excel.
 class AbaFinanceiro extends StatefulWidget {
   final List<Cliente> clientes;
-  const AbaFinanceiro({super.key, required this.clientes});
+  final String userProfile;
+
+  const AbaFinanceiro({
+    super.key,
+    required this.clientes,
+    this.userProfile = '',
+  });
 
   @override
   State<AbaFinanceiro> createState() => _AbaFinanceiroState();
 }
 
 class _AbaFinanceiroState extends State<AbaFinanceiro> {
-  FiltroPeriodo _filtro = const FiltroPeriodo(periodo: Periodo.mes);
+  final _firestore = FirestoreService();
 
-  static const _meses = [
-    'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
-    'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
-  ];
+  List<BaixaFinanceira> _baixas = [];
+  bool _importando = false;
+  bool _carregando = true; // true enquanto faz a leitura inicial do Firestore
+  String? _mesFiltro; // null = todos os meses
 
-  List<Cliente> get _base =>
-      widget.clientes.where((c) => c.fase != FaseCliente.atendimento).toList();
+  static final _moeda = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+    decimalDigits: 2,
+  );
 
-  List<Cliente> get _filtrados =>
-      _base.where((c) => _filtro.contem(c.dataCadastro)).toList();
+  static final _moedaK = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$ ',
+    decimalDigits: 0,
+  );
+
+  // ── Ciclo de vida ──────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final clientes = _filtrados;
+  void initState() {
+    super.initState();
+    _carregarBaixasDoFirestore();
+  }
 
-    final emNegociacao =
-        clientes.where((c) => c.fase == FaseCliente.negociacao).length;
-    final emVisita =
-        clientes.where((c) => c.fase == FaseCliente.visita).length;
-    final fechados =
-        clientes.where((c) => c.fase == FaseCliente.fechado).length;
-    final perdidos =
-        clientes.where((c) => c.fase == FaseCliente.perdido).length;
+  Future<void> _carregarBaixasDoFirestore() async {
+    try {
+      final baixas = await _firestore.getBaixasFinanceiras();
+      if (!mounted) return;
+      setState(() {
+        _baixas = baixas;
+        _carregando = false;
+      });
+      debugPrint(
+        'AbaFinanceiro: ${baixas.length} baixas carregadas do Firestore.',
+      );
+    } catch (e) {
+      debugPrint('AbaFinanceiro._carregarBaixasDoFirestore: $e');
+      if (!mounted) return;
+      setState(() => _carregando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao carregar dados: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ── Permissão ──────────────────────────────────────────────────────────────
+  bool get _temPermissao {
+    final p = widget.userProfile.toLowerCase().trim();
+    return p == 'admin' || p == 'financeiro' || p == 'super admin';
+  }
+
+  // ── Filtro de mês ──────────────────────────────────────────────────────────
+
+  /// Converte "yyyy-MM" → "Mmm/yyyy" para exibição no dropdown.
+  String _labelMesCreditoKey(String key) {
+    const nomes = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
+    ];
+    final partes = key.split('-');
+    if (partes.length != 2) return key;
+    final ano = partes[0];
+    final mesIdx = int.tryParse(partes[1]);
+    if (mesIdx == null || mesIdx < 1 || mesIdx > 12) return key;
+    return '${nomes[mesIdx - 1]}/$ano';
+  }
+
+  List<BaixaFinanceira> get _baixasFiltradas {
+    if (_mesFiltro == null) return _baixas;
+    return _baixas.where((b) => _labelMesCreditoKey(b.mesCreditoKey) == _mesFiltro).toList();
+  }
+
+  List<String> get _mesesDisponiveis {
+    final set = <String>{};
+    for (final b in _baixas) {
+      if (b.mesCreditoKey.isNotEmpty) set.add(_labelMesCreditoKey(b.mesCreditoKey));
+    }
+    // Ordena cronologicamente convertendo de volta para "yyyy-MM"
+    final lista = set.toList()
+      ..sort((a, b) {
+        return _labelParaKey(a).compareTo(_labelParaKey(b));
+      });
+    return lista;
+  }
+
+  /// Converte label "Mmm/yyyy" de volta para "yyyy-MM" para ordenação.
+  String _labelParaKey(String label) {
+    const nomes = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
+    ];
+    final partes = label.split('/');
+    if (partes.length != 2) return label;
+    final mesIdx = nomes.indexOf(partes[0]);
+    if (mesIdx == -1) return label;
+    final mes = (mesIdx + 1).toString().padLeft(2, '0');
+    return '${partes[1]}-$mes';
+  }
+
+  // ── KPIs ───────────────────────────────────────────────────────────────────
+  double get _totalRecebido =>
+      _baixasFiltradas.fold(0.0, (s, b) => s + b.valorPago);
+
+  int get _clientesUnicos =>
+      _baixasFiltradas.map((b) => b.cliente).toSet().length;
+
+  int get _totalBaixas => _baixasFiltradas.length;
+
+  double get _ticketMedio {
+    final n = _clientesUnicos;
+    return n == 0 ? 0.0 : _totalRecebido / n;
+  }
+
+  // ── Receita por mês (série completa, ignora filtro de mês) ────────────────
+  Map<String, double> get _receitaPorMes {
+    final map = <String, double>{};
+    for (final b in _baixas) {
+      if (b.mesCreditoKey.isEmpty) continue;
+      map[b.mesCreditoKey] = (map[b.mesCreditoKey] ?? 0.0) + b.valorPago;
+    }
+    final sorted = map.keys.toList()..sort();
+    return {for (final k in sorted) k: map[k]!};
+  }
+
+  // ── Por categoria de pagamento (série completa) ────────────────────────────
+  Map<String, double> get _totalPorCategoria {
+    final map = <String, double>{};
+    for (final b in _baixas) {
+      // `tipo` contém a forma de pagamento, ex: "017 - BOLETO SICRED"
+      final cat = b.tipo;
+      map[cat] = (map[cat] ?? 0.0) + b.valorPago;
+    }
+    return map;
+  }
+
+  // ── Top 10 clientes ────────────────────────────────────────────────────────
+  List<MapEntry<String, _ClienteStats>> get _topClientes {
+    final map = <String, _ClienteStats>{};
+    for (final b in _baixasFiltradas) {
+      map.update(
+        b.cliente,
+        (s) => _ClienteStats(s.total + b.valorPago, s.qtd + 1),
+        ifAbsent: () => _ClienteStats(b.valorPago, 1),
+      );
+    }
+    final lista = map.entries.toList()
+      ..sort((a, b) => b.value.total.compareTo(a.value.total));
+    return lista.take(10).toList();
+  }
+
+  // ── Upload HTML ────────────────────────────────────────────────────────────
+  void _abrirUpload() {
+    final upload = html.FileUploadInputElement()..accept = '.xlsx';
+    upload.click();
+
+    upload.onChange.listen((_) {
+      final file = upload.files?.first;
+      if (file == null) return;
+      final reader = html.FileReader();
+      reader.onLoadEnd.listen((_) {
+        if (mounted) _processarArquivo(reader);
+      });
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  Future<void> _processarArquivo(html.FileReader reader) async {
+    setState(() => _importando = true);
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    try {
+      final res = reader.result;
+      final Uint8List bytes = res is ByteBuffer
+          ? res.asUint8List()
+          : res is Uint8List
+              ? res
+              : Uint8List.fromList(res as List<int>);
+
+      // Obter identidade do usuário logado para campos de auditoria.
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user?.uid ?? 'desconhecido';
+      final userName = user?.displayName ?? user?.email ?? 'Usuário';
+
+      final baixas = await FinanceiroExcelParser.parseExcel(
+        bytes,
+        userId: userId,
+        userName: userName,
+      );
+
+      if (!mounted) return;
+
+      // Feedback de progresso antes de salvar.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${baixas.length} registros lidos. Salvando no banco…',
+          ),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+
+      await _firestore.importarBaixasFinanceiras(baixas);
+
+      if (!mounted) return;
+
+      // Recarregar do Firestore para garantir consistência.
+      final baixasAtualizadas = await _firestore.getBaixasFinanceiras();
+
+      if (!mounted) return;
+      setState(() {
+        _baixas = baixasAtualizadas;
+        _importando = false;
+        _mesFiltro = null;
+      });
+
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${baixasAtualizadas.length} baixas salvas com sucesso',
+          ),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      debugPrint('AbaFinanceiro._processarArquivo: $e');
+      if (!mounted) return;
+      setState(() => _importando = false);
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao importar: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    if (!_temPermissao) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline, size: 48, color: Colors.grey),
+            SizedBox(height: 12),
+            Text(
+              'Acesso restrito',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Esta aba é exclusiva para perfis Admin, Financeiro e Super Admin.',
+              style: TextStyle(color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final cs = Theme.of(context).colorScheme;
+
+    if (_carregando) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Carregando dados financeiros…'),
+          ],
+        ),
+      );
+    }
+
+    if (_importando) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Processando planilha…'),
+          ],
+        ),
+      );
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Filtro de período ────────────────────────────────────────
-          FiltroPeriodoBar(
-            filtro: _filtro,
-            onChanged: (f) => setState(() => _filtro = f),
-            legenda: 'Filtro aplica à data de cadastro dos leads',
-          ),
+          // ── Seção 1: Header ──────────────────────────────────────────────
+          _buildHeader(cs),
           const SizedBox(height: 24),
 
-          // ── KPI cards ────────────────────────────────────────────────
-          SecaoRecolhivel(
-            id: 'fin_pipeline',
-            titulo: 'Visão do Pipeline',
-            icone: Icons.account_balance_outlined,
-            child: Column(
-              children: [
-                Row(children: [
-                  _kpiCard(context, 'Negociação', emNegociacao,
-                      Icons.handshake_outlined, Colors.orange.shade700, cs),
-                  _kpiCard(context, 'Visita', emVisita,
-                      Icons.location_on_outlined, cs.primary, cs),
-                ]),
-                const SizedBox(height: 8),
-                Row(children: [
-                  _kpiCard(context, 'Fechados', fechados,
-                      Icons.check_circle_outline, Colors.green.shade700, cs),
-                  _kpiCard(context, 'Perdidos', perdidos,
-                      Icons.cancel_outlined, cs.error, cs),
-                ]),
-                const SizedBox(height: 20),
-                _buildTaxaCard(fechados, perdidos, emNegociacao + emVisita, cs),
-              ],
-            ),
-          ),
+          if (_baixas.isEmpty) ...[
+            _buildEmptyState(cs),
+          ] else ...[
+            // ── Filtro de mês ──────────────────────────────────────────────
+            _buildFiltroMes(cs),
+            const SizedBox(height: 20),
 
-          // ── Gráfico: fechamentos por mês ──────────────────────────────
-          const SizedBox(height: 24),
-          SecaoRecolhivel(
-            id: 'fin_fechamentos',
-            titulo: 'Fechamentos — Últimos 12 Meses',
-            icone: Icons.bar_chart_rounded,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Baseado na data de atualização dos leads fechados',
-                  style: TextStyle(fontSize: 11, color: cs.outline),
-                ),
-                const SizedBox(height: 16),
-                _buildFechamentosPorMes(cs),
-              ],
-            ),
-          ),
+            // ── Seção 2: KPI cards ─────────────────────────────────────────
+            _buildKpiRow(cs),
+            const SizedBox(height: 24),
 
-          const SizedBox(height: 16),
+            // ── Seção 3: Receita por mês ───────────────────────────────────
+            _buildSecaoReceita(cs),
+            const SizedBox(height: 24),
+
+            // ── Seção 4: Formas de pagamento ───────────────────────────────
+            _buildSecaoPagamentos(cs),
+            const SizedBox(height: 24),
+
+            // ── Seção 5: Top 10 clientes ───────────────────────────────────
+            _buildSecaoTopClientes(cs),
+            const SizedBox(height: 16),
+          ],
         ],
       ),
     );
   }
 
-  // ── Taxa de fechamento card ───────────────────────────────────────────────
-  Widget _buildTaxaCard(
-      int fechados, int perdidos, int pipeline, ColorScheme cs) {
-    final total = fechados + perdidos;
-    final taxa = total == 0 ? 0.0 : fechados / total * 100;
-    final corTaxa = taxa >= 30
-        ? Colors.green.shade700
-        : taxa >= 15
-            ? Colors.orange.shade700
-            : cs.error;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Taxa de Fechamento',
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 4),
-                  Text('${taxa.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: corTaxa)),
-                  Text('dos finalizados foram fechados',
-                      style: TextStyle(fontSize: 11, color: cs.outline)),
-                ],
-              ),
-            ),
-            if (pipeline > 0) ...[
-              Container(
-                  height: 48,
-                  width: 1,
-                  color: cs.outlineVariant,
-                  margin: const EdgeInsets.symmetric(horizontal: 16)),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Em Andamento',
-                        style: TextStyle(
-                            fontSize: 12, color: cs.onSurfaceVariant)),
-                    const SizedBox(height: 4),
-                    Text('$pipeline',
-                        style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: cs.primary)),
-                    Text('leads em negociação ou visita',
-                        style: TextStyle(fontSize: 11, color: cs.outline)),
-                  ],
+  // ── Header ─────────────────────────────────────────────────────────────────
+  Widget _buildHeader(ColorScheme cs) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Financeiro',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
                 ),
               ),
+              if (_baixas.isNotEmpty)
+                Text(
+                  '${_baixas.length} baixas carregadas',
+                  style: TextStyle(fontSize: 12, color: cs.outline),
+                ),
             ],
+          ),
+        ),
+        FilledButton.icon(
+          onPressed: _abrirUpload,
+          icon: const Icon(Icons.upload_file_outlined, size: 18),
+          label: const Text('Importar Baixas'),
+        ),
+      ],
+    );
+  }
+
+  // ── Empty state ────────────────────────────────────────────────────────────
+  Widget _buildEmptyState(ColorScheme cs) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 64),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.upload_file_outlined, size: 56, color: cs.outline),
+            const SizedBox(height: 16),
+            Text(
+              'Nenhuma baixa importada',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Clique em "Importar Baixas" para carregar\num arquivo .xlsx com os dados financeiros.',
+              style: TextStyle(color: cs.outline),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ── Gráfico de fechamentos por mês (12 meses) ────────────────────────────
-  Widget _buildFechamentosPorMes(ColorScheme cs) {
-    final agora = DateTime.now();
-    final mesesRef = List.generate(12, (i) {
-      final m = agora.month - 11 + i;
-      final y = agora.year + (m <= 0 ? -1 : 0);
-      final mes = m <= 0 ? m + 12 : m;
-      return DateTime(y, mes, 1);
-    });
-
-    final contagem = {for (final m in mesesRef) '${m.year}-${m.month}': 0};
-    for (final c in _base.where((c) => c.fase == FaseCliente.fechado)) {
-      final key = '${c.dataAtualizacao.year}-${c.dataAtualizacao.month}';
-      if (contagem.containsKey(key)) contagem[key] = contagem[key]! + 1;
-    }
-
-    final valores = mesesRef
-        .map((m) => contagem['${m.year}-${m.month}']!.toDouble())
-        .toList();
-    final maxVal = valores.reduce((a, b) => a > b ? a : b);
-    final maxY = (maxVal + 1).clamp(3.0, double.maxFinite);
-    final labels = mesesRef.map((m) => _meses[m.month - 1]).toList();
-
-    if (maxVal == 0) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 32),
-          child: Text('Nenhum fechamento registrado.',
-              style: TextStyle(color: cs.outline)),
+  // ── Filtro de mês ──────────────────────────────────────────────────────────
+  Widget _buildFiltroMes(ColorScheme cs) {
+    return Row(
+      children: [
+        Text(
+          'Filtrar por mês:',
+          style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
         ),
-      );
-    }
-
-    return SizedBox(
-      height: 200,
-      child: BarChart(BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: maxY,
-        barGroups: List.generate(
-          12,
-          (i) => BarChartGroupData(x: i, barRods: [
-            BarChartRodData(
-              toY: valores[i],
-              color: Colors.green.shade600,
-              width: 18,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
+        const SizedBox(width: 12),
+        DropdownButton<String?>(
+          value: _mesFiltro,
+          underline: const SizedBox(),
+          borderRadius: BorderRadius.circular(8),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Todos'),
             ),
-          ]),
-        ),
-        titlesData: FlTitlesData(
-          leftTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (v, _) {
-                final i = v.toInt();
-                if (i < 0 || i >= labels.length) return const Text('');
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(labels[i],
-                      style: const TextStyle(fontSize: 10)),
-                );
-              },
+            ..._mesesDisponiveis.map(
+              (m) => DropdownMenuItem<String?>(value: m, child: Text(m)),
             ),
-          ),
+          ],
+          onChanged: (v) => setState(() => _mesFiltro = v),
         ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
-        barTouchData: BarTouchData(
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => Colors.green.shade700,
-            getTooltipItem: (g, gi, rod, ri) => BarTooltipItem(
-              '${labels[gi]}\n${rod.toY.toInt()} fechado${rod.toY.toInt() != 1 ? 's' : ''}',
-              const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ),
-      )),
+      ],
     );
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Seção 2: KPI cards ─────────────────────────────────────────────────────
+  Widget _buildKpiRow(ColorScheme cs) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _kpiCard(
+          cs,
+          'Total Recebido',
+          _formatarMoedaCompacta(_totalRecebido),
+          Icons.attach_money_rounded,
+          Colors.green.shade700,
+        ),
+        _kpiCard(
+          cs,
+          'Clientes Únicos',
+          '$_clientesUnicos',
+          Icons.people_outline_rounded,
+          cs.primary,
+        ),
+        _kpiCard(
+          cs,
+          'Baixas Realizadas',
+          '$_totalBaixas',
+          Icons.receipt_long_outlined,
+          Colors.orange.shade700,
+        ),
+        _kpiCard(
+          cs,
+          'Ticket Médio',
+          _formatarMoedaCompacta(_ticketMedio),
+          Icons.trending_up_rounded,
+          Colors.teal.shade600,
+        ),
+      ],
+    );
+  }
+
   Widget _kpiCard(
-    BuildContext context,
+    ColorScheme cs,
     String label,
-    int valor,
+    String valor,
     IconData icon,
     Color cor,
-    ColorScheme cs,
   ) {
-    return Expanded(
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 160, maxWidth: 220),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
@@ -283,13 +523,18 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$valor',
-                        style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: cor)),
-                    Text(label,
-                        style: TextStyle(fontSize: 10, color: cs.outline)),
+                    Text(
+                      valor,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: cor,
+                      ),
+                    ),
+                    Text(
+                      label,
+                      style: TextStyle(fontSize: 10, color: cs.outline),
+                    ),
                   ],
                 ),
               ),
@@ -300,4 +545,449 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     );
   }
 
+  // ── Seção 3: Receita por mês ───────────────────────────────────────────────
+  Widget _buildSecaoReceita(ColorScheme cs) {
+    final dados = _receitaPorMes; // Map<String (mesCreditoKey), double>
+    if (dados.isEmpty) return const SizedBox();
+
+    final chaves = dados.keys.toList();
+    final valores = dados.values.toList();
+    final maxVal = valores.reduce((a, b) => a > b ? a : b);
+    final maxY = maxVal * 1.15;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.bar_chart_rounded, color: cs.primary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Receita por Mês',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Série completa (independente do filtro de mês)',
+              style: TextStyle(fontSize: 11, color: cs.outline),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 250,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: maxY,
+                  barGroups: List.generate(
+                    chaves.length,
+                    (i) => BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: valores[i],
+                          color: cs.primary,
+                          width: chaves.length <= 6 ? 28 : 18,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 58,
+                        getTitlesWidget: (v, _) => Text(
+                          _formatarMoedaCompacta(v),
+                          style: TextStyle(fontSize: 9, color: cs.outline),
+                        ),
+                      ),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (v, _) {
+                          final i = v.toInt();
+                          if (i < 0 || i >= chaves.length) {
+                            return const Text('');
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              _labelMesCreditoKey(chaves[i]),
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (v) => FlLine(
+                      color: cs.outlineVariant.withValues(alpha: 0.5),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => cs.primary,
+                      getTooltipItem: (g, gi, rod, ri) => BarTooltipItem(
+                        '${_labelMesCreditoKey(chaves[gi])}\n${_moeda.format(rod.toY)}',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Seção 4: Formas de pagamento ───────────────────────────────────────────
+  Widget _buildSecaoPagamentos(ColorScheme cs) {
+    final dados = _totalPorCategoria;
+    if (dados.isEmpty) return const SizedBox();
+
+    final total = dados.values.fold(0.0, (s, v) => s + v);
+    final categorias = dados.keys.toList()
+      ..sort((a, b) => dados[b]!.compareTo(dados[a]!));
+
+    const cores = [
+      Color(0xFF1565C0), // azul escuro — Boleto
+      Color(0xFF2E7D32), // verde escuro — Cartão
+      Color(0xFF6A1B9A), // roxo — PIX
+      Color(0xFFE65100), // laranja — Outros
+      Color(0xFF00695C), // teal
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.pie_chart_outline_rounded,
+                    color: cs.primary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Formas de Pagamento',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Série completa (independente do filtro de mês)',
+              style: TextStyle(fontSize: 11, color: cs.outline),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Donut
+                SizedBox(
+                  height: 220,
+                  width: 220,
+                  child: PieChart(
+                    PieChartData(
+                      centerSpaceRadius: 60,
+                      sections: List.generate(categorias.length, (i) {
+                        final cat = categorias[i];
+                        final val = dados[cat]!;
+                        final pct = total > 0 ? val / total * 100 : 0.0;
+                        return PieChartSectionData(
+                          value: val,
+                          color: cores[i % cores.length],
+                          radius: 50,
+                          title: '${pct.toStringAsFixed(1)}%',
+                          titleStyle: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          titlePositionPercentageOffset: 0.6,
+                        );
+                      }),
+                      sectionsSpace: 2,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 24),
+                // Legenda
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: List.generate(categorias.length, (i) {
+                      final cat = categorias[i];
+                      final val = dados[cat]!;
+                      final pct =
+                          total > 0 ? val / total * 100 : 0.0;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: cores[i % cores.length],
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    cat,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.onSurface,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${pct.toStringAsFixed(1)}% · ${_moeda.format(val)}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: cs.outline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Seção 5: Top 10 clientes ───────────────────────────────────────────────
+  Widget _buildSecaoTopClientes(ColorScheme cs) {
+    final top = _topClientes;
+    if (top.isEmpty) return const SizedBox();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.emoji_events_outlined,
+                    color: cs.primary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Top 10 Clientes',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+                if (_mesFiltro != null) ...[
+                  const SizedBox(width: 8),
+                  Chip(
+                    label: Text(_mesFiltro!),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Cabeçalho da tabela
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      '#',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: cs.outline,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Cliente',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: cs.outline,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 110,
+                    child: Text(
+                      'Total Pago',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: cs.outline,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 60,
+                    child: Text(
+                      'Baixas',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: cs.outline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // Linhas
+            ...List.generate(top.length, (i) {
+              final entry = top[i];
+              final isLast = i == top.length - 1;
+              return Column(
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 36,
+                          child: Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: i == 0
+                                  ? Colors.amber.shade700
+                                  : i == 1
+                                      ? Colors.grey.shade600
+                                      : i == 2
+                                          ? Colors.brown.shade400
+                                          : cs.outline,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            entry.key,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 110,
+                          child: Text(
+                            _moeda.format(entry.value.total),
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            '${entry.value.qtd}',
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isLast) Divider(height: 1, color: cs.outlineVariant),
+                ],
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Formatação ─────────────────────────────────────────────────────────────
+  String _formatarMoedaCompacta(double valor) {
+    if (valor >= 1000000) {
+      return 'R\$ ${(valor / 1000000).toStringAsFixed(2)}M';
+    }
+    if (valor >= 1000) {
+      return 'R\$ ${(valor / 1000).toStringAsFixed(0)}k';
+    }
+    return _moedaK.format(valor);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modelo interno para stats de cliente no ranking
+// ─────────────────────────────────────────────────────────────────────────────
+class _ClienteStats {
+  final double total;
+  final int qtd;
+  const _ClienteStats(this.total, this.qtd);
 }

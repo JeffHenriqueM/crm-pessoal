@@ -20,6 +20,7 @@ import '../models/modelo_mensagem_model.dart';
 import '../models/negociacao_model.dart';
 import '../models/notificacao_inapp_model.dart';
 import '../models/produto_model.dart';
+import '../models/baixa_financeira_model.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 import 'analise_imoveis.dart';
@@ -1938,5 +1939,357 @@ class FirestoreService {
 
   Future<void> reativarProduto(String id) async {
     await _db.collection(_colProdutos).doc(id).update({'ativo': true});
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINANCEIRO — BAIXAS
+  // Coleção: financeiro_baixas
+  // Campos indexados: mesCreditoKey, dataCredito, cliente
+  // ══════════════════════════════════════════════════════════════════════════
+
+  static const _colBaixas = 'financeiro_baixas';
+
+  /// Importa um lote de baixas em batch writes (máx. 500 por batch).
+  ///
+  /// Retorna o número de documentos gravados.
+  Future<int> importarBaixas(List<BaixaFinanceira> baixas) async {
+    if (baixas.isEmpty) return 0;
+
+    const tamanhoMaxBatch = 500;
+    int total = 0;
+
+    for (var inicio = 0; inicio < baixas.length; inicio += tamanhoMaxBatch) {
+      final fatia = baixas.sublist(
+        inicio,
+        (inicio + tamanhoMaxBatch).clamp(0, baixas.length),
+      );
+
+      final batch = _db.batch();
+      for (final baixa in fatia) {
+        final ref = _db.collection(_colBaixas).doc();
+        batch.set(ref, _flagTeste(baixa.toMap()));
+      }
+      await batch.commit();
+      total += fatia.length;
+    }
+
+    debugPrint('FirestoreService.importarBaixas: $total docs gravados.');
+    return total;
+  }
+
+  /// Retorna todas as baixas de um mês específico filtradas por [mesKey]
+  /// (formato "yyyy-MM", ex: "2026-03").
+  Future<List<BaixaFinanceira>> getBaixasPorMes(String mesKey) async {
+    final snap = await _db
+        .collection(_colBaixas)
+        .where('mesCreditoKey', isEqualTo: mesKey)
+        .orderBy('dataCredito')
+        .get();
+
+    return snap.docs
+        .where((d) => d.data()['deletado'] != true)
+        .map((d) => BaixaFinanceira.fromFirestore(d))
+        .toList();
+  }
+
+  /// Stream em tempo real das baixas ativas, ordenadas por dataCredito DESC.
+  Stream<List<BaixaFinanceira>> getBaixasStream() {
+    return _db
+        .collection(_colBaixas)
+        .orderBy('dataCredito', descending: true)
+        .snapshots()
+        .map((s) => s.docs
+            .where((d) => d.data()['deletado'] != true)
+            .map((d) => BaixaFinanceira.fromFirestore(d))
+            .toList());
+  }
+
+  /// Agrega o total pago agrupado por [mesCreditoKey].
+  ///
+  /// Retorna um mapa ordenado por chave: {"2026-01": 15000.0, "2026-02": 22000.0}.
+  Future<Map<String, double>> getTotaisPorMes() async {
+    final snap = await _db
+        .collection(_colBaixas)
+        .orderBy('mesCreditoKey')
+        .get();
+
+    final mapa = <String, double>{};
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (data['deletado'] == true) continue;
+      final mes = data['mesCreditoKey'] as String? ?? '';
+      final valor = (data['valorPago'] as num?)?.toDouble() ?? 0.0;
+      mapa[mes] = (mapa[mes] ?? 0.0) + valor;
+    }
+    return mapa;
+  }
+
+  /// Retorna os [limite] clientes com maior soma de valorPago.
+  ///
+  /// O Firestore não suporta GROUP BY nativo — a agregação é feita em memória.
+  /// Para bases grandes (> 5 000 docs) considere materializar num documento
+  /// de sumário via Cloud Function.
+  Future<List<MapEntry<String, double>>> getTopClientes({
+    int limite = 10,
+  }) async {
+    final snap = await _db.collection(_colBaixas).get();
+
+    final totais = <String, double>{};
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (data['deletado'] == true) continue;
+      final cliente = data['cliente'] as String? ?? 'Desconhecido';
+      final valor = (data['valorPago'] as num?)?.toDouble() ?? 0.0;
+      totais[cliente] = (totais[cliente] ?? 0.0) + valor;
+    }
+
+    final ordenado = totais.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return ordenado.take(limite).toList();
+  }
+
+  /// Breakdown de total pago agrupado por [tipo] (forma de pagamento).
+  Future<Map<String, double>> getTotaisPorTipoPagamento() async {
+    final snap = await _db.collection(_colBaixas).get();
+
+    final mapa = <String, double>{};
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (data['deletado'] == true) continue;
+      final tipo = data['tipo'] as String? ?? 'Desconhecido';
+      final valor = (data['valorPago'] as num?)?.toDouble() ?? 0.0;
+      mapa[tipo] = (mapa[tipo] ?? 0.0) + valor;
+    }
+    return mapa;
+  }
+
+  /// Exclui logicamente todos os registros de uma importação identificada pelo
+  /// [importadoPorId] + [importadoEm] (uso futuro: desfazer importação).
+  ///
+  /// Por ora aplica soft-delete adicionando o campo `deletado: true`.
+  /// Delete físico é bloqueado pelas Firestore Rules.
+  Future<void> deletarImportacao({
+    required String importadoPorId,
+    required DateTime importadoEm,
+  }) async {
+    // Janela de ±1 s em torno do timestamp para tolerar pequenas variações.
+    final inicio = Timestamp.fromDate(
+      importadoEm.subtract(const Duration(seconds: 1)),
+    );
+    final fim = Timestamp.fromDate(
+      importadoEm.add(const Duration(seconds: 1)),
+    );
+
+    final snap = await _db
+        .collection(_colBaixas)
+        .where('importadoPorId', isEqualTo: importadoPorId)
+        .where('importadoEm', isGreaterThanOrEqualTo: inicio)
+        .where('importadoEm', isLessThanOrEqualTo: fim)
+        .get();
+
+    if (snap.docs.isEmpty) {
+      debugPrint('FirestoreService.deletarImportacao: nenhum doc encontrado.');
+      return;
+    }
+
+    const tamanhoMaxBatch = 500;
+    for (var i = 0; i < snap.docs.length; i += tamanhoMaxBatch) {
+      final fatia = snap.docs.sublist(
+        i,
+        (i + tamanhoMaxBatch).clamp(0, snap.docs.length),
+      );
+      final batch = _db.batch();
+      for (final doc in fatia) {
+        batch.update(doc.reference, {'deletado': true});
+      }
+      await batch.commit();
+    }
+
+    await _db.collection('audit_log').add({
+      'tipo': 'exclusao_importacao_baixas',
+      'autorId': _currentUserId,
+      'autorNome': _currentUserName,
+      'totalAfetado': snap.docs.length,
+      'importadoPorId': importadoPorId,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    debugPrint(
+      'FirestoreService.deletarImportacao: ${snap.docs.length} docs '
+      'marcados como deletado.',
+    );
+  }
+
+  // ── FINANCEIRO — ÚLTIMO PAGAMENTO POR CLIENTE ─────────────────────────────
+
+  /// Busca o pagamento mais recente (por [dataCredito]) de um cliente pelo nome.
+  /// Retorna `null` se não houver nenhuma baixa para esse cliente.
+  /// A comparação de nome é case-insensitive via normalização (lowercase).
+  Future<BaixaFinanceira?> getUltimoPagamentoCliente(
+      String nomeCliente) async {
+    try {
+      // Vinculação por nome normalizado para MAIÚSCULAS (mesma normalização do
+      // FinanceiroExcelParser). Sem orderBy/limit no servidor: filtramos os
+      // soft-deletados e escolhemos o mais recente em memória — o volume por
+      // cliente é pequeno e isso dispensa índice composto com `deletado`.
+      final snap = await _db
+          .collection(_colBaixas)
+          .where('cliente', isEqualTo: nomeCliente.toUpperCase().trim())
+          .get();
+
+      final ativos = snap.docs
+          .where((d) => d.data()['deletado'] != true)
+          .toList();
+      if (ativos.isEmpty) return null;
+
+      ativos.sort((a, b) {
+        final da = (a.data()['dataCredito'] as Timestamp?)?.toDate() ??
+            DateTime(2000);
+        final dbDate = (b.data()['dataCredito'] as Timestamp?)?.toDate() ??
+            DateTime(2000);
+        return dbDate.compareTo(da);
+      });
+      return BaixaFinanceira.fromFirestore(ativos.first);
+    } catch (e) {
+      debugPrint(
+          '[Firestore] getUltimoPagamentoCliente($nomeCliente): $e');
+      return null;
+    }
+  }
+
+  /// Busca o último pagamento para cada nome da lista [nomes] (batch paralelo).
+  /// Retorna um mapa `nomeCliente → BaixaFinanceira` apenas para os clientes
+  /// que possuem pelo menos um registro em `financeiro_baixas`.
+  /// Falhas individuais são silenciadas — o cliente simplesmente não aparece
+  /// no mapa retornado.
+  Future<Map<String, BaixaFinanceira>> getUltimosPagamentosClientes(
+      List<String> nomes) async {
+    final nomesUnicos =
+        nomes.toSet().where((n) => n.trim().isNotEmpty).toList();
+    if (nomesUnicos.isEmpty) return {};
+
+    // Mapa nome-normalizado (MAIÚSCULAS) → nome original, para a chave de retorno.
+    final porUpper = <String, String>{};
+    for (final n in nomesUnicos) {
+      porUpper[n.toUpperCase().trim()] = n;
+    }
+    final chaves = porUpper.keys.toList();
+
+    // Busca em lotes de 30 (limite do operador `whereIn`) em vez de uma query
+    // por cliente — reduz de N para ceil(N/30) leituras.
+    final maisRecentePorUpper = <String, BaixaFinanceira>{};
+    const tamanhoChunk = 30;
+    for (var i = 0; i < chaves.length; i += tamanhoChunk) {
+      final chunk =
+          chaves.sublist(i, (i + tamanhoChunk).clamp(0, chaves.length));
+      try {
+        final snap = await _db
+            .collection(_colBaixas)
+            .where('cliente', whereIn: chunk)
+            .get();
+        for (final d in snap.docs) {
+          final data = d.data();
+          if (data['deletado'] == true) continue;
+          final upper = data['cliente'] as String? ?? '';
+          final baixa = BaixaFinanceira.fromFirestore(d);
+          final atual = maisRecentePorUpper[upper];
+          if (atual == null || baixa.dataCredito.isAfter(atual.dataCredito)) {
+            maisRecentePorUpper[upper] = baixa;
+          }
+        }
+      } catch (e) {
+        debugPrint('[Firestore] getUltimosPagamentosClientes (lote): $e');
+      }
+    }
+
+    // Remapeia para os nomes originais recebidos.
+    final mapa = <String, BaixaFinanceira>{};
+    maisRecentePorUpper.forEach((upper, baixa) {
+      final original = porUpper[upper];
+      if (original != null) mapa[original] = baixa;
+    });
+    return mapa;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINANCEIRO — IMPORTAÇÃO (dashboard da aba financeiro)
+  // Coleção canônica única: financeiro_baixas (mesma dos lookups e agregações).
+  // Cada importação SUBSTITUI o conjunto atual via soft-delete + auditoria —
+  // NUNCA delete físico, NUNCA janela de coleção vazia.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Importa um lote de baixas substituindo o conjunto ativo atual.
+  ///
+  /// Estratégia segura (sem perda de dados e sem delete físico):
+  /// 1. lê os documentos atualmente ativos (não deletados);
+  /// 2. grava as novas baixas em batches de 500;
+  /// 3. marca os documentos anteriores como `deletado: true` (soft-delete);
+  /// 4. registra a operação em `/audit_log`.
+  ///
+  /// Se a etapa 3 falhar, no pior caso restam duplicatas (nova + antiga) — nunca
+  /// perda de dados; as leituras filtram `deletado` e uma nova importação corrige.
+  Future<void> importarBaixasFinanceiras(List<BaixaFinanceira> baixas) async {
+    const tamanhoMaxBatch = 500;
+
+    // 1. Documentos ativos atuais (serão substituídos).
+    final atuais = await _db.collection(_colBaixas).get();
+    final refsAntigas = atuais.docs
+        .where((d) => d.data()['deletado'] != true)
+        .map((d) => d.reference)
+        .toList();
+
+    // 2. Grava as novas baixas.
+    int gravados = 0;
+    for (var i = 0; i < baixas.length; i += tamanhoMaxBatch) {
+      final fatia =
+          baixas.sublist(i, (i + tamanhoMaxBatch).clamp(0, baixas.length));
+      final batch = _db.batch();
+      for (final baixa in fatia) {
+        batch.set(_db.collection(_colBaixas).doc(), _flagTeste(baixa.toMap()));
+      }
+      await batch.commit();
+      gravados += fatia.length;
+    }
+
+    // 3. Soft-delete dos documentos anteriores (em batches de 500).
+    for (var i = 0; i < refsAntigas.length; i += tamanhoMaxBatch) {
+      final fatia = refsAntigas.sublist(
+        i,
+        (i + tamanhoMaxBatch).clamp(0, refsAntigas.length),
+      );
+      final batch = _db.batch();
+      for (final ref in fatia) {
+        batch.update(ref, {'deletado': true});
+      }
+      await batch.commit();
+    }
+
+    // 4. Auditoria.
+    await _db.collection('audit_log').add({
+      'tipo': 'importacao_baixas',
+      'autorId': _currentUserId,
+      'autorNome': _currentUserName,
+      'totalImportado': gravados,
+      'totalSubstituido': refsAntigas.length,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    debugPrint(
+      'FirestoreService.importarBaixasFinanceiras: $gravados gravados, '
+      '${refsAntigas.length} substituídos (soft-delete).',
+    );
+  }
+
+  /// Retorna as baixas ativas (não deletadas) ordenadas por `dataBaixa` desc.
+  /// Ordenação em memória para dispensar índice composto com `deletado`.
+  Future<List<BaixaFinanceira>> getBaixasFinanceiras() async {
+    final snap = await _db.collection(_colBaixas).get();
+    final ativos = snap.docs
+        .where((d) => d.data()['deletado'] != true)
+        .map((d) => BaixaFinanceira.fromFirestore(d))
+        .toList();
+    ativos.sort((a, b) => b.dataBaixa.compareTo(a.dataBaixa));
+    return ativos;
   }
 }

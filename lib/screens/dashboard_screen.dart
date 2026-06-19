@@ -8,7 +8,6 @@ import '../widgets/aba_calibracao.dart';
 import '../widgets/aba_captacao.dart';
 import '../widgets/aba_desempenho_vendedor.dart';
 import '../widgets/aba_estatisticas.dart';
-import '../widgets/aba_financeiro.dart';
 import '../widgets/aba_metas.dart';
 import '../widgets/aba_motivos_perda.dart';
 import '../widgets/aba_lead_score.dart';
@@ -81,7 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
 
     return DefaultTabController(
-      length: isAdmin ? 12 : 6,
+      length: isAdmin ? 11 : 6,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
@@ -99,7 +98,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           tabs: [
             Tab(text: 'Equipe',       icon: Icon(Icons.groups_outlined)),
             Tab(text: 'Meta',         icon: Icon(Icons.flag_outlined)),
-            Tab(text: 'Financeiro',   icon: Icon(Icons.account_balance_outlined)),
             Tab(text: 'Captação',     icon: Icon(Icons.campaign_outlined)),
             Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
             Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
@@ -134,47 +132,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 todosClientes: todos,
                 todosUsuarios: _todosVendedores,
               ),
-              // 2 — Financeiro
-              AbaFinanceiro(clientes: todos),
-              // 3 — Captação (com filtro interno por captador)
+              // 2 — Captação (com filtro interno por captador)
               AbaCaptacao(
                 clientes: todos,
                 todosUsuarios: _todosVendedores,
               ),
-              // 4 — Estatísticas
+              // 3 — Estatísticas
               AbaEstatisticas(clientes: todos),
-              // 5 — Relatórios (admin: filtro interno Geral/por vendedor)
+              // 4 — Relatórios (admin: filtro interno Geral/por vendedor)
               AbaRelatorios(
                 clientes: todos,
                 vendedorId: null,
                 todosVendedores: _todosVendedores,
               ),
-              // 6 — Perdas
+              // 5 — Perdas
               AbaMotivosPerda(clientes: todos),
-              // 7 — Risco de Silêncio (churn)
+              // 6 — Risco de Silêncio (churn)
               AbaRiscoSilencio(
                 clientes: todos,
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
-              // 8 — Tempo sem contato (15/20/30 dias — ticket #48)
+              // 7 — Tempo sem contato (15/20/30 dias — ticket #48)
               AbaTempoSemContato(
                 clientes: todos,
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
-              // 9 — Potencial (Lead Score)
+              // 8 — Potencial (Lead Score)
               AbaLeadScore(
                 clientes: todos,
                 todosVendedores: _todosVendedores,
                 userProfile: _userProfile,
               ),
-              // 10 — Desempenho de Vendedor (diagnóstico vs média do time)
+              // 9 — Desempenho de Vendedor (diagnóstico vs média do time)
               AbaDesempenhoVendedor(
                 todosClientes: todos,
                 todosVendedores: _todosVendedores,
               ),
-              // 11 — Calibração dos sinais (backtest dos pesos)
+              // 10 — Calibração dos sinais (backtest dos pesos)
               AbaCalibracao(todosClientes: todos),
             ],
           );

@@ -57,6 +57,30 @@
         { "fieldPath": "criadoPorId",     "order": "ASCENDING" },
         { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "financeiro_baixas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "mesCreditoKey", "order": "ASCENDING" },
+        { "fieldPath": "dataCredito",   "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financeiro_baixas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "importadoPorId", "order": "ASCENDING" },
+        { "fieldPath": "importadoEm",    "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financeiro_baixas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cliente",     "order": "ASCENDING" },
+        { "fieldPath": "dataCredito", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
