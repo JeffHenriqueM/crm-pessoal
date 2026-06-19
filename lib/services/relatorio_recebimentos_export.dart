@@ -1,13 +1,14 @@
 // lib/services/relatorio_recebimentos_export.dart
 //
-// Gera o "Relatório de recebimentos do mês" a partir da planilha da Central de
-// Contratos enviada pelo usuário: preserva as colunas originais, ACRESCENTA
-// "VALOR RECEBIDO NO MÊS" e REMOVE os contratos que não tiveram pagamento no
-// mês escolhido.
+// Gera o "Relatório de recebimentos" a partir da planilha da Central de
+// Contratos enviada pelo usuário: preserva as colunas originais e ACRESCENTA
+// UMA COLUNA POR MÊS selecionado ("RECEBIDO Mmm/aaaa"), com o valor que cada
+// contrato pagou naquele mês. Remove os contratos que não tiveram pagamento em
+// nenhum dos meses escolhidos.
 //
 // A Central não traz o código do contrato (documentoCar das baixas); por isso a
 // ponte é: LOCALIZADOR (da Central) → contrato do app (localizador → codigoContrato)
-// → baixas do mês (documentoCar → valorPago).
+// → baixas (documentoCar → valorPago), agrupadas por mesCreditoKey.
 
 import 'dart:convert';
 
@@ -19,44 +20,64 @@ import '../models/baixa_financeira_model.dart';
 import '../models/contrato_model.dart';
 
 class RelatorioRecebimentosExport {
-  static const colunaRecebido = 'VALOR RECEBIDO NO MÊS';
+  static const _meses = [
+    'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+    'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
+  ];
 
-  /// Mapa `localizador → total recebido` no [mesKey] ("yyyy-MM"), cruzando os
-  /// contratos (localizador → codigoContrato) com as baixas (documentoCar →
-  /// valorPago). Só inclui localizadores com recebimento > 0 no mês.
+  /// "2026-05" → "Mai/2026".
+  static String rotuloMes(String key) {
+    final p = key.split('-');
+    if (p.length != 2) return key;
+    final m = int.tryParse(p[1]);
+    if (m == null || m < 1 || m > 12) return key;
+    return '${_meses[m - 1]}/${p[0]}';
+  }
+
+  /// `localizador → { mesKey → total recebido }`, restrito aos [mesKeys],
+  /// cruzando contratos (localizador → codigoContrato) com as baixas
+  /// (documentoCar → valorPago, agrupadas por mesCreditoKey).
   @visibleForTesting
-  static Map<String, double> mapaRecebidoPorLocalizador(
+  static Map<String, Map<String, double>> mapaRecebidoPorLocalizadorPorMes(
     List<Contrato> contratos,
     List<BaixaFinanceira> baixas,
-    String mesKey,
+    List<String> mesKeys,
   ) {
-    final recebidoPorCodigo = <String, double>{};
+    final selecionados = mesKeys.toSet();
+
+    final porCodigo = <String, Map<String, double>>{};
     for (final b in baixas) {
-      if (b.mesCreditoKey != mesKey) continue;
+      if (!selecionados.contains(b.mesCreditoKey)) continue;
       final cod = b.documentoCar.trim();
       if (cod.isEmpty) continue;
-      recebidoPorCodigo[cod] = (recebidoPorCodigo[cod] ?? 0) + b.valorPago;
+      final m = (porCodigo[cod] ??= {});
+      m[b.mesCreditoKey] = (m[b.mesCreditoKey] ?? 0) + b.valorPago;
     }
 
-    final mapa = <String, double>{};
+    final porLoc = <String, Map<String, double>>{};
     for (final c in contratos) {
       final loc = c.localizador.trim();
       final cod = (c.codigoContrato ?? '').trim();
       if (loc.isEmpty || cod.isEmpty) continue;
-      final r = recebidoPorCodigo[cod];
-      if (r != null && r > 0) mapa[loc] = (mapa[loc] ?? 0) + r;
+      final m = porCodigo[cod];
+      if (m == null) continue;
+      final dest = (porLoc[loc] ??= {});
+      m.forEach((k, v) => dest[k] = (dest[k] ?? 0) + v);
     }
-    return mapa;
+    return porLoc;
   }
 
-  /// Gera o xlsx do relatório. Retorna os bytes + quantos contratos entraram e
-  /// quantas linhas a planilha original tinha.
+  /// Gera o xlsx. Retorna os bytes + nº de contratos incluídos + nº de linhas
+  /// da planilha original.
   static ({Uint8List bytes, int incluidos, int totalLinhas}) gerar({
     required Uint8List centralBytes,
-    required String mesKey,
+    required List<String> mesKeys,
     required List<Contrato> contratos,
     required List<BaixaFinanceira> baixas,
   }) {
+    final meses = [...mesKeys]..sort(); // cronológico
+    if (meses.isEmpty) throw Exception('Selecione ao menos um mês.');
+
     final excel = Excel.decodeBytes(_sanitizar(centralBytes));
     if (excel.tables.isEmpty) throw Exception('Planilha sem abas.');
     final sheet = excel.tables[excel.tables.keys.first]!;
@@ -65,7 +86,6 @@ class RelatorioRecebimentosExport {
     final header = sheet.rows.first;
     final nCols = header.length;
 
-    // Índice EXATO de "LOCALIZADOR" (não "LOCALIZADOR ATENDIMENTO").
     int locIdx = -1;
     for (var i = 0; i < nCols; i++) {
       if (header[i]?.value?.toString().trim().toUpperCase() == 'LOCALIZADOR') {
@@ -77,15 +97,15 @@ class RelatorioRecebimentosExport {
       throw Exception('Coluna "LOCALIZADOR" não encontrada na planilha.');
     }
 
-    final recebido = mapaRecebidoPorLocalizador(contratos, baixas, mesKey);
+    final recebido = mapaRecebidoPorLocalizadorPorMes(contratos, baixas, meses);
 
     final out = Excel.createExcel();
     final outSheet = out[out.getDefaultSheet() ?? 'Sheet1'];
 
-    // Cabeçalho original + nova coluna.
+    // Cabeçalho original + uma coluna por mês.
     outSheet.appendRow([
       for (var i = 0; i < nCols; i++) header[i]?.value ?? TextCellValue(''),
-      TextCellValue(colunaRecebido),
+      for (final mes in meses) TextCellValue('RECEBIDO ${rotuloMes(mes)}'),
     ]);
 
     var incluidos = 0;
@@ -94,12 +114,15 @@ class RelatorioRecebimentosExport {
       final loc =
           (locIdx < row.length ? row[locIdx]?.value?.toString() : null)?.trim() ??
               '';
-      final val = recebido[loc] ?? 0;
-      if (val <= 0) continue; // remove quem não teve pagamento no mês
+      final porMes = recebido[loc];
+      final total =
+          porMes == null ? 0.0 : porMes.values.fold(0.0, (s, v) => s + v);
+      if (total <= 0) continue; // sem pagamento em nenhum dos meses → remove
+
       outSheet.appendRow([
         for (var i = 0; i < nCols; i++)
           (i < row.length ? row[i]?.value : null) ?? TextCellValue(''),
-        DoubleCellValue(val),
+        for (final mes in meses) DoubleCellValue(porMes?[mes] ?? 0),
       ]);
       incluidos++;
     }

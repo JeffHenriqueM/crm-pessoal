@@ -312,8 +312,8 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   /// Pergunta o mês, pede a planilha da Central e gera o relatório enriquecido
   /// com "VALOR RECEBIDO NO MÊS" (só os contratos que pagaram no mês).
   Future<void> _exportarRelatorio() async {
-    final mesKey = await _escolherMesRelatorio();
-    if (mesKey == null || !mounted) return;
+    final meses = await _escolherMesesRelatorio();
+    if (meses == null || meses.isEmpty || !mounted) return;
 
     final upload = html.FileUploadInputElement()..accept = '.xlsx';
     upload.click();
@@ -322,14 +322,14 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       if (file == null) return;
       final reader = html.FileReader();
       reader.onLoadEnd.listen((_) {
-        if (mounted) _gerarRelatorio(reader, mesKey);
+        if (mounted) _gerarRelatorio(reader, meses);
       });
       reader.readAsArrayBuffer(file);
     });
   }
 
-  /// Diálogo de seleção do mês a partir dos meses presentes nas baixas.
-  Future<String?> _escolherMesRelatorio() async {
+  /// Diálogo de seleção (múltipla) dos meses presentes nas baixas.
+  Future<List<String>?> _escolherMesesRelatorio() async {
     final keys = _baixas
         .map((b) => b.mesCreditoKey)
         .where((k) => k.isNotEmpty)
@@ -338,27 +338,58 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       ..sort((a, b) => b.compareTo(a)); // mais recente primeiro
     if (keys.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Importe baixas antes de gerar o relatório.')),
+        const SnackBar(
+            content: Text('Importe baixas antes de gerar o relatório.')),
       );
       return null;
     }
-    return showDialog<String>(
+    final selecionados = <String>{};
+    return showDialog<List<String>>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Mês do relatório'),
-        children: keys
-            .map(
-              (k) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, k),
-                child: Text(_labelMesCreditoKey(k)),
-              ),
-            )
-            .toList(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Meses do relatório'),
+          content: SizedBox(
+            width: 320,
+            child: ListView(
+              shrinkWrap: true,
+              children: keys
+                  .map(
+                    (k) => CheckboxListTile(
+                      dense: true,
+                      value: selecionados.contains(k),
+                      title: Text(_labelMesCreditoKey(k)),
+                      onChanged: (v) => setLocal(() {
+                        if (v == true) {
+                          selecionados.add(k);
+                        } else {
+                          selecionados.remove(k);
+                        }
+                      }),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: selecionados.isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, selecionados.toList()),
+              child: Text('Gerar (${selecionados.length})'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _gerarRelatorio(html.FileReader reader, String mesKey) async {
+  Future<void> _gerarRelatorio(
+      html.FileReader reader, List<String> meses) async {
     try {
       final res = reader.result;
       final Uint8List bytes = res is ByteBuffer
@@ -369,7 +400,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
 
       final r = RelatorioRecebimentosExport.gerar(
         centralBytes: bytes,
-        mesKey: mesKey,
+        mesKeys: meses,
         contratos: _contratos,
         baixas: _baixas,
       );
@@ -377,7 +408,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       final blob = html.Blob([r.bytes]);
       final url = html.Url.createObjectUrlFromBlob(blob);
       html.AnchorElement(href: url)
-        ..setAttribute('download', 'relatorio_recebimentos_$mesKey.xlsx')
+        ..setAttribute('download', 'relatorio_recebimentos.xlsx')
         ..click();
       html.Url.revokeObjectUrl(url);
 
@@ -386,7 +417,8 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
         SnackBar(
           content: Text(
             'Relatório gerado: ${r.incluidos} contratos com pagamento em '
-            '${_labelMesCreditoKey(mesKey)} (de ${r.totalLinhas} na planilha).',
+            '${meses.length} ${meses.length == 1 ? "mês" : "meses"} '
+            '(de ${r.totalLinhas} na planilha).',
           ),
         ),
       );

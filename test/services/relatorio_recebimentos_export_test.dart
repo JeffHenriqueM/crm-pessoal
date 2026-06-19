@@ -30,7 +30,7 @@ void main() {
         importadoPorNome: 'X',
       );
 
-  test('soma o recebido do mês por localizador via codigoContrato', () {
+  test('agrupa recebido por localizador e por mês (uma entrada por mês)', () {
     final contratos = [
       contrato('100', 'VLP-135-445/Cota-01'),
       contrato('101', 'VLP-136-448/Cota-06'),
@@ -38,18 +38,24 @@ void main() {
     ];
     final baixas = [
       baixa('VLP-135-445/Cota-01', 1000, '2026-05'),
-      baixa('VLP-135-445/Cota-01', 500, '2026-05'), // mesmo contrato, soma
+      baixa('VLP-135-445/Cota-01', 500, '2026-05'), // mesmo mês → soma
+      baixa('VLP-135-445/Cota-01', 300, '2026-04'), // outro mês selecionado
       baixa('VLP-136-448/Cota-06', 700, '2026-05'),
-      baixa('LP-137-717/Cota-01', 999, '2026-04'), // outro mês → ignora
+      baixa('LP-137-717/Cota-01', 999, '2026-03'), // mês NÃO selecionado → fora
     ];
 
-    final mapa = RelatorioRecebimentosExport.mapaRecebidoPorLocalizador(
-        contratos, baixas, '2026-05');
+    final mapa = RelatorioRecebimentosExport.mapaRecebidoPorLocalizadorPorMes(
+        contratos, baixas, ['2026-04', '2026-05']);
 
-    expect(mapa['100'], 1500);
-    expect(mapa['101'], 700);
-    // 102 só teve baixa em 2026-04 → fora do mês
+    expect(mapa['100'], {'2026-05': 1500, '2026-04': 300});
+    expect(mapa['101'], {'2026-05': 700});
+    // 102 só pagou em 2026-03 (não selecionado) → fora
     expect(mapa.containsKey('102'), isFalse);
+  });
+
+  test('rotuloMes formata yyyy-MM para Mmm/aaaa', () {
+    expect(RelatorioRecebimentosExport.rotuloMes('2026-05'), 'Mai/2026');
+    expect(RelatorioRecebimentosExport.rotuloMes('2026-01'), 'Jan/2026');
   });
 
   test('localizador sem código ou sem baixa não entra no mapa', () {
@@ -59,8 +65,8 @@ void main() {
     ];
     final baixas = [baixa('ZZZ-9-9/Cota-99', 100, '2026-05')];
 
-    final mapa = RelatorioRecebimentosExport.mapaRecebidoPorLocalizador(
-        contratos, baixas, '2026-05');
+    final mapa = RelatorioRecebimentosExport.mapaRecebidoPorLocalizadorPorMes(
+        contratos, baixas, ['2026-05']);
 
     expect(mapa.isEmpty, isTrue);
   });
