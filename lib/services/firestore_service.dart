@@ -368,15 +368,25 @@ class FirestoreService {
           .snapshots()
           .map(fromSnap);
 
-      return Rx.combineLatest3<List<Cliente>, List<Cliente>, List<Cliente>,
-          List<Cliente>>(
+      // Inclui também os atendimentos em que o usuário é o vendedor designado
+      // (vendedorId) — senão um lead atribuído ao vendedor pela recepção, mas
+      // criado/captado por outra pessoa, ficaria invisível para ele.
+      final streamVendedor = _db
+          .collection(_colClientes)
+          .where('vendedorId', isEqualTo: uid)
+          .snapshots()
+          .map(fromSnap);
+
+      return Rx.combineLatest4<List<Cliente>, List<Cliente>, List<Cliente>,
+          List<Cliente>, List<Cliente>>(
         streamCriados,
         streamCaptador,
         streamLiner,
-        (criados, captados, liners) {
+        streamVendedor,
+        (criados, captados, liners, vendedores) {
           final vistos = <String>{};
           final result = <Cliente>[];
-          for (final c in [...criados, ...captados, ...liners]) {
+          for (final c in [...criados, ...captados, ...liners, ...vendedores]) {
             if (c.id != null && vistos.add(c.id!)) result.add(c);
           }
           result.retainWhere((c) => c.fase == FaseCliente.atendimento);
