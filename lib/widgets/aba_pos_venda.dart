@@ -44,6 +44,8 @@ class AbaPosVenda extends StatelessWidget {
 
     final valorFinanciadoTotal =
         contratos.fold<double>(0, (s, c) => s + c.valorFinanciado);
+    final valorAtualizadoTotal =
+        contratos.fold<double>(0, (s, c) => s + c.valorTotalReajustado);
     final valorAtrasadoTotal =
         contratos.fold<double>(0, (s, c) => s + c.valorAtrasado);
     final percMedioIntegralizado = total > 0
@@ -117,6 +119,13 @@ class AbaPosVenda extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          _KpiCard(
+            titulo: 'Valor atualizado',
+            valor: _moedaCompacta.format(valorAtualizadoTotal),
+            subtitulo: '${_moeda.format(valorAtualizadoTotal)} · valor corrigido',
+            icone: Icons.trending_up_rounded,
           ),
           const SizedBox(height: 8),
           Row(

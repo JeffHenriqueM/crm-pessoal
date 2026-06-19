@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../models/baixa_financeira_model.dart';
 import '../models/cliente_model.dart';
 import '../models/contrato_model.dart';
+import '../services/analise_imoveis.dart';
 import '../services/financeiro_excel_parser.dart';
 import '../services/firestore_service.dart';
 import '../screens/ficha_contrato_screen.dart';
@@ -230,6 +231,10 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       ..sort((a, b) => b.value.total.compareTo(a.value.total));
     return lista.take(10).toList();
   }
+
+  /// Soma do valor total reajustado (corrigido) dos contratos ativos.
+  double get _valorAtualizadoContratos => contratosEfetivos(_contratos)
+      .fold<double>(0.0, (s, c) => s + c.valorTotalReajustado);
 
   // ── Contratos sem pagamento registrado ─────────────────────────────────────
   /// Códigos de contrato (documentoCar) que possuem ao menos uma baixa.
@@ -574,6 +579,13 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
           _formatarMoedaCompacta(_mediaMensal),
           Icons.calendar_month_outlined,
           Colors.indigo.shade400,
+        ),
+        _kpiCard(
+          cs,
+          'Valor Atualizado',
+          _formatarMoedaCompacta(_valorAtualizadoContratos),
+          Icons.trending_up_rounded,
+          Colors.deepPurple.shade400,
         ),
         if (_variacaoMensal != null && _mesesVariacao != null)
           _kpiCard(
