@@ -62,10 +62,6 @@ class _MainShellState extends State<MainShell> {
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
   bool get _isPosVenda => widget.userProfile == 'pós-venda';
-  bool get _podeVerFinanceiro =>
-      widget.userProfile == 'financeiro' ||
-      widget.userProfile == 'admin' ||
-      widget.userProfile == 'super admin';
   // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
   bool get _isReserva => widget.userProfile == 'reserva';
   bool get _isRecepcao => widget.userProfile == 'recepcao';
@@ -98,6 +94,13 @@ class _MainShellState extends State<MainShell> {
     label: 'Fluxo',
   );
 
+  // ── Item de financeiro — financeiro, admin e super admin ─────────────────
+  static const _financeiroItem = _NavItem(
+    icon: Icons.account_balance_outlined,
+    activeIcon: Icons.account_balance,
+    label: 'Financeiro',
+  );
+
   // ── Item de hospedagem — admin/super admin e pós-venda ───────────────────
   static const _hospedagemItem = _NavItem(
     icon: Icons.hotel_outlined,
@@ -119,6 +122,7 @@ class _MainShellState extends State<MainShell> {
         _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
         _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
         _NavItem(icon: Icons.description_outlined,      activeIcon: Icons.description,           label: 'Pós-Venda'),
+        _financeiroItem,
         _hospedagemItem,
         _apresentacaoItem,
         _ticketsItem,
@@ -151,9 +155,10 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── financeiro: Dashboard + Pós-Venda (sem Funil de Vendas nem Recepção) ─
+    // ── financeiro: Dashboard + Financeiro + Pós-Venda (sem Funil/Recepção) ─
     return const [
       _NavItem(icon: Icons.bar_chart_outlined,   activeIcon: Icons.bar_chart_rounded, label: 'Dashboard'),
+      _financeiroItem,
       _NavItem(icon: Icons.description_outlined, activeIcon: Icons.description,        label: 'Pós-Venda'),
       _apresentacaoItem,
       _ticketsItem,
@@ -170,6 +175,7 @@ class _MainShellState extends State<MainShell> {
       VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
       const CampanhasScreen(),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
+      FinanceiroScreen(userProfile: widget.userProfile),
       HospedagemScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
@@ -193,8 +199,9 @@ class _MainShellState extends State<MainShell> {
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoShell(),
     ] else ...[
-      // financeiro: Dashboard + Pós-Venda (sem Funil de Vendas nem Recepção)
+      // financeiro: Dashboard + Financeiro + Pós-Venda (sem Funil/Recepção)
       DashboardScreen(userProfile: widget.userProfile),
+      FinanceiroScreen(userProfile: widget.userProfile),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
@@ -526,34 +533,7 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
 
-            // Financeiro (financeiro, admin, super admin)
-            if (_podeVerFinanceiro)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-                child: ListTile(
-                  leading: Icon(Icons.account_balance_outlined,
-                      color: cs.onSurfaceVariant, size: 22),
-                  title: Text('Financeiro',
-                      style: TextStyle(fontSize: 15, color: cs.onSurface)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                  horizontalTitleGap: 8,
-                  dense: true,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => FinanceiroScreen(
-                          userProfile: widget.userProfile,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+            // Financeiro agora é item de navegação (não rota separada).
 
             Divider(height: 1, color: cs.outlineVariant),
             const SizedBox(height: 4),
@@ -827,53 +807,7 @@ class _MainShellState extends State<MainShell> {
             );
           }),
 
-          // ── Financeiro (financeiro, admin, super admin) ────────────────
-          if (_podeVerFinanceiro)
-            if (_sidebarExpanded)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-                child: ListTile(
-                  leading: Icon(Icons.account_balance_outlined,
-                      color: cs.onSurfaceVariant, size: 20),
-                  title: Text('Financeiro',
-                      style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12),
-                  horizontalTitleGap: 8,
-                  dense: true,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FinanceiroScreen(
-                        userProfile: widget.userProfile,
-                      ),
-                    ),
-                  ),
-                ),
-              )
-            else
-              Center(
-                child: Tooltip(
-                  message: 'Financeiro',
-                  preferBelow: false,
-                  child: IconButton(
-                    icon: Icon(Icons.account_balance_outlined,
-                        color: cs.onSurfaceVariant, size: 20),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => FinanceiroScreen(
-                          userProfile: widget.userProfile,
-                        ),
-                      ),
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ),
+          // Financeiro agora é item de navegação (não rota separada).
 
           const Spacer(),
 

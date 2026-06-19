@@ -155,6 +155,29 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     return n == 0 ? 0.0 : _totalRecebido / n;
   }
 
+  /// Média do valor recebido por mês (referência geral, sobre toda a base).
+  double get _mediaMensal {
+    final r = _receitaPorMes;
+    if (r.isEmpty) return 0.0;
+    final soma = r.values.fold(0.0, (s, v) => s + v);
+    return soma / r.length;
+  }
+
+  /// Variação % do mês de referência vs. o mês imediatamente anterior.
+  /// Referência = mês filtrado (se houver) ou o mês mais recente.
+  /// `null` quando não há mês anterior para comparar.
+  double? get _variacaoMensal {
+    final r = _receitaPorMes; // ordenado cronologicamente (yyyy-MM)
+    if (r.length < 2) return null;
+    final keys = r.keys.toList();
+    final refKey = _mesFiltro != null ? _labelParaKey(_mesFiltro!) : keys.last;
+    final idx = keys.indexOf(refKey);
+    if (idx <= 0) return null;
+    final anterior = r[keys[idx - 1]]!;
+    if (anterior == 0) return null;
+    return (r[keys[idx]]! - anterior) / anterior * 100;
+  }
+
   // ── Receita por mês (série completa, ignora filtro de mês) ────────────────
   Map<String, double> get _receitaPorMes {
     final map = <String, double>{};
@@ -166,10 +189,10 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     return {for (final k in sorted) k: map[k]!};
   }
 
-  // ── Por categoria de pagamento (série completa) ────────────────────────────
+  // ── Por categoria de pagamento (respeita o filtro de mês) ──────────────────
   Map<String, double> get _totalPorCategoria {
     final map = <String, double>{};
-    for (final b in _baixas) {
+    for (final b in _baixasFiltradas) {
       // `tipo` contém a forma de pagamento, ex: "017 - BOLETO SICRED"
       final cat = b.tipo;
       map[cat] = (map[cat] ?? 0.0) + b.valorPago;
@@ -495,6 +518,25 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
           Icons.trending_up_rounded,
           Colors.teal.shade600,
         ),
+        _kpiCard(
+          cs,
+          'Média Mensal',
+          _formatarMoedaCompacta(_mediaMensal),
+          Icons.calendar_month_outlined,
+          Colors.indigo.shade400,
+        ),
+        if (_variacaoMensal != null)
+          _kpiCard(
+            cs,
+            _mesFiltro != null
+                ? 'Variação ($_mesFiltro vs. mês anterior)'
+                : 'Variação (último mês vs. anterior)',
+            _formatarPct(_variacaoMensal!),
+            _variacaoMensal! >= 0
+                ? Icons.arrow_upward_rounded
+                : Icons.arrow_downward_rounded,
+            _variacaoMensal! >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+          ),
       ],
     );
   }
@@ -980,6 +1022,12 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       return 'R\$ ${(valor / 1000).toStringAsFixed(0)}k';
     }
     return _moedaK.format(valor);
+  }
+
+  /// Formata variação percentual com sinal: "+12,3%" / "-8,1%".
+  String _formatarPct(double valor) {
+    final sinal = valor > 0 ? '+' : (valor < 0 ? '-' : '');
+    return '$sinal${valor.abs().toStringAsFixed(1).replaceAll('.', ',')}%';
   }
 }
 
