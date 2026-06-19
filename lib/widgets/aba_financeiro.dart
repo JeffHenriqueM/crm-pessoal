@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../models/baixa_financeira_model.dart';
 import '../models/cliente_model.dart';
+import '../models/contrato_model.dart';
 import '../services/financeiro_excel_parser.dart';
 import '../services/firestore_service.dart';
 
@@ -39,6 +40,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   final _firestore = FirestoreService();
 
   List<BaixaFinanceira> _baixas = [];
+  List<Contrato> _contratos = [];
   bool _importando = false;
   bool _carregando = true; // true enquanto faz a leitura inicial do Firestore
   String? _mesFiltro; // null = todos os meses
@@ -66,9 +68,11 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   Future<void> _carregarBaixasDoFirestore() async {
     try {
       final baixas = await _firestore.getBaixasFinanceiras();
+      final contratos = await _firestore.getContratos();
       if (!mounted) return;
       setState(() {
         _baixas = baixas;
+        _contratos = contratos;
         _carregando = false;
       });
       debugPrint(
@@ -213,6 +217,36 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     final lista = map.entries.toList()
       ..sort((a, b) => b.value.total.compareTo(a.value.total));
     return lista.take(10).toList();
+  }
+
+  // ── Contratos sem pagamento registrado ─────────────────────────────────────
+  /// Códigos de contrato (documentoCar) que possuem ao menos uma baixa.
+  /// Usa todas as baixas ativas (independe do filtro de mês).
+  Set<String> get _codigosComPagamento => _baixas
+      .map((b) => b.documentoCar.trim())
+      .where((s) => s.isNotEmpty)
+      .toSet();
+
+  bool _contratoAtivo(Contrato c) {
+    final s = c.status.toLowerCase().trim();
+    return s == 'ativo' || s == 'pendente';
+  }
+
+  bool _contratoQuitado(Contrato c) =>
+      c.statusFinanceiro.toLowerCase().trim() == 'quitado' ||
+      c.dataQuitacao != null;
+
+  /// Contratos ATIVOS (e pendentes), não quitados, sem nenhuma baixa registrada.
+  /// O join é por `codigoContrato` ↔ `documentoCar` da baixa.
+  List<Contrato> get _contratosAtivosSemPagamento {
+    final pagos = _codigosComPagamento;
+    final lista = _contratos.where((c) {
+      if (!_contratoAtivo(c)) return false;
+      if (_contratoQuitado(c)) return false;
+      return !pagos.contains((c.codigoContrato ?? '').trim());
+    }).toList();
+    lista.sort((a, b) => b.saldoRestante.compareTo(a.saldoRestante));
+    return lista;
   }
 
   // ── Upload HTML ────────────────────────────────────────────────────────────
@@ -386,6 +420,10 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
 
             // ── Seção 5: Top 10 clientes ───────────────────────────────────
             _buildSecaoTopClientes(cs),
+            const SizedBox(height: 24),
+
+            // ── Seção 6: Contratos sem pagamento registrado ────────────────
+            _buildSecaoSemPagamento(cs),
             const SizedBox(height: 16),
           ],
         ],
@@ -582,6 +620,101 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ── Seção 6: Contratos sem pagamento registrado ─────────────────────────────
+  Widget _buildSecaoSemPagamento(ColorScheme cs) {
+    final lista = _contratosAtivosSemPagamento;
+    final cor = Colors.red.shade700;
+    return Card(
+      child: Theme(
+        // remove as bordas divisórias padrão do ExpansionTile
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Icon(Icons.report_gmailerrorred_outlined, color: cor),
+          title: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Contratos sem pagamento registrado',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${lista.length}',
+                  style: TextStyle(color: cor, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          subtitle: Text(
+            'Ativos, não quitados e sem nenhuma baixa registrada',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          children: [
+            if (lista.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'Nenhum — todos os contratos ativos têm pagamento. 🎉',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              )
+            else
+              ...lista.map(
+                (c) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              c.nomeComprador,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 13),
+                            ),
+                            Text(
+                              '${(c.codigoContrato ?? '').isEmpty ? c.localizador : c.codigoContrato} · ${c.produto}',
+                              style: TextStyle(
+                                  fontSize: 11, color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Saldo ${_formatarMoedaCompacta(c.saldoRestante)}',
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            c.status,
+                            style: TextStyle(fontSize: 10, color: cs.outline),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
