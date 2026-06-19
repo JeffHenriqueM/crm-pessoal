@@ -77,6 +77,23 @@ void main() {
     expect(mapa['38'], {'2026-03': 584.5, '2026-05': 602.27});
   });
 
+  test('recebidoPorCodigoPorMes: casa direto documentoCar → mês (soma todas)',
+      () {
+    final baixas = [
+      baixa('LXP-61-334/Cota-01', 584.5, '2026-03'),
+      baixa('LXP-61-334/Cota-01', 602.27, '2026-05'),
+      baixa('LXP-61-334/Cota-01', 100, '2026-05'), // mesmo cod+mês → soma
+      baixa('VLO-1321-503/Cota-09', 1820, '2026-03'),
+      baixa('VLO-1321-503/Cota-09', 1820, '2026-04'), // mês não selecionado
+    ];
+
+    final mapa = RelatorioRecebimentosExport.recebidoPorCodigoPorMes(
+        baixas, ['2026-03', '2026-05']);
+
+    expect(mapa['LXP-61-334/Cota-01'], {'2026-03': 584.5, '2026-05': 702.27});
+    expect(mapa['VLO-1321-503/Cota-09'], {'2026-03': 1820});
+  });
+
   test('rotuloMes formata yyyy-MM para Mmm/aaaa', () {
     expect(RelatorioRecebimentosExport.rotuloMes('2026-05'), 'Mai/2026');
     expect(RelatorioRecebimentosExport.rotuloMes('2026-01'), 'Jan/2026');

@@ -89,8 +89,47 @@ class RelatorioRecebimentosExport {
     return porLoc;
   }
 
+  /// `codigo (documentoCar) → { mesKey → total recebido }`, restrito aos
+  /// [mesKeys]. Usado quando a planilha já traz a coluna de código — casa direto
+  /// com o `documentoCar` das baixas, sem precisar da ponte por LOCALIZADOR.
+  @visibleForTesting
+  static Map<String, Map<String, double>> recebidoPorCodigoPorMes(
+    List<BaixaFinanceira> baixas,
+    List<String> mesKeys,
+  ) {
+    final sel = mesKeys.toSet();
+    final m = <String, Map<String, double>>{};
+    for (final b in baixas) {
+      if (!sel.contains(b.mesCreditoKey)) continue;
+      final cod = b.documentoCar.trim();
+      if (cod.isEmpty) continue;
+      final dest = (m[cod] ??= {});
+      dest[b.mesCreditoKey] = (dest[b.mesCreditoKey] ?? 0) + b.valorPago;
+    }
+    return m;
+  }
+
+  /// Detecta o índice da coluna de código na planilha (CÓDIGO / DOCUMENTO DO
+  /// CAR). Retorna -1 se não houver.
+  static int _indiceCodigo(List header) {
+    for (var i = 0; i < header.length; i++) {
+      final h = header[i]?.value?.toString().trim().toUpperCase();
+      if (h == null) continue;
+      if (h == 'CÓDIGO' ||
+          h == 'CODIGO' ||
+          h == 'DOCUMENTO DO CAR' ||
+          (h.contains('DOCUMENTO') && h.contains('CAR'))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   /// Gera o xlsx. Retorna os bytes + nº de contratos incluídos + nº de linhas
   /// da planilha original.
+  ///
+  /// Se a planilha tiver coluna de CÓDIGO, casa direto com o `documentoCar` das
+  /// baixas. Caso contrário, cai na ponte LOCALIZADOR → contrato → baixas.
   static ({Uint8List bytes, int incluidos, int totalLinhas}) gerar({
     required Uint8List centralBytes,
     required List<String> mesKeys,
@@ -108,6 +147,9 @@ class RelatorioRecebimentosExport {
     final header = sheet.rows.first;
     final nCols = header.length;
 
+    // Preferência: coluna de CÓDIGO (casa direto com documentoCar das baixas).
+    final codIdx = _indiceCodigo(header);
+
     int locIdx = -1;
     for (var i = 0; i < nCols; i++) {
       if (header[i]?.value?.toString().trim().toUpperCase() == 'LOCALIZADOR') {
@@ -115,11 +157,20 @@ class RelatorioRecebimentosExport {
         break;
       }
     }
-    if (locIdx < 0) {
-      throw Exception('Coluna "LOCALIZADOR" não encontrada na planilha.');
-    }
 
-    final recebido = mapaRecebidoPorLocalizadorPorMes(contratos, baixas, meses);
+    // Mapa chave → {mes → valor} e índice da coluna-chave na planilha.
+    final Map<String, Map<String, double>> recebido;
+    final int chaveIdx;
+    if (codIdx >= 0) {
+      recebido = recebidoPorCodigoPorMes(baixas, meses);
+      chaveIdx = codIdx;
+    } else if (locIdx >= 0) {
+      recebido = mapaRecebidoPorLocalizadorPorMes(contratos, baixas, meses);
+      chaveIdx = locIdx;
+    } else {
+      throw Exception(
+          'Planilha precisa ter a coluna "CÓDIGO" ou "LOCALIZADOR".');
+    }
 
     final out = Excel.createExcel();
     final outSheet = out[out.getDefaultSheet() ?? 'Sheet1'];
@@ -133,10 +184,11 @@ class RelatorioRecebimentosExport {
     var incluidos = 0;
     for (var r = 1; r < sheet.rows.length; r++) {
       final row = sheet.rows[r];
-      final loc =
-          (locIdx < row.length ? row[locIdx]?.value?.toString() : null)?.trim() ??
+      final chave =
+          (chaveIdx < row.length ? row[chaveIdx]?.value?.toString() : null)
+                  ?.trim() ??
               '';
-      final porMes = recebido[loc];
+      final porMes = recebido[chave];
       final total =
           porMes == null ? 0.0 : porMes.values.fold(0.0, (s, v) => s + v);
       if (total <= 0) continue; // sem pagamento em nenhum dos meses → remove
