@@ -92,8 +92,10 @@ class _TicketsScreenState extends State<TicketsScreen>
 
   // ── Export CSV ────────────────────────────────────────────────────────────
 
+  // RFC 4180: envolve em aspas se o campo contém vírgula, aspas, CR ou LF.
+  // Aspas internas são escapadas duplicando-as ("").
   String _csvEscape(String v) {
-    if (v.contains(',') || v.contains('"') || v.contains('\n')) {
+    if (v.contains(',') || v.contains('"') || v.contains('\r') || v.contains('\n')) {
       return '"${v.replaceAll('"', '""')}"';
     }
     return v;
@@ -101,11 +103,18 @@ class _TicketsScreenState extends State<TicketsScreen>
 
   void _exportarCSV() {
     final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    // RFC 4180 exige CRLF (\r\n) — funciona corretamente no Excel (Windows)
+    // e no Google Sheets / Numbers (macOS/Linux).
+    const eol = '\r\n';
+
     final buffer = StringBuffer();
-    buffer.writeln('Numero,Titulo,Tipo,Prioridade,Status,Criado Por,Perfil,Contexto,Data Criacao,Data Atualizacao');
+    // BOM UTF-8 garante que Excel/Numbers abra com encoding correto
+    buffer.write('﻿');
+    buffer.write('Numero,Titulo,Tipo,Prioridade,Status,Criado Por,Perfil,Contexto,Data Criacao,Data Atualizacao');
+    buffer.write(eol);
 
     for (final t in _todos) {
-      buffer.writeln([
+      buffer.write([
         t.numero > 0 ? '#${t.numero}' : '',
         _csvEscape(t.titulo),
         t.tipo.nomeDisplay,
@@ -117,10 +126,10 @@ class _TicketsScreenState extends State<TicketsScreen>
         fmt.format(t.dataCriacao),
         fmt.format(t.dataAtualizacao),
       ].join(','));
+      buffer.write(eol);
     }
 
-    // BOM UTF-8 garante que Excel/Numbers abra com encoding correto
-    final csv = '﻿${buffer.toString()}';
+    final csv = buffer.toString();
     final blob = web.Blob(
       [csv.toJS].toJS,
       web.BlobPropertyBag(type: 'text/csv;charset=utf-8'),
