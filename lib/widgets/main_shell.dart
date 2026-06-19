@@ -151,13 +151,12 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── financeiro: Dashboard primeiro ────────────────────────────
+    // ── financeiro: Dashboard + Pós-Venda (sem Funil de Vendas nem Recepção) ─
     return const [
       _NavItem(icon: Icons.bar_chart_outlined,   activeIcon: Icons.bar_chart_rounded, label: 'Dashboard'),
-      _NavItem(icon: Icons.view_kanban_outlined,  activeIcon: Icons.view_kanban,       label: 'Funil de Vendas'),
+      _NavItem(icon: Icons.description_outlined, activeIcon: Icons.description,        label: 'Pós-Venda'),
       _apresentacaoItem,
       _ticketsItem,
-      _recepcaoItem,
     ];
   }
 
@@ -194,12 +193,11 @@ class _MainShellState extends State<MainShell> {
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       const RecepcaoShell(),
     ] else ...[
-      // financeiro: Dashboard primeiro
+      // financeiro: Dashboard + Pós-Venda (sem Funil de Vendas nem Recepção)
       DashboardScreen(userProfile: widget.userProfile),
-      ListaClientesScreen(userProfile: widget.userProfile),
+      _PosVendaHomeScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
       TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      const RecepcaoShell(),
     ],
   ];
 
