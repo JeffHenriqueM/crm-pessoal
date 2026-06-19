@@ -29,6 +29,53 @@ import '../models/baixa_financeira_model.dart';
 class FinanceiroExcelParser {
   static const _abaAlvo = 'Para Jefferson';
 
+  /// Posição fixa documentada de cada coluna (fallback se o cabeçalho não casar).
+  static const _colunasPadrao = <String, int>{
+    'cliente': 0,
+    'tipo': 1,
+    'documentoCar': 2,
+    'vencimento': 3,
+    'valorPago': 4,
+    'dataBaixa': 5,
+    'dataCredito': 6,
+    'status': 7,
+  };
+
+  /// Palavras-chave (em minúsculas) para localizar cada coluna pelo cabeçalho.
+  /// Cada lista é distinta o bastante para não colidir com as demais colunas.
+  static const _palavrasChave = <String, List<String>>{
+    'cliente': ['cliente'],
+    'tipo': ['tipo', 'forma'],
+    'documentoCar': ['documento', 'car'],
+    'vencimento': ['vencimento', 'venc'],
+    'valorPago': ['valor'],
+    'dataBaixa': ['baixa'],
+    'dataCredito': ['crédito', 'credito'],
+    'status': ['status'],
+  };
+
+  /// Resolve o índice de cada coluna a partir do [cabecalho].
+  /// Casa por palavra-chave (case-insensitive, `contains`); se não encontrar,
+  /// usa a posição fixa de [_colunasPadrao] — garantindo que nunca fica pior
+  /// que o layout posicional anterior.
+  @visibleForTesting
+  static Map<String, int> resolverColunas(List<String?> cabecalho) {
+    final norm =
+        cabecalho.map((c) => (c ?? '').toLowerCase().trim()).toList();
+    final mapa = <String, int>{};
+    _palavrasChave.forEach((campo, chaves) {
+      var idx = -1;
+      for (var i = 0; i < norm.length; i++) {
+        if (chaves.any((k) => norm[i].contains(k))) {
+          idx = i;
+          break;
+        }
+      }
+      mapa[campo] = idx >= 0 ? idx : _colunasPadrao[campo]!;
+    });
+    return mapa;
+  }
+
   /// Parseia o [bytes] de um arquivo .xlsx e retorna as baixas válidas.
   ///
   /// [userId] e [userName] são gravados nos campos de auditoria de cada registro.
@@ -63,6 +110,12 @@ class FinanceiroExcelParser {
       return [];
     }
 
+    // Resolve as colunas pelo cabeçalho (linha 0). Se um cabeçalho não casar,
+    // cai na posição fixa documentada — nunca pior que o comportamento anterior.
+    final cabecalho =
+        sheet.rows.first.map((c) => c?.value?.toString()).toList();
+    final cols = resolverColunas(cabecalho);
+
     final agora = DateTime.now();
     final resultado = <BaixaFinanceira>[];
     int erros = 0;
@@ -79,14 +132,18 @@ class FinanceiroExcelParser {
       if (!temConteudo) continue;
 
       try {
-        final cliente = _textoOuErro(row, 0, i, 'Cliente').toUpperCase().trim();
-        final tipo = _textoOuErro(row, 1, i, 'Tipo');
-        final documentoCar = _textoOuErro(row, 2, i, 'Documento do CAR');
-        final vencimento = _dataOuErro(row, 3, i, 'Vencimento');
-        final valorPago = _valorOuErro(row, 4, i, 'Valor pago parcela');
-        final dataBaixa = _dataOuErro(row, 5, i, 'Data da baixa');
-        final dataCredito = _dataOuErro(row, 6, i, 'Data de crédito');
-        final status = _texto(row, 7) ?? 'Baixado';
+        final cliente =
+            _textoOuErro(row, cols['cliente']!, i, 'Cliente').toUpperCase().trim();
+        final tipo = _textoOuErro(row, cols['tipo']!, i, 'Tipo');
+        final documentoCar =
+            _textoOuErro(row, cols['documentoCar']!, i, 'Documento do CAR');
+        final vencimento = _dataOuErro(row, cols['vencimento']!, i, 'Vencimento');
+        final valorPago =
+            _valorOuErro(row, cols['valorPago']!, i, 'Valor pago parcela');
+        final dataBaixa = _dataOuErro(row, cols['dataBaixa']!, i, 'Data da baixa');
+        final dataCredito =
+            _dataOuErro(row, cols['dataCredito']!, i, 'Data de crédito');
+        final status = _texto(row, cols['status']!) ?? 'Baixado';
 
         resultado.add(BaixaFinanceira(
           cliente: cliente,
