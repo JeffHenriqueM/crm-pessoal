@@ -236,6 +236,31 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   double get _valorAtualizadoContratos => contratosEfetivos(_contratos)
       .fold<double>(0.0, (s, c) => s + c.valorTotalReajustado);
 
+  /// Soma do saldo restante (o que ainda falta receber) dos contratos ativos.
+  double get _saldoAReceberContratos => contratosEfetivos(_contratos)
+      .fold<double>(0.0, (s, c) => s + c.saldoRestante);
+
+  /// Recebido no mês de referência: o mês filtrado, ou o mais recente quando
+  /// não há filtro.
+  double get _recebidoMesReferencia {
+    if (_mesFiltro != null) return _totalRecebido; // já é o mês filtrado
+    final r = _receitaPorMes;
+    if (r.isEmpty) return 0.0;
+    return r[r.keys.last]!;
+  }
+
+  /// % do recebido no mês sobre o saldo a receber. null se não há base.
+  double? get _percRecebidoSobreSaldo {
+    final y = _saldoAReceberContratos;
+    return y <= 0 ? null : _recebidoMesReferencia / y * 100;
+  }
+
+  /// % do recebido no mês sobre o valor total atualizado. null se não há base.
+  double? get _percRecebidoSobreAtualizado {
+    final y = _valorAtualizadoContratos;
+    return y <= 0 ? null : _recebidoMesReferencia / y * 100;
+  }
+
   // ── Contratos sem pagamento registrado ─────────────────────────────────────
   /// Códigos de contrato (documentoCar) que possuem ao menos uma baixa.
   /// Usa todas as baixas ativas (independe do filtro de mês).
@@ -587,6 +612,22 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
           Icons.trending_up_rounded,
           Colors.deepPurple.shade400,
         ),
+        if (_percRecebidoSobreSaldo != null)
+          _kpiCard(
+            cs,
+            'Recebido no mês / saldo a receber',
+            _formatarPctSimples(_percRecebidoSobreSaldo!),
+            Icons.savings_outlined,
+            Colors.teal.shade700,
+          ),
+        if (_percRecebidoSobreAtualizado != null)
+          _kpiCard(
+            cs,
+            'Recebido no mês / valor atualizado',
+            _formatarPctSimples(_percRecebidoSobreAtualizado!),
+            Icons.percent_rounded,
+            Colors.indigo.shade600,
+          ),
         if (_variacaoMensal != null && _mesesVariacao != null)
           _kpiCard(
             cs,
@@ -1196,6 +1237,10 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     final sinal = valor > 0 ? '+' : (valor < 0 ? '-' : '');
     return '$sinal${valor.abs().toStringAsFixed(1).replaceAll('.', ',')}%';
   }
+
+  /// Formata porcentagem simples (sem sinal): "2,4%".
+  String _formatarPctSimples(double valor) =>
+      '${valor.toStringAsFixed(1).replaceAll('.', ',')}%';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
