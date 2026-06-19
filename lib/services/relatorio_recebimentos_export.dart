@@ -34,9 +34,21 @@ class RelatorioRecebimentosExport {
     return '${_meses[m - 1]}/${p[0]}';
   }
 
-  /// `localizador → { mesKey → total recebido }`, restrito aos [mesKeys],
-  /// cruzando contratos (localizador → codigoContrato) com as baixas
-  /// (documentoCar → valorPago, agrupadas por mesCreditoKey).
+  /// Código-base: parte antes do "/Cota" (ex.: "LXP-62-334/Cota-02" → "LXP-62-334").
+  static String _base(String codigo) => codigo.split('/').first.trim();
+
+  /// Nome normalizado (MAIÚSCULAS, espaços colapsados) para casar cliente.
+  static String _nome(String n) =>
+      n.toUpperCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+
+  /// `localizador → { mesKey → total recebido }`, restrito aos [mesKeys].
+  ///
+  /// Cada baixa é atribuída a UM contrato e TODAS as baixas são consideradas
+  /// (várias no mesmo mês somam). A ligação é:
+  ///   1. código exato (documentoCar == codigoContrato); senão
+  ///   2. mesmo código-base (sem o /Cota) E mesmo nome de cliente, quando isso
+  ///      identifica um único contrato — cobre o caso em que o número da cota
+  ///      diverge entre a baixa e o cadastro do contrato (ex.: cliente Michel).
   @visibleForTesting
   static Map<String, Map<String, double>> mapaRecebidoPorLocalizadorPorMes(
     List<Contrato> contratos,
@@ -45,24 +57,34 @@ class RelatorioRecebimentosExport {
   ) {
     final selecionados = mesKeys.toSet();
 
-    final porCodigo = <String, Map<String, double>>{};
-    for (final b in baixas) {
-      if (!selecionados.contains(b.mesCreditoKey)) continue;
-      final cod = b.documentoCar.trim();
-      if (cod.isEmpty) continue;
-      final m = (porCodigo[cod] ??= {});
-      m[b.mesCreditoKey] = (m[b.mesCreditoKey] ?? 0) + b.valorPago;
-    }
-
-    final porLoc = <String, Map<String, double>>{};
+    // Índices de contrato.
+    final porCodigoExato = <String, String>{}; // codigo → localizador
+    final porBaseNome = <String, List<String>>{}; // "base|nome" → [localizador]
     for (final c in contratos) {
       final loc = c.localizador.trim();
       final cod = (c.codigoContrato ?? '').trim();
       if (loc.isEmpty || cod.isEmpty) continue;
-      final m = porCodigo[cod];
-      if (m == null) continue;
+      porCodigoExato[cod] = loc;
+      (porBaseNome['${_base(cod)}|${_nome(c.nomeComprador)}'] ??= []).add(loc);
+    }
+
+    String? localizadorDa(BaixaFinanceira b) {
+      final cod = b.documentoCar.trim();
+      if (cod.isEmpty) return null;
+      final exato = porCodigoExato[cod];
+      if (exato != null) return exato;
+      final lista = porBaseNome['${_base(cod)}|${_nome(b.cliente)}'];
+      if (lista != null && lista.length == 1) return lista.first;
+      return null; // sem correspondência ou ambíguo
+    }
+
+    final porLoc = <String, Map<String, double>>{};
+    for (final b in baixas) {
+      if (!selecionados.contains(b.mesCreditoKey)) continue;
+      final loc = localizadorDa(b);
+      if (loc == null) continue;
       final dest = (porLoc[loc] ??= {});
-      m.forEach((k, v) => dest[k] = (dest[k] ?? 0) + v);
+      dest[b.mesCreditoKey] = (dest[b.mesCreditoKey] ?? 0) + b.valorPago;
     }
     return porLoc;
   }

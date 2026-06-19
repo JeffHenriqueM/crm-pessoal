@@ -7,16 +7,18 @@ import 'package:crm_pessoal/services/relatorio_recebimentos_export.dart';
 /// Núcleo do relatório de recebimentos: o cruzamento
 /// LOCALIZADOR → codigoContrato → baixas do mês.
 void main() {
-  Contrato contrato(String localizador, String codigo) => Contrato(
+  Contrato contrato(String localizador, String codigo, {String nome = ''}) =>
+      Contrato(
         localizador: localizador,
         localizadorAtendimento: '',
         codigoContrato: codigo,
-        nomeComprador: 'Fulano $localizador',
+        nomeComprador: nome.isEmpty ? 'Fulano $localizador' : nome,
       );
 
-  BaixaFinanceira baixa(String documentoCar, double valor, String mesKey) =>
+  BaixaFinanceira baixa(String documentoCar, double valor, String mesKey,
+          {String cliente = 'X'}) =>
       BaixaFinanceira(
-        cliente: 'X',
+        cliente: cliente,
         tipo: '018 - PIX',
         documentoCar: documentoCar,
         vencimento: DateTime(2026, 1, 1),
@@ -51,6 +53,28 @@ void main() {
     expect(mapa['101'], {'2026-05': 700});
     // 102 só pagou em 2026-03 (não selecionado) → fora
     expect(mapa.containsKey('102'), isFalse);
+  });
+
+  test('caso Michel: cota divergente — pega todas as baixas (exato + base+nome)',
+      () {
+    final contratos = [
+      contrato('37', 'LXP-61-334/Cota-01', nome: 'MICHEL JEAN PINHEIRO'),
+      contrato('38', 'LXP-62-334/Cota-06', nome: 'MICHEL JEAN PINHEIRO'),
+    ];
+    final baixas = [
+      // exato → contrato 37
+      baixa('LXP-61-334/Cota-01', 584.5, '2026-03', cliente: 'MICHEL JEAN PINHEIRO'),
+      baixa('LXP-61-334/Cota-01', 602.27, '2026-05', cliente: 'MICHEL JEAN PINHEIRO'),
+      // cota não bate (02 vs 06) → casa por base+nome → contrato 38
+      baixa('LXP-62-334/Cota-02', 584.5, '2026-03', cliente: 'MICHEL JEAN PINHEIRO'),
+      baixa('LXP-62-334/Cota-02', 602.27, '2026-05', cliente: 'MICHEL JEAN PINHEIRO'),
+    ];
+
+    final mapa = RelatorioRecebimentosExport.mapaRecebidoPorLocalizadorPorMes(
+        contratos, baixas, ['2026-03', '2026-05']);
+
+    expect(mapa['37'], {'2026-03': 584.5, '2026-05': 602.27});
+    expect(mapa['38'], {'2026-03': 584.5, '2026-05': 602.27});
   });
 
   test('rotuloMes formata yyyy-MM para Mmm/aaaa', () {
