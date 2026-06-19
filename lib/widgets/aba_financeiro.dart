@@ -13,6 +13,7 @@ import '../models/contrato_model.dart';
 import '../services/analise_imoveis.dart';
 import '../services/financeiro_excel_parser.dart';
 import '../services/firestore_service.dart';
+import '../services/relatorio_recebimentos_export.dart';
 import '../screens/ficha_contrato_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,6 +308,100 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
     });
   }
 
+  // ── Exportar relatório de recebimentos do mês ──────────────────────────────
+  /// Pergunta o mês, pede a planilha da Central e gera o relatório enriquecido
+  /// com "VALOR RECEBIDO NO MÊS" (só os contratos que pagaram no mês).
+  Future<void> _exportarRelatorio() async {
+    final mesKey = await _escolherMesRelatorio();
+    if (mesKey == null || !mounted) return;
+
+    final upload = html.FileUploadInputElement()..accept = '.xlsx';
+    upload.click();
+    upload.onChange.listen((_) {
+      final file = upload.files?.first;
+      if (file == null) return;
+      final reader = html.FileReader();
+      reader.onLoadEnd.listen((_) {
+        if (mounted) _gerarRelatorio(reader, mesKey);
+      });
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  /// Diálogo de seleção do mês a partir dos meses presentes nas baixas.
+  Future<String?> _escolherMesRelatorio() async {
+    final keys = _baixas
+        .map((b) => b.mesCreditoKey)
+        .where((k) => k.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a)); // mais recente primeiro
+    if (keys.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Importe baixas antes de gerar o relatório.')),
+      );
+      return null;
+    }
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Mês do relatório'),
+        children: keys
+            .map(
+              (k) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, k),
+                child: Text(_labelMesCreditoKey(k)),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Future<void> _gerarRelatorio(html.FileReader reader, String mesKey) async {
+    try {
+      final res = reader.result;
+      final Uint8List bytes = res is ByteBuffer
+          ? res.asUint8List()
+          : res is Uint8List
+              ? res
+              : Uint8List.fromList(res as List<int>);
+
+      final r = RelatorioRecebimentosExport.gerar(
+        centralBytes: bytes,
+        mesKey: mesKey,
+        contratos: _contratos,
+        baixas: _baixas,
+      );
+
+      final blob = html.Blob([r.bytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.AnchorElement(href: url)
+        ..setAttribute('download', 'relatorio_recebimentos_$mesKey.xlsx')
+        ..click();
+      html.Url.revokeObjectUrl(url);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Relatório gerado: ${r.incluidos} contratos com pagamento em '
+            '${_labelMesCreditoKey(mesKey)} (de ${r.totalLinhas} na planilha).',
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('AbaFinanceiro._gerarRelatorio: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao gerar relatório: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _processarArquivo(html.FileReader reader) async {
     setState(() => _importando = true);
     await Future.delayed(const Duration(milliseconds: 50));
@@ -497,10 +592,21 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
             ],
           ),
         ),
-        FilledButton.icon(
-          onPressed: _abrirUpload,
-          icon: const Icon(Icons.upload_file_outlined, size: 18),
-          label: const Text('Importar Baixas'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _exportarRelatorio,
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: const Text('Exportar relatório'),
+            ),
+            FilledButton.icon(
+              onPressed: _abrirUpload,
+              icon: const Icon(Icons.upload_file_outlined, size: 18),
+              label: const Text('Importar Baixas'),
+            ),
+          ],
         ),
       ],
     );
