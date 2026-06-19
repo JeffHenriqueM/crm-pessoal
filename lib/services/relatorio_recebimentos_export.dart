@@ -130,7 +130,13 @@ class RelatorioRecebimentosExport {
   ///
   /// Se a planilha tiver coluna de CÓDIGO, casa direto com o `documentoCar` das
   /// baixas. Caso contrário, cai na ponte LOCALIZADOR → contrato → baixas.
-  static ({Uint8List bytes, int incluidos, int totalLinhas}) gerar({
+  static ({
+    Uint8List bytes,
+    int incluidos,
+    int totalLinhas,
+    int naoCasaramQtd,
+    double naoCasaramTotal,
+  }) gerar({
     required Uint8List centralBytes,
     required List<String> mesKeys,
     required List<Contrato> contratos,
@@ -172,6 +178,30 @@ class RelatorioRecebimentosExport {
           'Planilha precisa ter a coluna "CÓDIGO" ou "LOCALIZADOR".');
     }
 
+    // Baixas que NÃO casaram com nenhum código da planilha (modo código).
+    // Vão para uma aba "Não casaram" para conferência manual.
+    final naoCasaramCliente = <String, String>{}; // documentoCar → cliente
+    final naoCasaramMeses = <String, Map<String, double>>{}; // documentoCar → mes → valor
+    if (codIdx >= 0) {
+      final chavesPlanilha = <String>{};
+      for (var r = 1; r < sheet.rows.length; r++) {
+        final linha = sheet.rows[r];
+        final cod = (codIdx < linha.length
+                ? linha[codIdx]?.value?.toString()
+                : null)
+            ?.trim();
+        if (cod != null && cod.isNotEmpty) chavesPlanilha.add(cod);
+      }
+      for (final b in baixas) {
+        if (!meses.contains(b.mesCreditoKey)) continue;
+        final cod = b.documentoCar.trim();
+        if (cod.isEmpty || chavesPlanilha.contains(cod)) continue;
+        naoCasaramCliente[cod] = b.cliente;
+        final dest = (naoCasaramMeses[cod] ??= {});
+        dest[b.mesCreditoKey] = (dest[b.mesCreditoKey] ?? 0) + b.valorPago;
+      }
+    }
+
     final out = Excel.createExcel();
     final outSheet = out[out.getDefaultSheet() ?? 'Sheet1'];
 
@@ -201,12 +231,40 @@ class RelatorioRecebimentosExport {
       incluidos++;
     }
 
+    // Aba de conferência: baixas sem código correspondente na planilha.
+    if (naoCasaramMeses.isNotEmpty) {
+      final aba = out['Não casaram'];
+      aba.appendRow([
+        TextCellValue('CLIENTE'),
+        TextCellValue('CÓDIGO (baixa)'),
+        for (final mes in meses) TextCellValue('RECEBIDO ${rotuloMes(mes)}'),
+        TextCellValue('TOTAL'),
+      ]);
+      final cods = naoCasaramMeses.keys.toList()
+        ..sort((a, b) =>
+            (naoCasaramCliente[a] ?? '').compareTo(naoCasaramCliente[b] ?? ''));
+      for (final cod in cods) {
+        final m = naoCasaramMeses[cod]!;
+        aba.appendRow([
+          TextCellValue(naoCasaramCliente[cod] ?? ''),
+          TextCellValue(cod),
+          for (final mes in meses) DoubleCellValue(m[mes] ?? 0),
+          DoubleCellValue(m.values.fold(0.0, (s, v) => s + v)),
+        ]);
+      }
+    }
+
+    final naoCasaramTotal = naoCasaramMeses.values
+        .fold(0.0, (s, m) => s + m.values.fold(0.0, (a, b) => a + b));
+
     final bytes = out.encode();
     if (bytes == null) throw Exception('Falha ao codificar o arquivo.');
     return (
       bytes: Uint8List.fromList(bytes),
       incluidos: incluidos,
       totalLinhas: sheet.rows.length - 1,
+      naoCasaramQtd: naoCasaramMeses.length,
+      naoCasaramTotal: naoCasaramTotal,
     );
   }
 

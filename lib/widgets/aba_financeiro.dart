@@ -413,12 +413,18 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       html.Url.revokeObjectUrl(url);
 
       if (!mounted) return;
+      final aviso = r.naoCasaramQtd > 0
+          ? ' ⚠️ ${r.naoCasaramQtd} código(s) das baixas não casaram com a '
+              'planilha (${_moeda.format(r.naoCasaramTotal)}) — veja a aba '
+              '"Não casaram".'
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          duration: Duration(seconds: r.naoCasaramQtd > 0 ? 10 : 4),
           content: Text(
             'Relatório gerado: ${r.incluidos} contratos com pagamento em '
             '${meses.length} ${meses.length == 1 ? "mês" : "meses"} '
-            '(de ${r.totalLinhas} na planilha).',
+            '(de ${r.totalLinhas} na planilha).$aviso',
           ),
         ),
       );
