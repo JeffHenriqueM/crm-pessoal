@@ -313,18 +313,20 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
         builder: (_) => AlertDialog(
           title: Text('Quarto $destino ocupado'),
           content: Text(
-              'Já está com ${oDest.ocupante}.\n\nSubstituir o ocupante ou '
-              'juntar os dois no mesmo quarto?'),
+              'Já está com ${oDest.ocupante}.\n\nO que fazer com ele?'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cancelar')),
             TextButton(
-                onPressed: () => Navigator.pop(context, 'sub'),
-                child: const Text('Substituir')),
-            FilledButton(
                 onPressed: () => Navigator.pop(context, 'jun'),
                 child: const Text('Juntar')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, 'sub'),
+                child: const Text('Descartar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, 'espera'),
+                child: const Text('Mandar p/ espera')),
           ],
         ),
       );
@@ -346,6 +348,11 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
           ),
         );
       } else {
+        // 'espera' preserva o ocupante anterior; 'sub' descarta (comportamento antigo).
+        if (escolha == 'espera') {
+          await _deslocarParaEspera(
+              destino, oDest, assocs[destino], categoriaKey(qDest.categoria));
+        }
         await _service.moverOcupanteFesta(
             origem: origem, destino: destino, ocupanteDestino: snap());
       }
@@ -353,6 +360,25 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
       await _service.moverOcupanteFesta(
           origem: origem, destino: destino, ocupanteDestino: snap());
     }
+  }
+
+  /// Manda o ocupante atual de [quarto] para a lista de espera (libera o quarto),
+  /// preservando-o quando ele seria descartado por uma substituição/associação.
+  Future<void> _deslocarParaEspera(String quarto, OcupacaoQuarto oc,
+      FestaAssociacao? assocQuarto, String catFallback) async {
+    await _service.enviarParaEsperaFesta(
+      origem: quarto,
+      espera: FestaEspera(
+        ocupante: oc.ocupante,
+        categoria: oc.recomendada ?? catFallback,
+        tier: oc.tier,
+        pct: oc.pct?.toDouble(),
+        atrasado: oc.atrasado,
+        origem: quarto,
+        contratoId: assocQuarto?.contratoId,
+        categoriaManual: assocQuarto?.categoriaManual,
+      ),
+    );
   }
 
   /// Abre o seletor de quarto e coloca a pessoa da espera no destino escolhido.
@@ -741,6 +767,39 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
       // Nome: 1 contrato → nome do comprador; vários → nome do 1º (representa o
       // casal); não usa " + " pra não inflar a contagem de casais do duplex.
       final nome = contratos.first.nomeComprador;
+
+      // Guarda: se o quarto já tem OUTRO ocupante, não descarta em silêncio —
+      // oferece mandá-lo para a lista de espera (evita o "sumiço" silencioso).
+      final atualNome = (o?.ocupante ?? '').replaceFirst(RegExp(r'^\*'), '').trim();
+      if (atualNome.isNotEmpty && atualNome != '—' && atualNome != nome) {
+        if (!context.mounted) return;
+        final r = await showDialog<String>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text('Quarto ${q.numero} já ocupado'),
+            content: Text(
+                'Já está com $atualNome. O que fazer com ele antes de colocar '
+                '$nome?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context, 'descartar'),
+                  child: const Text('Descartar')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(context, 'espera'),
+                  child: const Text('Mandar p/ espera')),
+            ],
+          ),
+        );
+        if (r == null) return; // cancelou
+        if (r == 'espera' && o != null) {
+          await _deslocarParaEspera(
+              q.numero, o, assoc, categoriaKey(q.categoria));
+        }
+      }
+
       await _service.setAssociacaoFesta(
         q.numero,
         FestaAssociacao(
