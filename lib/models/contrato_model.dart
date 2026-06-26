@@ -135,6 +135,77 @@ enum StatusAssinatura {
   }
 }
 
+/// Etapa do funil de distrato (aba Distratar). Persistida apenas via método
+/// dedicado do FirestoreService (sobrevive ao re-import por merge).
+enum SituacaoDistrato {
+  emAnalise,
+  emTratativa,
+  emNegociacao,
+  marcado,
+  notificado,
+  distratoEnviado,
+  regularizado;
+
+  String get label {
+    switch (this) {
+      case SituacaoDistrato.emAnalise:
+        return 'Em análise';
+      case SituacaoDistrato.emTratativa:
+        return 'Em tratativa';
+      case SituacaoDistrato.emNegociacao:
+        return 'Em negociação';
+      case SituacaoDistrato.marcado:
+        return 'Marcado p/ distrato';
+      case SituacaoDistrato.notificado:
+        return 'Notificado';
+      case SituacaoDistrato.distratoEnviado:
+        return 'Distrato enviado';
+      case SituacaoDistrato.regularizado:
+        return 'Regularizado';
+    }
+  }
+
+  String get valor {
+    switch (this) {
+      case SituacaoDistrato.emAnalise:
+        return 'em_analise';
+      case SituacaoDistrato.emTratativa:
+        return 'em_tratativa';
+      case SituacaoDistrato.emNegociacao:
+        return 'em_negociacao';
+      case SituacaoDistrato.marcado:
+        return 'marcado';
+      case SituacaoDistrato.notificado:
+        return 'notificado';
+      case SituacaoDistrato.distratoEnviado:
+        return 'distrato_enviado';
+      case SituacaoDistrato.regularizado:
+        return 'regularizado';
+    }
+  }
+
+  static SituacaoDistrato? fromString(String? v) {
+    switch (v) {
+      case 'em_analise':
+        return SituacaoDistrato.emAnalise;
+      case 'em_tratativa':
+        return SituacaoDistrato.emTratativa;
+      case 'em_negociacao':
+        return SituacaoDistrato.emNegociacao;
+      case 'marcado':
+        return SituacaoDistrato.marcado;
+      case 'notificado':
+        return SituacaoDistrato.notificado;
+      case 'distrato_enviado':
+        return SituacaoDistrato.distratoEnviado;
+      case 'regularizado':
+        return SituacaoDistrato.regularizado;
+      default:
+        return null;
+    }
+  }
+}
+
 class Contrato {
   final String localizador;
   final String localizadorAtendimento;
@@ -231,6 +302,24 @@ class Contrato {
   final bool precisaReajuste;
   final String? motivoReajuste;
 
+  /// Marcação de "em distrato" (triagem do pós-venda, aba Distratar). Quando
+  /// preenchido, o contrato foi sinalizado para análise de distrato.
+  /// Anotação interna do CRM; NÃO é serializada no toFirestore para sobreviver
+  /// ao re-import por merge (mesmo padrão de statusAssinatura/linkContratoDrive).
+  final DateTime? distratoEm;
+  final String? distratoPorNome;
+  final String? motivoDistrato;
+
+  /// Etapa do funil de distrato e datas de acompanhamento. Também merge-safe
+  /// (não vão no toFirestore; gravadas via método dedicado do service).
+  final SituacaoDistrato? situacaoDistrato;
+
+  /// Data em que a notificação/mensagem de cobrança foi enviada.
+  final DateTime? notificadoEm;
+
+  /// Data prevista para o envio do distrato (default: notificação + 15 dias).
+  final DateTime? distratoPrevistoEm;
+
   const Contrato({
     required this.localizador,
     required this.localizadorAtendimento,
@@ -288,10 +377,22 @@ class Contrato {
     this.linkContratoDrive,
     this.precisaReajuste = false,
     this.motivoReajuste,
+    this.distratoEm,
+    this.distratoPorNome,
+    this.motivoDistrato,
+    this.situacaoDistrato,
+    this.notificadoEm,
+    this.distratoPrevistoEm,
   });
 
   bool get temAtrasos => valorAtrasado > 0;
   bool get estaQuitado => statusFinanceiro.toLowerCase() == 'quitado';
+
+  /// True quando o contrato está ativo (não cancelado/inativo).
+  bool get estaAtivo => status.toLowerCase().trim() == 'ativo';
+
+  /// True quando o contrato foi marcado para análise de distrato.
+  bool get emDistrato => distratoEm != null;
 
   /// % integralizado para fins de regra: contrato quitado conta como 100%,
   /// mesmo que o campo numérico esteja desatualizado (ex.: 0%).
@@ -374,6 +475,13 @@ class Contrato {
       linkContratoDrive: d['linkContratoDrive'] as String?,
       precisaReajuste: d['precisaReajuste'] as bool? ?? false,
       motivoReajuste: d['motivoReajuste'] as String?,
+      distratoEm: (d['distratoEm'] as Timestamp?)?.toDate(),
+      distratoPorNome: d['distratoPorNome'] as String?,
+      motivoDistrato: d['motivoDistrato'] as String?,
+      situacaoDistrato:
+          SituacaoDistrato.fromString(d['situacaoDistrato'] as String?),
+      notificadoEm: (d['notificadoEm'] as Timestamp?)?.toDate(),
+      distratoPrevistoEm: (d['distratoPrevistoEm'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -446,6 +554,13 @@ class Contrato {
     StatusAssinatura? statusAssinatura,
     String? linkContratoDrive,
     String? codigoContrato,
+    DateTime? distratoEm,
+    String? distratoPorNome,
+    String? motivoDistrato,
+    SituacaoDistrato? situacaoDistrato,
+    DateTime? notificadoEm,
+    DateTime? distratoPrevistoEm,
+    bool limparDistrato = false,
   }) {
     return Contrato(
       localizador: localizador,
@@ -501,6 +616,19 @@ class Contrato {
       linkContratoDrive: linkContratoDrive ?? this.linkContratoDrive,
       precisaReajuste: precisaReajuste,
       motivoReajuste: motivoReajuste,
+      distratoEm: limparDistrato ? null : (distratoEm ?? this.distratoEm),
+      distratoPorNome:
+          limparDistrato ? null : (distratoPorNome ?? this.distratoPorNome),
+      motivoDistrato:
+          limparDistrato ? null : (motivoDistrato ?? this.motivoDistrato),
+      situacaoDistrato: limparDistrato
+          ? null
+          : (situacaoDistrato ?? this.situacaoDistrato),
+      notificadoEm:
+          limparDistrato ? null : (notificadoEm ?? this.notificadoEm),
+      distratoPrevistoEm: limparDistrato
+          ? null
+          : (distratoPrevistoEm ?? this.distratoPrevistoEm),
     );
   }
 

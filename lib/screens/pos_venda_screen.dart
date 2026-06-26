@@ -13,6 +13,7 @@ import '../services/contrato_import_diff.dart';
 import '../services/firestore_service.dart';
 import '../widgets/esolution_button.dart';
 import 'ficha_contrato_screen.dart';
+import '../widgets/botoes_contato_contrato.dart';
 
 class PosVendaScreen extends StatefulWidget {
   final String userProfile;
@@ -559,15 +560,27 @@ class _ContratoCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Expanded(
+                  Flexible(
                     child: Text(
                       c.nomeComprador,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
                       ),
                     ),
                   ),
+                  if (c.dataContrato != null) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      'compra ${fmtData.format(c.dataContrato!)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
                   if (c.temAtrasos)
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -587,6 +600,8 @@ class _ContratoCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  const SizedBox(width: 4),
+                  BotoesContatoContrato(contrato: c, iconSize: 18),
                 ],
               ),
               const SizedBox(height: 4),
@@ -683,6 +698,34 @@ class _ContratoCard extends StatelessWidget {
                     ],
                   );
                 }),
+              ],
+              // Acompanhamento de distrato: data da notificação + data prevista
+              if (c.emDistrato &&
+                  (c.notificadoEm != null ||
+                      c.distratoPrevistoEm != null)) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.gavel,
+                        size: 13, color: Colors.deepPurple.shade300),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        [
+                          if (c.notificadoEm != null)
+                            'Notificado: ${fmtData.format(c.notificadoEm!)}',
+                          if (c.distratoPrevistoEm != null)
+                            'Distrato previsto: ${fmtData.format(c.distratoPrevistoEm!)}',
+                        ].join('  •  '),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.deepPurple.shade400,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ],
           ),

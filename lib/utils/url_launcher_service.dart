@@ -24,6 +24,34 @@ class UrlLauncherService {
     }
   }
 
+  /// Abre o compositor do **Gmail no navegador** (nova aba do Chrome) com
+  /// destinatário, assunto e corpo já preenchidos — em vez do app de e-mail do
+  /// sistema (mailto:). A operação usa Google Workspace, então o Gmail web é o
+  /// destino esperado. Variáveis devem vir já aplicadas pelo chamador.
+  Future<void> abrirEmail(
+    String destinatario, {
+    String? assunto,
+    String? corpo,
+  }) async {
+    final uri = Uri.https('mail.google.com', '/mail/', {
+      'view': 'cm',
+      'fs': '1',
+      'to': destinatario,
+      if ((assunto ?? '').isNotEmpty) 'su': assunto!,
+      if ((corpo ?? '').isNotEmpty) 'body': corpo!,
+    });
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Não foi possível abrir o Gmail.';
+      }
+    } catch (e) {
+      debugPrint('[Email] Erro ao abrir Gmail: $e');
+      rethrow;
+    }
+  }
+
   /// Abre uma URL qualquer em nova aba/app externo.
   Future<void> abrirUrl(String url) async {
     final uri = Uri.parse(url);

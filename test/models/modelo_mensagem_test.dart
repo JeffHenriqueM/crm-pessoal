@@ -56,6 +56,28 @@ void main() {
       final r = aplicarVariaveisMensagem('Oi {primeiroNomeEsposa}', nome: 'X');
       expect(r, 'Oi ');
     });
+
+    test('variáveis de contrato entram já formatadas (sem capitalizar)', () {
+      const t = 'Contrato {contrato} ({cota}) — atraso {valorAtrasado}, '
+          'saldo {saldo}, prazo até {dataLimite}.';
+      final r = aplicarVariaveisMensagem(
+        t,
+        contrato: 'LXP-61-334/Cota-01',
+        cota: 'Cota-01',
+        valorAtrasado: r'R$ 1.200,00',
+        saldo: r'R$ 50.000,00',
+        dataLimite: '05/07/2026',
+      );
+      expect(
+          r,
+          'Contrato LXP-61-334/Cota-01 (Cota-01) — atraso R\$ 1.200,00, '
+          'saldo R\$ 50.000,00, prazo até 05/07/2026.');
+    });
+
+    test('variáveis de contrato sem valor viram vazio', () {
+      final r = aplicarVariaveisMensagem('[{valorAtrasado}]', nome: 'X');
+      expect(r, '[]');
+    });
   });
 
   group('capitalizarNome', () {
