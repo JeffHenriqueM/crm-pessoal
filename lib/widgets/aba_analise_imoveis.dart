@@ -1,5 +1,8 @@
+import 'dart:js_interop';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:web/web.dart' as web;
 
 import '../models/contrato_model.dart';
 import '../models/cota_model.dart';
@@ -16,7 +19,7 @@ final _moedaCompacta = NumberFormat.compactCurrency(
   decimalDigits: 1,
 );
 
-const _ordemBlocos = ['B', 'C', 'BANGALO'];
+const _ordemBlocos = ['A', 'B', 'C', 'D', 'E', 'BANGALO'];
 const _ordemPavimentos = ['terreo', '1', '2', '3', '4', '5', 'unico'];
 const _ordemTiers = [
   TierCota.bronze,
@@ -132,6 +135,15 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
             children: [
               Text('${r.totalUnidades} unidades',
                   style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: () => _exportarEspelho(r),
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('Exportar CSV'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ],
           ),
         ),
@@ -193,6 +205,30 @@ class _AbaAnaliseImoveisState extends State<AbaAnaliseImoveis> {
         onSelected: (_) => setState(() => _secao = idx),
       ),
     );
+  }
+
+  // ── Export do espelho de vendas (CSV) ──────────────────────────────────────
+  // Reaproveita a análise já em mãos (sem leitura extra do Firestore). Gera o
+  // arquivo no navegador via Blob + âncora, mesmo padrão do export de tickets.
+  void _exportarEspelho(ResumoAnalise resumo) {
+    final csv = csvEspelhoVendas(resumo);
+    final blob = web.Blob(
+      [csv.toJS].toJS,
+      web.BlobPropertyBag(type: 'text/csv;charset=utf-8'),
+    );
+    final url = web.URL.createObjectURL(blob);
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement
+      ..href = url
+      ..download = 'espelho_vendas_$stamp.csv';
+    web.document.body!.append(anchor);
+    anchor.click();
+    anchor.remove();
+    web.URL.revokeObjectURL(url);
+    final qtd = resumo.imoveis
+        .where((a) => a.situacao != SituacaoImovel.indefinido && a.tier != null)
+        .length;
+    if (mounted) _snack('Espelho exportado ($qtd imóveis).');
   }
 
   Future<void> _gerarInventario() async {

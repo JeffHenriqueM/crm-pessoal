@@ -63,14 +63,17 @@ void main() {
     });
   });
 
-  group('inventário da 1ª etapa', () {
+  group('inventário do empreendimento', () {
     final inv = inventarioPrimeiraEtapa();
 
-    test('soma 228 unidades (98 + 118 + 12)', () {
-      expect(inv.length, 228);
+    test('soma 530 unidades (98×4 + 118 + 20)', () {
+      expect(inv.length, 530);
+      expect(inv.where((i) => i.bloco == 'A').length, 98);
       expect(inv.where((i) => i.bloco == 'B').length, 98);
       expect(inv.where((i) => i.bloco == 'C').length, 118);
-      expect(inv.where((i) => i.bloco == 'BANGALO').length, 12);
+      expect(inv.where((i) => i.bloco == 'D').length, 98);
+      expect(inv.where((i) => i.bloco == 'E').length, 98);
+      expect(inv.where((i) => i.bloco == 'BANGALO').length, 20);
     });
 
     test('térreo pula 06 e 15; andares têm os 20', () {
@@ -105,26 +108,54 @@ void main() {
       expect(inv.any((i) => i.id == 'B-501'), isFalse);
     });
 
-    test('bangalôs são F–Q, tipo BANGALO, metragem nula', () {
+    test('bangalôs são A–T (20), tipo BANGALO, metragem nula', () {
       final bang = inv.where((i) => i.bloco == 'BANGALO').toList();
+      expect(bang, hasLength(20));
       expect(bang.map((i) => i.numero).toSet(), kLetrasBangalos.toSet());
       expect(bang.every((i) => i.tipo == 'BANGALO'), isTrue);
       expect(bang.every((i) => i.metragem == null), isTrue);
       expect(inv.any((i) => i.id == 'BANG-F'), isTrue);
+      expect(inv.any((i) => i.id == 'BANG-D'), isTrue);
+    });
+
+    test('tipos especiais dos blocos A (ZEUS), D (ATENA) e E (APOLO)', () {
+      Imovel u(String id) => inv.firstWhere((i) => i.id == id);
+      // A (ZEUS)
+      expect(u('A-1').tipo, 'LUXO PRIME');
+      expect(u('A-2').tipo, 'LUXO EXTRA');
+      expect(u('A-20').tipo, 'LUXO PREMIUM');
+      expect(u('A-101').tipo, 'LUXO MASTER');
+      expect(u('A-120').tipo, 'LUXO PREMIUM');
+      expect(u('A-102').tipo, 'LUXO');
+      // D (ATENA)
+      expect(u('D-1').tipo, 'LUXO PREMIUM');
+      expect(u('D-20').tipo, 'LUXO MASTER');
+      expect(u('D-401').tipo, 'LUXO PREMIUM');
+      expect(u('D-420').tipo, 'LUXO MASTER');
+      // E (APOLO)
+      expect(u('E-1').tipo, 'LUXO PREMIUM');
+      expect(u('E-20').tipo, 'LUXO EXTRA');
+      expect(u('E-120').tipo, 'LUXO MASTER');
+      // blocos A/D/E vão só até o 4º andar (sem 5xx)
+      expect(inv.any((i) => i.id == 'A-501'), isFalse);
+      expect(inv.any((i) => i.id == 'D-501'), isFalse);
     });
   });
 
   group('normalizarBloco', () {
-    test('mapeia B/C/Bangalô', () {
+    test('mapeia os 5 blocos + Bangalô', () {
+      expect(normalizarBloco('A (ZEUS)'), 'A');
       expect(normalizarBloco('B (HERA)'), 'B');
       expect(normalizarBloco('C (AFRODITE)'), 'C');
+      expect(normalizarBloco('D (ATENA)'), 'D');
+      expect(normalizarBloco('E (APOLO)'), 'E');
       expect(normalizarBloco('Bangalo'), 'BANGALO');
       expect(normalizarBloco('BANGALO LUXURY'), 'BANGALO');
     });
-    test('rejeita blocos fora da 1ª etapa', () {
+    test('rejeita blocos com pavimento no lugar da letra', () {
       expect(normalizarBloco('3° PAVIMENTO'), isNull);
-      expect(normalizarBloco('D (ATENA)'), isNull);
       expect(normalizarBloco('TÉRREO'), isNull);
+      expect(normalizarBloco(''), isNull);
     });
   });
 
@@ -135,6 +166,25 @@ void main() {
       expect(
         imovelIdDoContrato(_contrato(localizador: '3', bloco: 'C (AFRODITE)', imovel: '501')),
         'C-501',
+      );
+    });
+    test('liga aptos dos blocos A, D e E', () {
+      expect(
+        imovelIdDoContrato(_contrato(localizador: 'a', bloco: 'A (ZEUS)', imovel: '101')),
+        'A-101',
+      );
+      expect(
+        imovelIdDoContrato(_contrato(localizador: 'd', bloco: 'D (ATENA)', imovel: '3')),
+        'D-3',
+      );
+      expect(
+        imovelIdDoContrato(_contrato(localizador: 'e', bloco: 'E (APOLO)', imovel: '420')),
+        'E-420',
+      );
+      // A/D/E não têm 5º andar
+      expect(
+        imovelIdDoContrato(_contrato(localizador: 'd5', bloco: 'D (ATENA)', imovel: '501')),
+        isNull,
       );
     });
     test('rejeita número inválido (06/15 do térreo e fora de range)', () {
@@ -150,11 +200,17 @@ void main() {
         isNull,
       );
     });
-    test('bangalô liga por letra F–Q', () {
+    test('bangalô liga por letra A–T', () {
       expect(
         imovelIdDoContrato(_contrato(localizador: '9', bloco: 'Bangalo', imovel: 'F')),
         'BANG-F',
       );
+      // 'D' agora é bangalô válido (antes caía como avulso por estar fora do F–Q)
+      expect(
+        imovelIdDoContrato(_contrato(localizador: '9b', bloco: 'Bangalo', imovel: 'D')),
+        'BANG-D',
+      );
+      // 'Z' está fora do range A–T
       expect(
         imovelIdDoContrato(_contrato(localizador: '10', bloco: 'Bangalo', imovel: 'Z')),
         isNull,
@@ -187,7 +243,7 @@ void main() {
       expect(a.tier, isNull);
       expect(a.cotasVendidas, 0);
       expect(a.cotasTotal, isNull);
-      expect(r.totalUnidades, 228);
+      expect(r.totalUnidades, 530);
       expect(r.totalComVenda, 0);
     });
 
@@ -257,13 +313,13 @@ void main() {
       expect(a.temAlerta, isTrue);
     });
 
-    test('contrato fora da 1ª etapa entra como avulso', () {
+    test('contrato com bloco-pavimento entra como avulso', () {
       final contratos = [
-        _contrato(localizador: 'x', bloco: 'D (ATENA)', imovel: '999'),
+        _contrato(localizador: 'x', bloco: '3° PAVIMENTO', imovel: '313'),
         _contrato(localizador: 'y', imovel: '106'), // andar 1 tem o 06 → liga
       ];
       final r = analisarEmpreendimento(inv, contratos);
-      expect(r.avulsos.length, 1); // só o D (ATENA); o 106 é andar 1 válido
+      expect(r.avulsos.length, 1); // só o "3° PAVIMENTO"; o 106 é andar 1 válido
       expect(r.avulsos.first.localizador, 'x');
     });
 
@@ -370,6 +426,68 @@ void main() {
       ]);
       expect(r.statusErrado, isEmpty);
       expect(r.pendentes, isEmpty);
+    });
+  });
+
+  group('csvEspelhoVendas', () {
+    final inv = inventarioPrimeiraEtapa();
+
+    test('cabeçalho na ordem exata pedida', () {
+      final csv = csvEspelhoVendas(analisarEmpreendimento(inv, []));
+      final primeiraLinha = csv.split('\r\n').first.replaceFirst('﻿', '');
+      expect(
+        primeiraLinha,
+        'TIPO DE IMÓVEL,TIPO COTA,BLOCO,IMOVEL,'
+        'TOTAL COTAS,Reservado,Disponivel,Vendida',
+      );
+    });
+
+    test('inclui BOM UTF-8 e usa CRLF', () {
+      final csv = csvEspelhoVendas(analisarEmpreendimento(inv, []));
+      expect(csv.codeUnitAt(0), 0xFEFF);
+      expect(csv.contains('\r\n'), isTrue);
+    });
+
+    test('sem vendas → só o cabeçalho (nenhum imóvel indefinido entra)', () {
+      final csv = csvEspelhoVendas(analisarEmpreendimento(inv, []));
+      final linhas =
+          csv.split('\r\n').where((l) => l.trim().isNotEmpty).toList();
+      expect(linhas, hasLength(1));
+    });
+
+    test('uma linha por imóvel com venda, colunas corretas', () {
+      // B-101 (LUXO MASTER) com 2 cotas Prata (total 26).
+      final contratos = [
+        _contrato(localizador: '1', imovel: '101', cota: 'Cota-01'),
+        _contrato(localizador: '2', imovel: '101', cota: 'Cota-02'),
+      ];
+      final csv =
+          csvEspelhoVendas(analisarEmpreendimento(inv, contratos));
+      final linhas =
+          csv.split('\r\n').where((l) => l.trim().isNotEmpty).toList();
+      expect(linhas, hasLength(2)); // cabeçalho + 1 imóvel
+      // TIPO DE IMÓVEL, TIPO COTA, BLOCO, IMOVEL, TOTAL, Reservado, Disp, Vendida
+      expect(linhas[1], 'LUXO MASTER,Prata,B (HERA),101,26,0,24,2');
+    });
+
+    test('Reservado sempre 0 e Disponível = Total − Vendida', () {
+      final contratos = [
+        _contrato(
+            localizador: '1',
+            imovel: '16',
+            produto: 'LUXO BRONZE',
+            cota: 'Cota-01'),
+      ];
+      final csv =
+          csvEspelhoVendas(analisarEmpreendimento(inv, contratos));
+      final linha = csv
+          .split('\r\n')
+          .firstWhere((l) => l.startsWith('LUXO,Bronze'));
+      final col = linha.split(',');
+      expect(col[5], '0'); // Reservado
+      expect(col[4], '52'); // Total (bronze)
+      expect(col[7], '1'); // Vendida
+      expect(col[6], '51'); // Disponível = 52 - 1 - 0
     });
   });
 }
