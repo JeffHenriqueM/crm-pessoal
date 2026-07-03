@@ -12,6 +12,19 @@ import '../services/firestore_service.dart';
 import '../utils/analise_distrato.dart';
 import 'botoes_contato_contrato.dart';
 
+/// Critérios de ordenação manual da lista do Distratar.
+enum _OrdenarPor {
+  atraso('Valor em atraso'),
+  notificado('Data de notificação'),
+  distratoPrevisto('Distrato previsto'),
+  ultimoPgto('Último pagamento'),
+  pctPago('% pago'),
+  nome('Nome');
+
+  final String label;
+  const _OrdenarPor(this.label);
+}
+
 /// Aba "Distratar" (Pós-Venda) — visível para super admin e pós-venda.
 ///
 /// Triagem de contratos críticos para análise de distrato:
@@ -41,6 +54,9 @@ class _AbaDistratarState extends State<AbaDistratar> {
   String _busca = '';
   // Filtro de situação: 'todos' | 'sem' (não marcados) | SituacaoDistrato.valor
   String _filtroSit = 'todos';
+  // Ordenação manual (default: maior valor em atraso primeiro).
+  _OrdenarPor _ordenarPor = _OrdenarPor.atraso;
+  bool _ordemDesc = true;
 
   static final _moeda = NumberFormat.currency(
     locale: 'pt_BR',
@@ -275,18 +291,7 @@ class _AbaDistratarState extends State<AbaDistratar> {
     final base =
         _modo == 0 ? analise.maioresAtrasos : analise.inadimplentes;
     final lista = base.where(_passaFiltros).toList();
-    // Ao filtrar por "Notificado", ordena por data de notificação (mais antigo
-    // primeiro — quem foi notificado há mais tempo está mais perto do prazo de
-    // distrato). Sem data vai para o fim.
-    if (_filtroSit == SituacaoDistrato.notificado.valor) {
-      lista.sort((a, b) {
-        final da = a.notificadoEm, db = b.notificadoEm;
-        if (da == null && db == null) return 0;
-        if (da == null) return 1;
-        if (db == null) return -1;
-        return da.compareTo(db);
-      });
-    }
+    _ordenarLista(lista, analise.ultimoPagamento);
     final totalAtraso = analise.maioresAtrasos
         .fold<double>(0, (s, c) => s + c.valorAtrasado);
 
@@ -340,6 +345,74 @@ class _AbaDistratarState extends State<AbaDistratar> {
         return (c.situacaoDistrato ?? SituacaoDistrato.marcado).valor ==
             _filtroSit;
     }
+  }
+
+  /// Ordena [lista] in-place pelo critério/direção escolhidos no menu.
+  /// Valores nulos (datas ausentes) vão sempre para o fim, independente da
+  /// direção.
+  void _ordenarLista(List<Contrato> lista, Map<String, DateTime> ultimoPag) {
+    Comparable? chave(Contrato c) {
+      switch (_ordenarPor) {
+        case _OrdenarPor.atraso:
+          return c.valorAtrasado;
+        case _OrdenarPor.pctPago:
+          return c.percentualIntegralizado;
+        case _OrdenarPor.nome:
+          return c.nomeComprador.toLowerCase();
+        case _OrdenarPor.notificado:
+          return c.notificadoEm?.millisecondsSinceEpoch;
+        case _OrdenarPor.distratoPrevisto:
+          return c.distratoPrevistoEm?.millisecondsSinceEpoch;
+        case _OrdenarPor.ultimoPgto:
+          return ultimoPag[c.localizador]?.millisecondsSinceEpoch;
+      }
+    }
+
+    lista.sort((a, b) {
+      final ka = chave(a), kb = chave(b);
+      if (ka == null && kb == null) return 0;
+      if (ka == null) return 1; // nulos no fim
+      if (kb == null) return -1;
+      final cmp = Comparable.compare(ka, kb);
+      return _ordemDesc ? -cmp : cmp;
+    });
+  }
+
+  Widget _ordenacaoControle() {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(Icons.sort, size: 18, color: cs.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Text('Ordenar:',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<_OrdenarPor>(
+              isDense: true,
+              isExpanded: true,
+              value: _ordenarPor,
+              items: [
+                for (final o in _OrdenarPor.values)
+                  DropdownMenuItem(
+                    value: o,
+                    child: Text(o.label, style: const TextStyle(fontSize: 13)),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _ordenarPor = v ?? _ordenarPor),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: _ordemDesc ? 'Decrescente (maior→menor)' : 'Crescente (menor→maior)',
+          icon: Icon(_ordemDesc ? Icons.arrow_downward : Icons.arrow_upward,
+              size: 18),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => setState(() => _ordemDesc = !_ordemDesc),
+        ),
+      ],
+    );
   }
 
   Widget _cabecalho(
@@ -413,6 +486,8 @@ class _AbaDistratarState extends State<AbaDistratar> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          _ordenacaoControle(),
           const SizedBox(height: 8),
           _chipsSituacao(analise),
         ],
