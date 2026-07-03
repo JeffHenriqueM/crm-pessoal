@@ -16,6 +16,7 @@ void main() {
     double saldo = 0,
     String statusFinanceiro = 'Em andamento',
     String status = 'Ativo',
+    DateTime? distratoEm,
   }) =>
       Contrato(
         localizador: loc,
@@ -26,6 +27,7 @@ void main() {
         saldoRestante: saldo,
         statusFinanceiro: statusFinanceiro,
         status: status,
+        distratoEm: distratoEm,
       );
 
   BaixaFinanceira baixa({
@@ -68,6 +70,32 @@ void main() {
       ], [], hoje: hoje);
 
       expect(r.maioresAtrasos.map((c) => c.localizador), ['A']);
+    });
+
+    test('contrato marcado em distrato permanece mesmo com atraso zerado', () {
+      // Cenário do re-import: o contrato foi marcado e depois uma atualização
+      // zerou o valor em atraso. Ele NÃO pode sumir do distratar.
+      final r = analisarDistrato([
+        contrato(loc: 'A', nome: 'A', atrasado: 500),
+        contrato(loc: 'M', nome: 'Marcado', atrasado: 0, distratoEm: hoje),
+      ], [], hoje: hoje);
+
+      expect(r.maioresAtrasos.map((c) => c.localizador), contains('M'));
+      // Fica no fim (atraso 0), mas continua listado.
+      expect(r.maioresAtrasos.map((c) => c.localizador), ['A', 'M']);
+    });
+
+    test('marcado inativo também permanece (só sai ao remover a marcação)', () {
+      final r = analisarDistrato([
+        contrato(
+            loc: 'M',
+            nome: 'Marcado',
+            atrasado: 0,
+            status: 'Cancelado',
+            distratoEm: hoje),
+      ], [], hoje: hoje);
+
+      expect(r.maioresAtrasos.map((c) => c.localizador), ['M']);
     });
   });
 

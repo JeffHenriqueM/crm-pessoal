@@ -275,6 +275,18 @@ class _AbaDistratarState extends State<AbaDistratar> {
     final base =
         _modo == 0 ? analise.maioresAtrasos : analise.inadimplentes;
     final lista = base.where(_passaFiltros).toList();
+    // Ao filtrar por "Notificado", ordena por data de notificação (mais antigo
+    // primeiro — quem foi notificado há mais tempo está mais perto do prazo de
+    // distrato). Sem data vai para o fim.
+    if (_filtroSit == SituacaoDistrato.notificado.valor) {
+      lista.sort((a, b) {
+        final da = a.notificadoEm, db = b.notificadoEm;
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return da.compareTo(db);
+      });
+    }
     final totalAtraso = analise.maioresAtrasos
         .fold<double>(0, (s, c) => s + c.valorAtrasado);
 
@@ -549,6 +561,31 @@ class _AbaDistratarState extends State<AbaDistratar> {
                                 fontSize: 12,
                                 color: cs.primary,
                                 fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                        // Observação (motivo) — útil sobretudo para os que estão
+                        // "em análise", que ainda não têm datas no card.
+                        if (c.emDistrato &&
+                            (c.motivoDistrato ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.sticky_note_2_outlined,
+                                  size: 13, color: cs.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  c.motivoDistrato!.trim(),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.onSurfaceVariant,
+                                      fontStyle: FontStyle.italic),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ],

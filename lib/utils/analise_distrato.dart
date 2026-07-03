@@ -4,7 +4,9 @@ import '../models/contrato_model.dart';
 /// Resultado da triagem de distrato (aba Distratar, Pós-Venda).
 ///
 /// Dois rankings independentes — um contrato pode aparecer nos dois:
-/// - [maioresAtrasos]: contratos com valor em atraso, do maior para o menor.
+/// - [maioresAtrasos]: contratos com valor em atraso (do maior para o menor)
+///   MAIS os já marcados em distrato — estes permanecem na lista mesmo se uma
+///   atualização zerar o atraso, até o gestor remover a marcação.
 /// - [inadimplentes]: não-quitados com saldo que estão há 3+ meses sem pagar.
 ///
 /// [ultimoPagamento] mapeia `localizador → data do último pagamento` (maior
@@ -81,9 +83,14 @@ AnaliseDistrato analisarDistrato(
       DateTime(agora.year, agora.month - mesesInadimplencia, agora.day);
   final ultimos = ultimoPagamentoPorContrato(contratos, baixas);
 
-  final maioresAtrasos =
-      contratos.where((c) => c.estaAtivo && c.temAtrasos).toList()
-        ..sort((a, b) => b.valorAtrasado.compareTo(a.valorAtrasado));
+  // Contratos já marcados em distrato NUNCA saem da lista, mesmo que uma
+  // atualização/re-importação zere o valor em atraso — o acompanhamento do
+  // funil não pode "perder" um contrato só porque o atraso mudou. Só saem
+  // quando o gestor remove a marcação manualmente.
+  final maioresAtrasos = contratos
+      .where((c) => c.emDistrato || (c.estaAtivo && c.temAtrasos))
+      .toList()
+    ..sort((a, b) => b.valorAtrasado.compareTo(a.valorAtrasado));
 
   final inadimplentes = contratos.where((c) {
     if (!c.estaAtivo) return false; // só contratos ativos podem ser distratados
