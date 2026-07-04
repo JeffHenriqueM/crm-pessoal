@@ -223,13 +223,14 @@ service cloud.firestore {
     // ── Financeiro — Baixas ───────────────────────────────────────────────────
     // Leitura, criação e update (inclui o soft-delete da substituição de
     // importação) restritos a perfis financeiros (admin, financeiro, super
-    // admin). Delete físico SEMPRE bloqueado — substituição é via `deletado`.
+    // admin). Pós-venda tem leitura para calcular inadimplência no distrato.
+    // Delete físico SEMPRE bloqueado — substituição é via `deletado`.
     match /financeiro_baixas/{docId} {
       function isFinanceiro() {
         let p = perfil();
         return p == 'admin' || p == 'financeiro' || p == 'super admin';
       }
-      allow read:   if isAuth() && isFinanceiro();
+      allow read:   if isAuth() && (isFinanceiro() || perfil() == 'pós-venda');
       allow create: if isAuth() && isFinanceiro();
       allow update: if isAuth() && isFinanceiro();
       allow delete: if false;

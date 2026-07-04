@@ -19,14 +19,22 @@ import '../models/imovel_model.dart';
 const double _mLuxo = 46.20;
 const double _mLuxoPremium = 53.96;
 const double _mLuxoMaster = 59.81;
+const double _mLuxoExtra = 46.20;
+const double _mLuxoPrime = 53.96;
 const double _mVillamor = 52.42;
 const double _mVillamorPremium = 53.96;
 const double _mVillamorSuperMaster = 53.96;
 
-/// Letras dos 12 bangalôs (começam no F).
-const List<String> kLetrasBangalos = ['F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
+/// Letras dos 20 bangalôs (A–T). Todos duplex. Os contratos referenciam o
+/// bangalô pela letra (vendidos hoje: D, I, J, M).
+const List<String> kLetrasBangalos = [
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+  'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+];
 
-// ── Geração do inventário da 1ª etapa (228 unidades) ────────────────────────
+// ── Geração do inventário (530 unidades) ────────────────────────────────────
+// Blocos A/B/D/E têm Térreo + 4 andares (98 cada); o Bloco C tem Térreo + 5
+// andares (118). Mais 20 bangalôs. Total = 530.
 
 /// Sobrescritas de tipo do Bloco B (HERA). Base = LUXO.
 const Map<int, String> _tiposEspeciaisB = {
@@ -35,6 +43,36 @@ const Map<int, String> _tiposEspeciaisB = {
   201: 'LUXO MASTER', 220: 'LUXO MASTER',
   301: 'LUXO MASTER', 320: 'LUXO MASTER',
   401: 'LUXO MASTER', 420: 'LUXO PREMIUM',
+};
+
+/// Sobrescritas de tipo do Bloco A (ZEUS). Base = LUXO.
+const Map<int, String> _tiposEspeciaisA = {
+  1: 'LUXO PRIME', // térreo
+  2: 'LUXO EXTRA', 3: 'LUXO EXTRA', 4: 'LUXO EXTRA', 5: 'LUXO EXTRA',
+  20: 'LUXO PREMIUM',
+  101: 'LUXO MASTER', 120: 'LUXO PREMIUM',
+  201: 'LUXO MASTER', 220: 'LUXO PREMIUM',
+  301: 'LUXO MASTER', 320: 'LUXO PREMIUM',
+  401: 'LUXO MASTER', 420: 'LUXO PREMIUM',
+};
+
+/// Sobrescritas de tipo do Bloco D (ATENA). Base = LUXO.
+const Map<int, String> _tiposEspeciaisD = {
+  1: 'LUXO PREMIUM', 20: 'LUXO MASTER', // térreo
+  101: 'LUXO PREMIUM', 120: 'LUXO MASTER',
+  201: 'LUXO PREMIUM', 220: 'LUXO MASTER',
+  301: 'LUXO PREMIUM', 320: 'LUXO MASTER',
+  401: 'LUXO PREMIUM', 420: 'LUXO MASTER',
+};
+
+/// Sobrescritas de tipo do Bloco E (APOLO). Base = LUXO.
+const Map<int, String> _tiposEspeciaisE = {
+  1: 'LUXO PREMIUM', // térreo
+  16: 'LUXO EXTRA', 17: 'LUXO EXTRA', 18: 'LUXO EXTRA', 19: 'LUXO EXTRA', 20: 'LUXO EXTRA',
+  101: 'LUXO PREMIUM', 120: 'LUXO MASTER',
+  201: 'LUXO PREMIUM', 220: 'LUXO MASTER',
+  301: 'LUXO PREMIUM', 320: 'LUXO MASTER',
+  401: 'LUXO PREMIUM', 420: 'LUXO MASTER',
 };
 
 /// Sobrescritas de tipo do Bloco C (AFRODITE). Base = VILLAMOR.
@@ -55,6 +93,10 @@ double? _metragemDoTipo(String tipo) {
       return _mLuxoPremium;
     case 'LUXO MASTER':
       return _mLuxoMaster;
+    case 'LUXO EXTRA':
+      return _mLuxoExtra;
+    case 'LUXO PRIME':
+      return _mLuxoPrime;
     case 'VILLAMOR':
       return _mVillamor;
     case 'VILLAMOR PREMIUM':
@@ -79,10 +121,42 @@ List<int> _numerosDoPavimento(int base, {required bool terreo}) {
 
 String _pavimentoLabel(int nivel) => nivel == 0 ? 'terreo' : '$nivel';
 
-/// Gera o inventário completo da 1ª etapa: Bloco B (98), Bloco C (118) e
-/// 12 bangalôs = 228 unidades.
+/// Gera um bloco de apartamentos com Térreo + [andares] pavimentos, base [base]
+/// e as sobrescritas de [especiais] (mesmo padrão de numeração do Bloco B).
+void _gerarBlocoApto(
+  List<Imovel> out, {
+  required String bloco,
+  required String blocoNome,
+  required String base,
+  required Map<int, String> especiais,
+  int andares = 4,
+}) {
+  for (var nivel = 0; nivel <= andares; nivel++) {
+    final centena = nivel == 0 ? 0 : nivel * 100;
+    for (final n in _numerosDoPavimento(centena, terreo: nivel == 0)) {
+      final tipo = especiais[n] ?? base;
+      out.add(Imovel(
+        id: '$bloco-$n',
+        bloco: bloco,
+        blocoNome: blocoNome,
+        pavimento: _pavimentoLabel(nivel),
+        numero: '$n',
+        tipo: tipo,
+        metragem: _metragemDoTipo(tipo),
+        etapa: 1,
+      ));
+    }
+  }
+}
+
+/// Gera o inventário completo do empreendimento: blocos A (98), B (98),
+/// C (118), D (98), E (98) e 20 bangalôs = 530 unidades.
 List<Imovel> inventarioPrimeiraEtapa() {
   final imoveis = <Imovel>[];
+
+  // ── Bloco A (ZEUS): térreo + 4 pavimentos ──
+  _gerarBlocoApto(imoveis,
+      bloco: 'A', blocoNome: 'ZEUS', base: 'LUXO', especiais: _tiposEspeciaisA);
 
   // ── Bloco B (HERA): térreo + 4 pavimentos ──
   for (var nivel = 0; nivel <= 4; nivel++) {
@@ -120,7 +194,15 @@ List<Imovel> inventarioPrimeiraEtapa() {
     }
   }
 
-  // ── 12 bangalôs (F–Q): tipo/metragem definidos por venda ──
+  // ── Bloco D (ATENA): térreo + 4 pavimentos ──
+  _gerarBlocoApto(imoveis,
+      bloco: 'D', blocoNome: 'ATENA', base: 'LUXO', especiais: _tiposEspeciaisD);
+
+  // ── Bloco E (APOLO): térreo + 4 pavimentos ──
+  _gerarBlocoApto(imoveis,
+      bloco: 'E', blocoNome: 'APOLO', base: 'LUXO', especiais: _tiposEspeciaisE);
+
+  // ── 20 bangalôs (A–T): tipo/metragem definidos por venda ──
   for (final letra in kLetrasBangalos) {
     imoveis.add(Imovel(
       id: 'BANG-$letra',
@@ -144,9 +226,12 @@ List<Imovel> inventarioPrimeiraEtapa() {
 /// outros blocos como D/ATENA).
 String? normalizarBloco(String blocoRaw) {
   final b = blocoRaw.toUpperCase();
+  if (b.contains('BANGAL')) return 'BANGALO';
   if (b.contains('HERA') || b == 'B') return 'B';
   if (b.contains('AFRODITE') || b == 'C') return 'C';
-  if (b.contains('BANGAL')) return 'BANGALO';
+  if (b.contains('ZEUS') || b == 'A') return 'A';
+  if (b.contains('ATENA') || b == 'D') return 'D';
+  if (b.contains('APOLO') || b == 'E') return 'E';
   return null;
 }
 
@@ -157,9 +242,11 @@ bool _numeroAptoValido(String bloco, int n) {
   if (n >= 1 && n <= 20) return n != 6 && n != 15;
   // Andares superiores têm os 20 aptos completos (inclusive 06 e 15).
   bool noAndar(int base) => n > base && n <= base + 20;
-  if (bloco == 'B') {
+  // Blocos A/B/D/E: térreo + 4 andares (101–420).
+  if (bloco == 'A' || bloco == 'B' || bloco == 'D' || bloco == 'E') {
     return noAndar(100) || noAndar(200) || noAndar(300) || noAndar(400);
   }
+  // Bloco C: térreo + 5 andares (101–520).
   if (bloco == 'C') {
     return noAndar(100) || noAndar(200) || noAndar(300) || noAndar(400) || noAndar(500);
   }
@@ -435,6 +522,107 @@ ResumoAnalise analisarEmpreendimento(
     porTier: porTier,
     porBloco: porBloco,
   );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EXPORT — Espelho de Vendas (CSV)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Gera o CSV do espelho a partir da análise do empreendimento: uma linha por
+// imóvel COM venda (situação != indefinido), nas colunas TIPO DE IMÓVEL ·
+// TIPO COTA · BLOCO · IMOVEL · TOTAL COTAS · Reservado · Disponivel · Vendida.
+//
+// "Reservado" é sempre 0 por enquanto (ainda não há fonte de dados de reserva);
+// a coluna existe no layout para preenchimento futuro. Como Reservado = 0,
+// Disponível = Total − Vendida. Quando Vendida > Total (erro de dado / venda
+// acima da capacidade), Disponível fica negativo de propósito, para a linha
+// denunciar o problema em vez de mascará-lo.
+
+/// Rótulo legível do bloco no espelho: 'A (ZEUS)', 'B (HERA)', etc.
+String _blocoLabelEspelho(Imovel i) {
+  switch (i.bloco) {
+    case 'A':
+      return 'A (ZEUS)';
+    case 'B':
+      return 'B (HERA)';
+    case 'C':
+      return 'C (AFRODITE)';
+    case 'D':
+      return 'D (ATENA)';
+    case 'E':
+      return 'E (APOLO)';
+    case 'BANGALO':
+      return 'Bangalô';
+    default:
+      return i.bloco;
+  }
+}
+
+/// Escapa um campo CSV conforme RFC 4180 (aspas quando há vírgula/aspas/quebra).
+String _csvCampoEspelho(String v) {
+  if (v.contains(',') || v.contains('"') || v.contains('\r') || v.contains('\n')) {
+    return '"${v.replaceAll('"', '""')}"';
+  }
+  return v;
+}
+
+/// Ordem dos blocos no espelho (A → B → C → D → E → Bangalô).
+const Map<String, int> _ordemBlocoEspelho = {
+  'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'BANGALO': 5,
+};
+
+/// Gera o CSV do espelho de vendas (uma linha por imóvel com venda).
+/// Inclui BOM UTF-8 e EOL CRLF para abrir corretamente no Excel/Numbers.
+String csvEspelhoVendas(ResumoAnalise resumo) {
+  const eol = '\r\n';
+  final buffer = StringBuffer();
+  buffer.write('\u{FEFF}'); // BOM UTF-8 (acentos no Excel)
+
+  buffer.write([
+    'TIPO DE IMÓVEL',
+    'TIPO COTA',
+    'BLOCO',
+    'IMOVEL',
+    'TOTAL COTAS',
+    'Reservado',
+    'Disponivel',
+    'Vendida',
+  ].join(','));
+  buffer.write(eol);
+
+  // Só imóveis com venda (tier definido), ordenados por bloco e número.
+  final linhas = resumo.imoveis
+      .where((a) => a.situacao != SituacaoImovel.indefinido && a.tier != null)
+      .toList()
+    ..sort((a, b) {
+      final ob = (_ordemBlocoEspelho[a.imovel.bloco] ?? 99)
+          .compareTo(_ordemBlocoEspelho[b.imovel.bloco] ?? 99);
+      if (ob != 0) return ob;
+      final na = int.tryParse(a.imovel.numero);
+      final nb = int.tryParse(b.imovel.numero);
+      if (na != null && nb != null) return na.compareTo(nb);
+      return a.imovel.numero.compareTo(b.imovel.numero);
+    });
+
+  for (final a in linhas) {
+    final total = a.cotasTotal ?? 0;
+    const reservado = 0;
+    final vendida = a.cotasVendidas;
+    final disponivel = total - vendida - reservado;
+    buffer.write([
+      _csvCampoEspelho(a.imovel.tipo),
+      _csvCampoEspelho(a.tier!.label),
+      _csvCampoEspelho(_blocoLabelEspelho(a.imovel)),
+      _csvCampoEspelho(a.imovel.numero),
+      '$total',
+      '$reservado',
+      '$disponivel',
+      '$vendida',
+    ].join(','));
+    buffer.write(eol);
+  }
+
+  return buffer.toString();
 }
 
 // ════════════════════════════════════════════════════════════════════════════

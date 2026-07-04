@@ -32,9 +32,12 @@ class ModelosMensagemScreen extends StatelessWidget {
             return Center(child: Text('Erro: ${snap.error}'));
           }
           final todos = snap.data ?? [];
-          final meus =
-              todos.where((m) => !m.padrao && m.criadoPorId == uid).toList();
-          final padrao = todos.where((m) => m.padrao).toList();
+          // Visíveis: padrão (de todos) + individuais do usuário.
+          final visiveis = todos
+              .where((m) => m.padrao || m.criadoPorId == uid)
+              .toList();
+          final whatsapp = visiveis.where((m) => !m.isEmail).toList();
+          final email = visiveis.where((m) => m.isEmail).toList();
 
           if (todos.isEmpty) {
             return _vazio(context);
@@ -48,17 +51,27 @@ class ModelosMensagemScreen extends StatelessWidget {
                 child: const Padding(
                   padding: EdgeInsets.all(12),
                   child: Text(
-                    'Use variáveis no texto: {nome}, {primeiroNome}, {esposa}, '
-                    '{primeiroNomeEsposa}, {responsavel}. Elas são preenchidas '
-                    'automaticamente ao enviar.',
+                    'Use variáveis no texto (e no assunto do e-mail): {nome}, '
+                    '{primeiroNome}, {esposa}, {primeiroNomeEsposa}, '
+                    '{responsavel}. Na aba Distratar também valem {contrato}, '
+                    '{cota}, {valorAtrasado}, {saldo} e {dataLimite} (prazo de '
+                    '15 dias). Tudo preenchido automaticamente ao enviar.',
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
               ),
               const SizedBox(height: 8),
-              _secao(context, 'Meus modelos', meus, fs, uid),
-              const SizedBox(height: 8),
-              _secao(context, 'Modelos padrão (todos)', padrao, fs, uid),
+              _canalHeader(context, Icons.chat_outlined, 'WhatsApp'),
+              _secao(context, 'Meus modelos',
+                  whatsapp.where((m) => !m.padrao).toList(), fs, uid),
+              _secao(context, 'Modelos padrão (todos)',
+                  whatsapp.where((m) => m.padrao).toList(), fs, uid),
+              const SizedBox(height: 16),
+              _canalHeader(context, Icons.mail_outline, 'E-mail'),
+              _secao(context, 'Meus modelos',
+                  email.where((m) => !m.padrao).toList(), fs, uid),
+              _secao(context, 'Modelos padrão (todos)',
+                  email.where((m) => m.padrao).toList(), fs, uid),
             ],
           );
         },
@@ -85,6 +98,24 @@ class ModelosMensagemScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _canalHeader(BuildContext context, IconData icone, String titulo) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 4, 2, 0),
+      child: Row(
+        children: [
+          Icon(icone, size: 18, color: cs.onSurface),
+          const SizedBox(width: 6),
+          Text(titulo,
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface)),
+        ],
       ),
     );
   }
@@ -117,8 +148,12 @@ class ModelosMensagemScreen extends StatelessWidget {
                     color: cs.primary),
                 title: Text(m.titulo,
                     style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text(m.texto,
-                    maxLines: 3, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                    m.isEmail && (m.assunto ?? '').isNotEmpty
+                        ? 'Assunto: ${m.assunto}\n${m.texto}'
+                        : m.texto,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -190,21 +225,33 @@ class _FormModeloDialogState extends State<_FormModeloDialog> {
   late final _titulo =
       TextEditingController(text: widget.existente?.titulo ?? '');
   late final _texto = TextEditingController(text: widget.existente?.texto ?? '');
+  late final _assunto =
+      TextEditingController(text: widget.existente?.assunto ?? '');
+  late String _canal = widget.existente?.canal ?? 'whatsapp';
   late bool _padrao = widget.existente?.padrao ?? false;
   bool _salvando = false;
+
+  bool get _isEmail => _canal == 'email';
 
   static const _variaveis = [
     '{nome}',
     '{primeiroNome}',
     '{esposa}',
     '{primeiroNomeEsposa}',
-    '{responsavel}'
+    '{responsavel}',
+    // Distratar:
+    '{contrato}',
+    '{cota}',
+    '{valorAtrasado}',
+    '{saldo}',
+    '{dataLimite}',
   ];
 
   @override
   void dispose() {
     _titulo.dispose();
     _texto.dispose();
+    _assunto.dispose();
     super.dispose();
   }
 
@@ -233,18 +280,43 @@ class _FormModeloDialogState extends State<_FormModeloDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'whatsapp',
+                    label: Text('WhatsApp'),
+                    icon: Icon(Icons.chat_outlined),
+                  ),
+                  ButtonSegment(
+                    value: 'email',
+                    label: Text('E-mail'),
+                    icon: Icon(Icons.mail_outline),
+                  ),
+                ],
+                selected: {_canal},
+                onSelectionChanged: (s) => setState(() => _canal = s.first),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _titulo,
                 decoration: const InputDecoration(labelText: 'Título *'),
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 8),
+              if (_isEmail) ...[
+                TextField(
+                  controller: _assunto,
+                  decoration: const InputDecoration(labelText: 'Assunto *'),
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+                const SizedBox(height: 8),
+              ],
               TextField(
                 controller: _texto,
-                decoration: const InputDecoration(
-                  labelText: 'Mensagem *',
+                decoration: InputDecoration(
+                  labelText: _isEmail ? 'Corpo do e-mail *' : 'Mensagem *',
                   alignLabelWithHint: true,
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                 ),
                 minLines: 3,
                 maxLines: 8,
@@ -298,20 +370,38 @@ class _FormModeloDialogState extends State<_FormModeloDialog> {
   Future<void> _salvar() async {
     final titulo = _titulo.text.trim();
     final texto = _texto.text.trim();
+    final assunto = _assunto.text.trim();
     if (titulo.isEmpty || texto.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Título e mensagem são obrigatórios.')),
       );
       return;
     }
+    if (_isEmail && assunto.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Assunto é obrigatório no e-mail.')),
+      );
+      return;
+    }
+    final assuntoFinal = _isEmail ? assunto : null;
     setState(() => _salvando = true);
     try {
       if (widget.existente == null) {
-        await widget.fs.criarModeloMensagem(
-            ModeloMensagem(titulo: titulo, texto: texto, padrao: _padrao));
+        await widget.fs.criarModeloMensagem(ModeloMensagem(
+          titulo: titulo,
+          texto: texto,
+          canal: _canal,
+          assunto: assuntoFinal,
+          padrao: _padrao,
+        ));
       } else {
-        await widget.fs.atualizarModeloMensagem(widget.existente!
-            .copyWith(titulo: titulo, texto: texto, padrao: _padrao));
+        await widget.fs.atualizarModeloMensagem(widget.existente!.copyWith(
+          titulo: titulo,
+          texto: texto,
+          canal: _canal,
+          assunto: assuntoFinal,
+          padrao: _padrao,
+        ));
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {

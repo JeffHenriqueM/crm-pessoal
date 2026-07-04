@@ -144,13 +144,34 @@ class Ticket {
     this.totalComentarios = 0,
   });
 
+  /// Converte um valor de data do Firestore para [DateTime], tolerando dados
+  /// legados/malformados. Alguns tickets tiveram `dataAtualizacao` gravado como
+  /// String ISO (em vez de Timestamp) por um script antigo — sem esta tolerância
+  /// o `as Timestamp?` estoura e derruba a lista inteira de tickets.
+  static DateTime? _toDate(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    if (v is DateTime) return v;
+    if (v is String) return DateTime.tryParse(v);
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    return null;
+  }
+
+  /// Inteiro tolerante (aceita int, num ou String numérica).
+  static int _toInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? 0;
+    return 0;
+  }
+
   factory Ticket.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
     // docs antigos tinham 'categoria' em vez de 'tipo'
     final tipoStr = (d['tipo'] ?? d['categoria']) as String?;
     return Ticket(
       id:               doc.id,
-      numero:           d['numero']           as int? ?? 0,
+      numero:           _toInt(d['numero']),
       titulo:           d['titulo']           as String? ?? '',
       descricao:        d['descricao']        as String? ?? '',
       status:           StatusTicketExt.fromString(d['status']     as String?),
@@ -162,11 +183,11 @@ class Ticket {
       contexto:         d['contexto']         as String?,
       atribuidoParaId:  d['atribuidoParaId']  as String?,
       atribuidoParaNome: d['atribuidoParaNome'] as String?,
-      dataCriacao:      (d['dataCriacao']     as Timestamp?)?.toDate() ?? DateTime.now(),
-      dataAtualizacao:  (d['dataAtualizacao'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      dataCriacao:      _toDate(d['dataCriacao'])     ?? DateTime.now(),
+      dataAtualizacao:  _toDate(d['dataAtualizacao']) ?? DateTime.now(),
       clienteId:        d['clienteId']        as String?,
       clienteNome:      d['clienteNome']      as String?,
-      totalComentarios: d['totalComentarios'] as int? ?? 0,
+      totalComentarios: _toInt(d['totalComentarios']),
     );
   }
 

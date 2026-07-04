@@ -13,6 +13,7 @@ import '../screens/lista_clientes_screen.dart';
 import '../screens/pos_venda_screen.dart';
 import '../screens/recepcao_screen.dart';
 import 'aba_analise_imoveis.dart';
+import 'aba_distratar.dart';
 import 'aba_pos_venda.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/tutorial_screen.dart';
@@ -56,7 +57,12 @@ class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   bool _sidebarExpanded = true;
 
-  static const _listaProfiles = {'admin', 'super admin', 'pós-venda', 'financeiro'};
+  static const _listaProfiles = {
+    'admin',
+    'super admin',
+    'pós-venda',
+    'financeiro',
+  };
 
   bool get _isListaProfile => _listaProfiles.contains(widget.userProfile);
   bool get _isAdmin =>
@@ -117,11 +123,31 @@ class _MainShellState extends State<MainShell> {
     // ── Admin: Dashboard primeiro ─────────────────────────────────
     if (_isAdmin) {
       return const [
-        _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,    label: 'Dashboard'),
-        _NavItem(icon: Icons.view_kanban_outlined,     activeIcon: Icons.view_kanban,          label: 'Funil de Vendas'),
-        _NavItem(icon: Icons.calendar_month_outlined,  activeIcon: Icons.calendar_month,       label: 'Agenda'),
-        _NavItem(icon: Icons.campaign_outlined,        activeIcon: Icons.campaign,             label: 'Campanhas'),
-        _NavItem(icon: Icons.description_outlined,      activeIcon: Icons.description,           label: 'Pós-Venda'),
+        _NavItem(
+          icon: Icons.bar_chart_outlined,
+          activeIcon: Icons.bar_chart_rounded,
+          label: 'Dashboard',
+        ),
+        _NavItem(
+          icon: Icons.view_kanban_outlined,
+          activeIcon: Icons.view_kanban,
+          label: 'Funil de Vendas',
+        ),
+        _NavItem(
+          icon: Icons.calendar_month_outlined,
+          activeIcon: Icons.calendar_month,
+          label: 'Agenda',
+        ),
+        _NavItem(
+          icon: Icons.campaign_outlined,
+          activeIcon: Icons.campaign,
+          label: 'Campanhas',
+        ),
+        _NavItem(
+          icon: Icons.description_outlined,
+          activeIcon: Icons.description,
+          label: 'Pós-Venda',
+        ),
         _financeiroItem,
         _hospedagemItem,
         _apresentacaoItem,
@@ -133,10 +159,22 @@ class _MainShellState extends State<MainShell> {
     // ── Vendedor/captador/recepção: Agenda primeiro ───────────────
     if (!_isListaProfile) {
       return [
-        const _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,    label: 'Agenda'),
-        const _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
+        const _NavItem(
+          icon: Icons.calendar_month_outlined,
+          activeIcon: Icons.calendar_month,
+          label: 'Agenda',
+        ),
+        const _NavItem(
+          icon: Icons.view_kanban_outlined,
+          activeIcon: Icons.view_kanban,
+          label: 'Funil de Vendas',
+        ),
         _apresentacaoItem,
-        const _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
+        const _NavItem(
+          icon: Icons.bar_chart_outlined,
+          activeIcon: Icons.bar_chart_rounded,
+          label: 'Dashboard',
+        ),
         if (_isRecepcao) _hospedagemItem,
         _ticketsItem,
         _recepcaoItem,
@@ -145,12 +183,28 @@ class _MainShellState extends State<MainShell> {
     // ── pós-venda: Pós-Venda primeiro + mesmos itens do vendedor ─
     if (_isPosVenda) {
       return const [
-        _NavItem(icon: Icons.description_outlined,     activeIcon: Icons.description,          label: 'Pós-Venda'),
+        _NavItem(
+          icon: Icons.description_outlined,
+          activeIcon: Icons.description,
+          label: 'Pós-Venda',
+        ),
         _hospedagemItem,
-        _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,     label: 'Agenda'),
-        _NavItem(icon: Icons.view_kanban_outlined,    activeIcon: Icons.view_kanban,        label: 'Funil de Vendas'),
+        _NavItem(
+          icon: Icons.calendar_month_outlined,
+          activeIcon: Icons.calendar_month,
+          label: 'Agenda',
+        ),
+        _NavItem(
+          icon: Icons.view_kanban_outlined,
+          activeIcon: Icons.view_kanban,
+          label: 'Funil de Vendas',
+        ),
         _apresentacaoItem,
-        _NavItem(icon: Icons.bar_chart_outlined,      activeIcon: Icons.bar_chart_rounded,  label: 'Dashboard'),
+        _NavItem(
+          icon: Icons.bar_chart_outlined,
+          activeIcon: Icons.bar_chart_rounded,
+          label: 'Dashboard',
+        ),
         _ticketsItem,
         _recepcaoItem,
       ];
@@ -158,7 +212,11 @@ class _MainShellState extends State<MainShell> {
     // ── financeiro: Financeiro + Pós-Venda (sem Dashboard/Funil/Recepção) ─
     return const [
       _financeiroItem,
-      _NavItem(icon: Icons.description_outlined, activeIcon: Icons.description,        label: 'Pós-Venda'),
+      _NavItem(
+        icon: Icons.description_outlined,
+        activeIcon: Icons.description,
+        label: 'Pós-Venda',
+      ),
       _apresentacaoItem,
       _ticketsItem,
     ];
@@ -171,38 +229,73 @@ class _MainShellState extends State<MainShell> {
     ] else if (_isAdmin) ...[
       DashboardScreen(userProfile: widget.userProfile),
       ListaClientesScreen(userProfile: widget.userProfile),
-      VendedorHomeScreen(currentUserId: widget.currentUserId, showAllVendedores: true),
+      VendedorHomeScreen(
+        currentUserId: widget.currentUserId,
+        showAllVendedores: true,
+      ),
       const CampanhasScreen(),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       FinanceiroScreen(userProfile: widget.userProfile),
       HospedagemScreen(userProfile: widget.userProfile),
-      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      ApresentacaoScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
+      TicketsScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
       const FluxoClienteScreen(),
       const RecepcaoShell(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
-      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      ApresentacaoScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
       DashboardScreen(userProfile: widget.userProfile),
       if (_isRecepcao) HospedagemScreen(userProfile: widget.userProfile),
-      TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      TicketsScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
       const RecepcaoShell(),
     ] else if (_isPosVenda) ...[
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       HospedagemScreen(userProfile: widget.userProfile),
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
-      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      ApresentacaoScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
       DashboardScreen(userProfile: widget.userProfile),
-      TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      TicketsScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
       const RecepcaoShell(),
     ] else ...[
       // financeiro: Financeiro + Pós-Venda (sem Dashboard/Funil/Recepção)
       FinanceiroScreen(userProfile: widget.userProfile),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
-      ApresentacaoScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
-      TicketsScreen(userProfile: widget.userProfile, currentUserId: widget.currentUserId, currentUserName: widget.currentUserName),
+      ApresentacaoScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
+      TicketsScreen(
+        userProfile: widget.userProfile,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+      ),
     ],
   ];
 
@@ -218,8 +311,7 @@ class _MainShellState extends State<MainShell> {
     _carregarPreferenciaSidebar();
     // Recepção/captador abrem direto na aba Recepção.
     if (_recepcaoComoPadrao.contains(widget.userProfile)) {
-      final idx =
-          _navItems.indexWhere((it) => it.label == _recepcaoItem.label);
+      final idx = _navItems.indexWhere((it) => it.label == _recepcaoItem.label);
       if (idx >= 0) _selectedIndex = idx;
     }
     // Avisa quando uma nova versão for publicada (só web em produção).
@@ -230,7 +322,8 @@ class _MainShellState extends State<MainShell> {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(
-          () => _sidebarExpanded = prefs.getBool('sidebar_expanded') ?? true);
+        () => _sidebarExpanded = prefs.getBool('sidebar_expanded') ?? true,
+      );
     }
   }
 
@@ -302,10 +395,7 @@ class _MainShellState extends State<MainShell> {
             if (kIsStaging) _buildStagingBanner(),
             _buildAtualizacaoBanner(),
             Expanded(
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: _pages,
-              ),
+              child: IndexedStack(index: _selectedIndex, children: _pages),
             ),
           ],
         ),
@@ -328,10 +418,7 @@ class _MainShellState extends State<MainShell> {
                 Expanded(
                   child: Stack(
                     children: [
-                      IndexedStack(
-                        index: _selectedIndex,
-                        children: _pages,
-                      ),
+                      IndexedStack(index: _selectedIndex, children: _pages),
                       Positioned(
                         bottom: 16,
                         left: 16,
@@ -389,8 +476,7 @@ class _MainShellState extends State<MainShell> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.system_update_alt,
-                      size: 16, color: cs.onPrimary),
+                  Icon(Icons.system_update_alt, size: 16, color: cs.onPrimary),
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
@@ -412,9 +498,13 @@ class _MainShellState extends State<MainShell> {
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
-                    child: const Text('Atualizar agora',
-                        style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
+                    child: const Text(
+                      'Atualizar agora',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -471,8 +561,11 @@ class _MainShellState extends State<MainShell> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               child: Row(
                 children: [
-                  Image.asset('assets/images/logo.png',
-                      height: 28, filterQuality: FilterQuality.medium),
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 28,
+                    filterQuality: FilterQuality.medium,
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     'Villamor CRM',
@@ -509,18 +602,23 @@ class _MainShellState extends State<MainShell> {
                       style: TextStyle(
                         fontSize: 15,
                         color: selected ? cs.onPrimaryContainer : cs.onSurface,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.normal,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                     selected: selected,
-                    selectedTileColor:
-                        cs.primaryContainer.withValues(alpha: 0.5),
+                    selectedTileColor: cs.primaryContainer.withValues(
+                      alpha: 0.5,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     horizontalTitleGap: 8,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 2,
+                    ),
                     dense: true,
                     onTap: () {
                       setState(() => _selectedIndex = i);
@@ -532,7 +630,6 @@ class _MainShellState extends State<MainShell> {
             ),
 
             // Financeiro agora é item de navegação (não rota separada).
-
             Divider(height: 1, color: cs.outlineVariant),
             const SizedBox(height: 4),
 
@@ -550,16 +647,24 @@ class _MainShellState extends State<MainShell> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                 child: ListTile(
-                  leading: Icon(Icons.inventory_2_outlined,
-                      color: cs.onSurfaceVariant, size: 22),
-                  title: Text('Produtos',
-                      style: TextStyle(fontSize: 15, color: cs.onSurface)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  leading: Icon(
+                    Icons.inventory_2_outlined,
+                    color: cs.onSurfaceVariant,
+                    size: 22,
+                  ),
+                  title: Text(
+                    'Produtos',
+                    style: TextStyle(fontSize: 15, color: cs.onSurface),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 2,
+                  ),
                   horizontalTitleGap: 8,
                   dense: true,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -577,23 +682,32 @@ class _MainShellState extends State<MainShell> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                 child: ListTile(
-                  leading: Icon(Icons.manage_accounts_outlined,
-                      color: cs.onSurfaceVariant, size: 22),
-                  title: Text('Usuários',
-                      style: TextStyle(fontSize: 15, color: cs.onSurface)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  leading: Icon(
+                    Icons.manage_accounts_outlined,
+                    color: cs.onSurfaceVariant,
+                    size: 22,
+                  ),
+                  title: Text(
+                    'Usuários',
+                    style: TextStyle(fontSize: 15, color: cs.onSurface),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 2,
+                  ),
                   horizontalTitleGap: 8,
                   dense: true,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => GerenciarUsuariosScreen(
-                            currentUserPerfil: widget.userProfile),
+                          currentUserPerfil: widget.userProfile,
+                        ),
                       ),
                     );
                   },
@@ -604,16 +718,24 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
               child: ListTile(
-                leading: Icon(Icons.help_outline,
-                    color: cs.onSurfaceVariant, size: 22),
-                title: Text('Tutoriais',
-                    style: TextStyle(fontSize: 15, color: cs.onSurface)),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                leading: Icon(
+                  Icons.help_outline,
+                  color: cs.onSurfaceVariant,
+                  size: 22,
+                ),
+                title: Text(
+                  'Tutoriais',
+                  style: TextStyle(fontSize: 15, color: cs.onSurface),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
                 horizontalTitleGap: 8,
                 dense: true,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _abrirTutorial(context);
@@ -625,16 +747,24 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
               child: ListTile(
-                leading: Icon(Icons.settings_outlined,
-                    color: cs.onSurfaceVariant, size: 22),
-                title: Text('Configurações',
-                    style: TextStyle(fontSize: 15, color: cs.onSurface)),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                leading: Icon(
+                  Icons.settings_outlined,
+                  color: cs.onSurfaceVariant,
+                  size: 22,
+                ),
+                title: Text(
+                  'Configurações',
+                  style: TextStyle(fontSize: 15, color: cs.onSurface),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
                 horizontalTitleGap: 8,
                 dense: true,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _abrirConfiguracoes(context);
@@ -646,16 +776,24 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 1, 8, 12),
               child: ListTile(
-                leading: Icon(Icons.logout_outlined,
-                    color: cs.onSurfaceVariant, size: 22),
-                title: Text('Sair',
-                    style: TextStyle(fontSize: 15, color: cs.onSurface)),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                leading: Icon(
+                  Icons.logout_outlined,
+                  color: cs.onSurfaceVariant,
+                  size: 22,
+                ),
+                title: Text(
+                  'Sair',
+                  style: TextStyle(fontSize: 15, color: cs.onSurface),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
                 horizontalTitleGap: 8,
                 dense: true,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: () => AuthService().signOut(),
               ),
             ),
@@ -676,9 +814,7 @@ class _MainShellState extends State<MainShell> {
       width: sidebarWidth,
       decoration: BoxDecoration(
         color: cs.surface,
-        border: Border(
-          right: BorderSide(color: cs.outlineVariant, width: 1),
-        ),
+        border: Border(right: BorderSide(color: cs.outlineVariant, width: 1)),
       ),
       child: _buildSidebarContent(context),
     );
@@ -694,8 +830,7 @@ class _MainShellState extends State<MainShell> {
         children: [
           // ── Logo + botão de toggle ─────────────────────────────────────
           Padding(
-            padding: EdgeInsets.fromLTRB(
-                _sidebarExpanded ? 14 : 6, 14, 6, 12),
+            padding: EdgeInsets.fromLTRB(_sidebarExpanded ? 14 : 6, 14, 6, 12),
             child: Row(
               children: [
                 Image.asset(
@@ -737,78 +872,95 @@ class _MainShellState extends State<MainShell> {
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 8),
 
-          // ── Itens de navegação ─────────────────────────────────────────
-          ...List.generate(_navItems.length, (i) {
-            final item = _navItems[i];
-            final selected = _selectedIndex == i;
+          // ── Itens de navegação (roláveis p/ não estourar em telas baixas) ──
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: List.generate(_navItems.length, (i) {
+                final item = _navItems[i];
+                final selected = _selectedIndex == i;
 
-            if (!_sidebarExpanded) {
-              // Modo compacto: apenas ícone centralizado com tooltip
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                child: Tooltip(
-                  message: item.label,
-                  preferBelow: false,
-                  child: InkWell(
-                    onTap: () => setState(() => _selectedIndex = i),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? cs.primaryContainer.withValues(alpha: 0.5)
-                            : null,
+                if (!_sidebarExpanded) {
+                  // Modo compacto: apenas ícone centralizado com tooltip
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    child: Tooltip(
+                      message: item.label,
+                      preferBelow: false,
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedIndex = i),
                         borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Icon(
-                          selected ? item.activeIcon : item.icon,
-                          color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
-                          size: 20,
+                        child: Container(
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? cs.primaryContainer.withValues(alpha: 0.5)
+                                : null,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              selected ? item.activeIcon : item.icon,
+                              color: selected
+                                  ? cs.onPrimaryContainer
+                                  : cs.onSurfaceVariant,
+                              size: 20,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              );
-            }
+                  );
+                }
 
-            // Modo expandido: ícone + label
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-              child: ListTile(
-                leading: Icon(
-                  selected ? item.activeIcon : item.icon,
-                  color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
-                  size: 20,
-                ),
-                title: Text(
-                  item.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: selected ? cs.onPrimaryContainer : cs.onSurface,
-                    fontWeight:
-                        selected ? FontWeight.w600 : FontWeight.normal,
+                // Modo expandido: ícone + label
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 1,
                   ),
-                ),
-                selected: selected,
-                selectedTileColor: cs.primaryContainer.withValues(alpha: 0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                horizontalTitleGap: 8,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                dense: true,
-                onTap: () => setState(() => _selectedIndex = i),
-              ),
-            );
-          }),
+                  child: ListTile(
+                    leading: Icon(
+                      selected ? item.activeIcon : item.icon,
+                      color: selected
+                          ? cs.onPrimaryContainer
+                          : cs.onSurfaceVariant,
+                      size: 20,
+                    ),
+                    title: Text(
+                      item.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: selected ? cs.onPrimaryContainer : cs.onSurface,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    selected: selected,
+                    selectedTileColor: cs.primaryContainer.withValues(
+                      alpha: 0.5,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    horizontalTitleGap: 8,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 0,
+                    ),
+                    dense: true,
+                    onTap: () => setState(() => _selectedIndex = i),
+                  ),
+                );
+              }),
+            ),
+          ),
 
           // Financeiro agora é item de navegação (não rota separada).
-
-          const Spacer(),
-
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 4),
 
@@ -817,15 +969,21 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
               child: ListTile(
-                leading: Icon(Icons.help_outline,
-                    color: cs.onSurfaceVariant, size: 20),
-                title: Text('Tutoriais',
-                    style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                leading: Icon(
+                  Icons.help_outline,
+                  color: cs.onSurfaceVariant,
+                  size: 20,
+                ),
+                title: Text(
+                  'Tutoriais',
+                  style: TextStyle(fontSize: 14, color: cs.onSurface),
+                ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                 horizontalTitleGap: 8,
                 dense: true,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: () => _abrirTutorial(context),
               ),
             )
@@ -835,8 +993,11 @@ class _MainShellState extends State<MainShell> {
                 message: 'Tutoriais',
                 preferBelow: false,
                 child: IconButton(
-                  icon: Icon(Icons.help_outline,
-                      color: cs.onSurfaceVariant, size: 20),
+                  icon: Icon(
+                    Icons.help_outline,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
                   onPressed: () => _abrirTutorial(context),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -848,15 +1009,21 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
               child: ListTile(
-                leading: Icon(Icons.settings_outlined,
-                    color: cs.onSurfaceVariant, size: 20),
-                title: Text('Configurações',
-                    style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                leading: Icon(
+                  Icons.settings_outlined,
+                  color: cs.onSurfaceVariant,
+                  size: 20,
+                ),
+                title: Text(
+                  'Configurações',
+                  style: TextStyle(fontSize: 14, color: cs.onSurface),
+                ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                 horizontalTitleGap: 8,
                 dense: true,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: () => _abrirConfiguracoes(context),
               ),
             )
@@ -866,8 +1033,11 @@ class _MainShellState extends State<MainShell> {
                 message: 'Configurações',
                 preferBelow: false,
                 child: IconButton(
-                  icon: Icon(Icons.settings_outlined,
-                      color: cs.onSurfaceVariant, size: 20),
+                  icon: Icon(
+                    Icons.settings_outlined,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
                   onPressed: () => _abrirConfiguracoes(context),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -897,19 +1067,23 @@ class _MainShellState extends State<MainShell> {
           if (widget.userProfile == 'super admin')
             if (_sidebarExpanded)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                 child: ListTile(
-                  leading: Icon(Icons.inventory_2_outlined,
-                      color: cs.onSurfaceVariant, size: 20),
-                  title: Text('Produtos',
-                      style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12),
+                  leading: Icon(
+                    Icons.inventory_2_outlined,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  title: Text(
+                    'Produtos',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                   horizontalTitleGap: 8,
                   dense: true,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -924,8 +1098,11 @@ class _MainShellState extends State<MainShell> {
                   message: 'Produtos',
                   preferBelow: false,
                   child: IconButton(
-                    icon: Icon(Icons.inventory_2_outlined,
-                        color: cs.onSurfaceVariant, size: 20),
+                    icon: Icon(
+                      Icons.inventory_2_outlined,
+                      color: cs.onSurfaceVariant,
+                      size: 20,
+                    ),
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -941,19 +1118,23 @@ class _MainShellState extends State<MainShell> {
           if (_isAdmin)
             if (_sidebarExpanded)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                 child: ListTile(
-                  leading: Icon(Icons.manage_accounts_outlined,
-                      color: cs.onSurfaceVariant, size: 20),
-                  title: Text('Usuários',
-                      style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12),
+                  leading: Icon(
+                    Icons.manage_accounts_outlined,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  title: Text(
+                    'Usuários',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                   horizontalTitleGap: 8,
                   dense: true,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -970,8 +1151,11 @@ class _MainShellState extends State<MainShell> {
                   message: 'Usuários',
                   preferBelow: false,
                   child: IconButton(
-                    icon: Icon(Icons.manage_accounts_outlined,
-                        color: cs.onSurfaceVariant, size: 20),
+                    icon: Icon(
+                      Icons.manage_accounts_outlined,
+                      color: cs.onSurfaceVariant,
+                      size: 20,
+                    ),
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -988,19 +1172,23 @@ class _MainShellState extends State<MainShell> {
           // ── Sair ──────────────────────────────────────────────────────
           if (_sidebarExpanded)
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
               child: ListTile(
-                leading: Icon(Icons.logout_outlined,
-                    color: cs.onSurfaceVariant, size: 20),
-                title: Text('Sair',
-                    style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12),
+                leading: Icon(
+                  Icons.logout_outlined,
+                  color: cs.onSurfaceVariant,
+                  size: 20,
+                ),
+                title: Text(
+                  'Sair',
+                  style: TextStyle(fontSize: 14, color: cs.onSurface),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                 horizontalTitleGap: 8,
                 dense: true,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: () => AuthService().signOut(),
               ),
             )
@@ -1010,8 +1198,11 @@ class _MainShellState extends State<MainShell> {
                 message: 'Sair',
                 preferBelow: false,
                 child: IconButton(
-                  icon: Icon(Icons.logout_outlined,
-                      color: cs.onSurfaceVariant, size: 20),
+                  icon: Icon(
+                    Icons.logout_outlined,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
                   onPressed: () => AuthService().signOut(),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -1032,28 +1223,38 @@ class _PosVendaHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A aba "Distratar" é visível para super admin e pós-venda.
+    final isSuperAdmin = userProfile.toLowerCase().trim() == 'super admin';
+    final podeDistrar = isSuperAdmin || userProfile.toLowerCase().trim() == 'pós-venda';
+
+    final tabs = <Tab>[
+      const Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
+      const Tab(text: 'Contratos', icon: Icon(Icons.description_outlined)),
+      const Tab(text: 'Análise', icon: Icon(Icons.analytics_outlined)),
+      if (podeDistrar)
+        const Tab(text: 'Distratar', icon: Icon(Icons.gavel_outlined)),
+    ];
+
+    final views = <Widget>[
+      const AbaPosVenda(),
+      PosVendaScreen(userProfile: userProfile),
+      AbaAnaliseImoveis(userProfile: userProfile),
+      if (podeDistrar) AbaDistratar(userProfile: userProfile),
+    ];
+
     return DefaultTabController(
-      length: 3,
+      length: tabs.length,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Pós-Venda'),
           toolbarHeight: 50,
-          bottom: const TabBar(
+          bottom: TabBar(
             indicatorWeight: 3,
-            tabs: [
-              Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
-              Tab(text: 'Contratos',   icon: Icon(Icons.description_outlined)),
-              Tab(text: 'Análise',     icon: Icon(Icons.analytics_outlined)),
-            ],
+            isScrollable: podeDistrar,
+            tabs: tabs,
           ),
         ),
-        body: TabBarView(
-          children: [
-            const AbaPosVenda(),
-            PosVendaScreen(userProfile: userProfile),
-            AbaAnaliseImoveis(userProfile: userProfile),
-          ],
-        ),
+        body: TabBarView(children: views),
       ),
     );
   }

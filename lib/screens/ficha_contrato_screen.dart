@@ -10,6 +10,7 @@ import '../models/interacao_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/whatsapp_interacao.dart';
+import '../widgets/botoes_contato_contrato.dart';
 import '../widgets/ficha/ficha_timeline_tab.dart';
 import '../widgets/interacao_form_dialog.dart';
 
@@ -107,6 +108,10 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
             ),
           ],
         ),
+        actions: [
+          BotoesContatoContrato(contrato: c, iconSize: 22),
+          const SizedBox(width: 4),
+        ],
         bottom: TabBar(
           controller: _tabCtrl,
           tabs: const [

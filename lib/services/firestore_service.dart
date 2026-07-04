@@ -30,6 +30,10 @@ class FirestoreService {
   final FirebaseAuth _auth;
   static const _colClientes = 'clientes';
   static const _colContratos = 'contratos';
+
+  static List<Contrato>? _cacheContratos;
+  static DateTime? _cacheContratosEm;
+  static const _cacheContratosTtl = Duration(minutes: 10);
   static const _colContatosEmbaixador = 'contatos_embaixador';
   static const _colModelosMensagem = 'modelos_mensagem';
   static const _colFestaValidacoes = 'festa_socios_validacoes';
@@ -1502,6 +1506,7 @@ class FirestoreService {
 
   /// Salva (upsert) um contrato. Usa o localizador como ID do documento.
   Future<void> salvarContrato(Contrato c) async {
+    _invalidarCacheContratos();
     final docRef = _db.collection(_colContratos).doc(c.localizador);
     final existing = await docRef.get();
     final dados = _flagTeste({
@@ -1515,6 +1520,7 @@ class FirestoreService {
 
   /// Salva uma lista de contratos em lotes (máx 500 por batch).
   Future<void> salvarContratosLote(List<Contrato> contratos) async {
+    _invalidarCacheContratos();
     const batchSize = 400;
     for (var i = 0; i < contratos.length; i += batchSize) {
       final fatia = contratos.skip(i).take(batchSize).toList();
@@ -1551,6 +1557,115 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
+  /// Marca (ou desmarca) um contrato como "em distrato" — triagem da aba
+  /// Distratar (Pós-Venda, super admin). Grava via merge para sobreviver ao
+  /// re-import de contratos; registra a operação em `/audit_log`.
+  ///
+  /// `marcar=false` limpa a marcação (zera distratoEm/distratoPorNome/motivo).
+  Future<void> marcarEmDistrato(
+    String localizador, {
+    required bool marcar,
+    String? motivo,
+  }) async {
+    final motivoLimpo = motivo?.trim();
+    await _db.collection(_colContratos).doc(localizador).set({
+      'distratoEm': marcar ? FieldValue.serverTimestamp() : null,
+      'distratoPorNome': marcar ? _currentUserName : null,
+      'motivoDistrato':
+          marcar && (motivoLimpo?.isNotEmpty ?? false) ? motivoLimpo : null,
+      // Entra no funil em "Marcado"; ao desmarcar, limpa todo o acompanhamento.
+      'situacaoDistrato': marcar ? 'marcado' : null,
+      if (!marcar) 'notificadoEm': null,
+      if (!marcar) 'distratoPrevistoEm': null,
+    }, SetOptions(merge: true));
+
+    _invalidarCacheContratos();
+    await _db.collection('audit_log').add({
+      'tipo': marcar ? 'distrato_marcado' : 'distrato_desmarcado',
+      'autorId': _currentUserId,
+      'autorNome': _currentUserName,
+      'contratoLocalizador': localizador,
+      if (marcar && (motivoLimpo?.isNotEmpty ?? false)) 'motivo': motivoLimpo,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Atualiza a etapa do funil de distrato e as datas de acompanhamento
+  /// (notificação enviada / distrato previsto). Grava via merge (sobrevive ao
+  /// re-import de contratos) e registra trilha em `/audit_log`.
+  Future<void> atualizarSituacaoDistrato(
+    String localizador, {
+    required SituacaoDistrato situacao,
+    DateTime? notificadoEm,
+    DateTime? distratoPrevistoEm,
+    String? motivo,
+  }) async {
+    final ref = _db.collection(_colContratos).doc(localizador);
+
+    // Lê o estado anterior: detecta entrada no funil (distratoEm nulo) e a
+    // mudança da data de notificação (gatilho do registro de interação).
+    final snap = await ref.get();
+    final entrando = snap.data()?['distratoEm'] == null;
+    final anteriorRaw = snap.data()?['notificadoEm'];
+    final notificadoAnterior =
+        anteriorRaw is Timestamp ? anteriorRaw.toDate() : null;
+    final motivoLimpo = motivo?.trim();
+
+    await ref.set({
+      // Ao acompanhar pela primeira vez, entra no funil (sem precisar marcar
+      // p/ distrato): registra quando/quem incluiu.
+      if (entrando) 'distratoEm': FieldValue.serverTimestamp(),
+      if (entrando) 'distratoPorNome': _currentUserName,
+      if (motivo != null)
+        'motivoDistrato':
+            (motivoLimpo?.isNotEmpty ?? false) ? motivoLimpo : null,
+      'situacaoDistrato': situacao.valor,
+      'notificadoEm':
+          notificadoEm == null ? null : Timestamp.fromDate(notificadoEm),
+      'distratoPrevistoEm': distratoPrevistoEm == null
+          ? null
+          : Timestamp.fromDate(distratoPrevistoEm),
+    }, SetOptions(merge: true));
+
+    _invalidarCacheContratos();
+    await _db.collection('audit_log').add({
+      'tipo': 'distrato_situacao',
+      'autorId': _currentUserId,
+      'autorNome': _currentUserName,
+      'contratoLocalizador': localizador,
+      'situacao': situacao.valor,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    // Se a data de notificação foi definida (ou mudou), registra a interação de
+    // e-mail no histórico do contrato — comprovação no acervo de cobrança.
+    final mudou = notificadoEm != null &&
+        (notificadoAnterior == null ||
+            !notificadoAnterior.isAtSameMomentAs(notificadoEm));
+    if (mudou) {
+      String fmt(DateTime d) =>
+          '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+      final prevTxt = distratoPrevistoEm != null
+          ? ' Distrato previsto para ${fmt(distratoPrevistoEm)}.'
+          : '';
+      await adicionarInteracaoContrato(
+        localizador,
+        Interacao(
+          titulo: 'Notificação de distrato enviada',
+          nota:
+              'Notificação de cobrança registrada como enviada por e-mail em '
+              '${fmt(notificadoEm)}. Situação: ${situacao.label}.$prevTxt',
+          dataInteracao: notificadoEm,
+          canal: Canal.email,
+          oQueCombinamos: distratoPrevistoEm != null
+              ? 'Aguardar purgação da mora até ${fmt(distratoPrevistoEm)} '
+                  '(15 dias, cláusula 4.7).'
+              : null,
+        ),
+      );
+    }
+  }
+
   /// Registra uma interação na subcoleção do contrato.
   Future<void> adicionarInteracaoContrato(
     String contratoId,
@@ -1566,16 +1681,37 @@ class FirestoreService {
     ]);
   }
 
-  /// Busca única de todos os contratos (não-stream) — usado para calcular o
-  /// progresso da meta de pós-venda (% de contratos contatados no mês).
-  Future<List<Contrato>> getContratos() async {
+  /// Busca única de todos os contratos (não-stream).
+  /// Cache em memória com TTL de 10 min — invalidado após writes de distrato.
+  /// Passe [forcarRecarga] para ignorar o cache.
+  Future<List<Contrato>> getContratos({bool forcarRecarga = false}) async {
+    final agora = DateTime.now();
+    if (!forcarRecarga &&
+        _cacheContratos != null &&
+        _cacheContratosEm != null &&
+        agora.difference(_cacheContratosEm!) < _cacheContratosTtl) {
+      debugPrint('[Firestore] getContratos: retornando cache '
+          '(${_cacheContratos!.length} docs, '
+          '${agora.difference(_cacheContratosEm!).inSeconds}s atrás).');
+      return _cacheContratos!;
+    }
     try {
       final snap = await _db.collection(_colContratos).get();
-      return snap.docs.map(Contrato.fromFirestore).toList();
+      final lista = snap.docs.map(Contrato.fromFirestore).toList();
+      _cacheContratos = lista;
+      _cacheContratosEm = agora;
+      debugPrint('[Firestore] getContratos: ${lista.length} docs lidos do Firestore.');
+      return lista;
     } catch (e) {
       debugPrint('[Firestore] Erro ao buscar contratos: $e');
       return [];
     }
+  }
+
+  /// Invalida o cache de contratos (usar após writes que alteram a lista).
+  void _invalidarCacheContratos() {
+    _cacheContratos = null;
+    _cacheContratosEm = null;
   }
 
   // ── Contatos do embaixador (Recepção) ─────────────────────────────────────
@@ -1679,11 +1815,13 @@ class FirestoreService {
     return ref.id;
   }
 
-  /// Atualiza título, texto e flag padrão de um modelo de mensagem.
+  /// Atualiza título, texto, canal, assunto e flag padrão de um modelo.
   Future<void> atualizarModeloMensagem(ModeloMensagem m) async {
     await _db.collection(_colModelosMensagem).doc(m.id).set({
       'titulo': m.titulo,
       'texto': m.texto,
+      'canal': m.canal,
+      'assunto': m.assunto,
       'padrao': m.padrao,
     }, SetOptions(merge: true));
   }
@@ -1728,6 +1866,7 @@ class FirestoreService {
     String contratoId,
     StatusAssinatura status,
   ) async {
+    _invalidarCacheContratos();
     final ref = _db.collection(_colContratos).doc(contratoId);
     final snap = await ref.get();
     final anterior =
@@ -1754,6 +1893,7 @@ class FirestoreService {
 
   /// Marca que um upgrade foi OFERECIDO ao cliente do contrato (idempotente).
   Future<void> registrarUpgradeOferecido(String contratoId) async {
+    _invalidarCacheContratos();
     final ref = _db.collection(_colContratos).doc(contratoId);
     final snap = await ref.get();
     if (snap.data()?['upgradeOferecidoEm'] != null) return;
@@ -1766,6 +1906,7 @@ class FirestoreService {
   /// Marca que um upgrade foi REALIZADO (conta para a meta do usuário logado).
   /// Idempotente: só conta na primeira vez. Realizar implica ter sido oferecido.
   Future<void> registrarUpgradeRealizado(String contratoId) async {
+    _invalidarCacheContratos();
     final ref = _db.collection(_colContratos).doc(contratoId);
     final snap = await ref.get();
     final data = snap.data();
@@ -1959,6 +2100,10 @@ class FirestoreService {
 
   static const _colBaixas = 'financeiro_baixas';
 
+  static List<BaixaFinanceira>? _cacheBaixas;
+  static DateTime? _cacheBaixasEm;
+  static const _cacheBaixasTtl = Duration(hours: 12);
+
   /// Importa um lote de baixas em batch writes (máx. 500 por batch).
   ///
   /// Retorna o número de documentos gravados.
@@ -1983,6 +2128,8 @@ class FirestoreService {
       total += fatia.length;
     }
 
+    _cacheBaixas = null;
+    _cacheBaixasEm = null;
     debugPrint('FirestoreService.importarBaixas: $total docs gravados.');
     return total;
   }
@@ -2275,7 +2422,9 @@ class FirestoreService {
       await batch.commit();
     }
 
-    // 4. Auditoria.
+    // 4. Invalida o cache e registra auditoria.
+    _cacheBaixas = null;
+    _cacheBaixasEm = null;
     await _db.collection('audit_log').add({
       'tipo': 'importacao_baixas',
       'autorId': _currentUserId,
@@ -2292,14 +2441,32 @@ class FirestoreService {
   }
 
   /// Retorna as baixas ativas (não deletadas) ordenadas por `dataBaixa` desc.
-  /// Ordenação em memória para dispensar índice composto com `deletado`.
-  Future<List<BaixaFinanceira>> getBaixasFinanceiras() async {
+  /// Cache em memória com TTL de 12h — invalidado automaticamente após importação.
+  /// Passe [forcarRecarga] para ignorar o cache (ex: botão de atualizar manual).
+  Future<List<BaixaFinanceira>> getBaixasFinanceiras({
+    bool forcarRecarga = false,
+  }) async {
+    final agora = DateTime.now();
+    if (!forcarRecarga &&
+        _cacheBaixas != null &&
+        _cacheBaixasEm != null &&
+        agora.difference(_cacheBaixasEm!) < _cacheBaixasTtl) {
+      debugPrint('[Firestore] getBaixasFinanceiras: retornando cache '
+          '(${_cacheBaixas!.length} docs, '
+          '${agora.difference(_cacheBaixasEm!).inMinutes}min atrás).');
+      return _cacheBaixas!;
+    }
+
     final snap = await _db.collection(_colBaixas).get();
     final ativos = snap.docs
         .where((d) => d.data()['deletado'] != true)
         .map((d) => BaixaFinanceira.fromFirestore(d))
         .toList();
     ativos.sort((a, b) => b.dataBaixa.compareTo(a.dataBaixa));
+
+    _cacheBaixas = ativos;
+    _cacheBaixasEm = agora;
+    debugPrint('[Firestore] getBaixasFinanceiras: ${ativos.length} docs lidos do Firestore.');
     return ativos;
   }
 }

@@ -69,9 +69,12 @@ class _TicketsScreenState extends State<TicketsScreen>
     final uid = widget.currentUserId ?? _authService.getCurrentUser()?.uid ?? '';
 
     if (_isAdmin) {
-      _todosSub = _service.getTicketsStream().listen((lista) {
-        if (mounted) setState(() => _todos = lista);
-      });
+      _todosSub = _service.getTicketsStream().listen(
+        (lista) {
+          if (mounted) setState(() => _todos = lista);
+        },
+        onError: (e) => debugPrint('[Tickets] getTicketsStream erro: $e'),
+      );
     }
 
     _meusSub = _service.getMeusTicketsStream(uid).listen(
