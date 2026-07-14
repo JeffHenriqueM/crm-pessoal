@@ -109,6 +109,18 @@ class FirestoreService {
     });
   }
 
+  /// Leitura única das associações manuais (quarto → contrato), por número do
+  /// quarto. Usada para resolver o `{apartamento}` de um contrato ao montar uma
+  /// mensagem, sem abrir um stream.
+  Future<Map<String, FestaAssociacao>> getAssociacoesFesta() async {
+    final snap = await _db.collection(_colFestaAssociacoes).get();
+    final m = <String, FestaAssociacao>{};
+    for (final d in snap.docs) {
+      m[d.id] = FestaAssociacao.fromMap(d.data());
+    }
+    return m;
+  }
+
   /// Vincula (ou remove) manualmente um quarto a um contrato/sócio.
   Future<void> setAssociacaoFesta(
       String numeroQuarto, FestaAssociacao? assoc) async {
@@ -814,6 +826,10 @@ class FirestoreService {
         // Agenda o próximo contato junto com a interação (tira do "em atraso").
         if (proximoContato != null)
           'proximoContato': Timestamp.fromDate(proximoContato),
+        // Sugestão de próximo contato: a mais recente vira o "próximo passo
+        // atual" do lead. Interação sem sugestão não apaga a anterior.
+        if ((interacao.sugestaoProximoContato ?? '').isNotEmpty)
+          'sugestaoProximoContato': interacao.sugestaoProximoContato,
         if (!interacao.houveResposta)
           'no_response_count': FieldValue.increment(1),
         if (interacao.houveResposta)
