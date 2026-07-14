@@ -826,6 +826,10 @@ class FirestoreService {
         // Agenda o próximo contato junto com a interação (tira do "em atraso").
         if (proximoContato != null)
           'proximoContato': Timestamp.fromDate(proximoContato),
+        // Sugestão de próximo contato: a mais recente vira o "próximo passo
+        // atual" do lead. Interação sem sugestão não apaga a anterior.
+        if ((interacao.sugestaoProximoContato ?? '').isNotEmpty)
+          'sugestaoProximoContato': interacao.sugestaoProximoContato,
         if (!interacao.houveResposta)
           'no_response_count': FieldValue.increment(1),
         if (interacao.houveResposta)

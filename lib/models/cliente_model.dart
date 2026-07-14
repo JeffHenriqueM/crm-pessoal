@@ -15,6 +15,10 @@ class Cliente {
   final DateTime dataCadastro;
   final DateTime dataAtualizacao;
   final DateTime? proximoContato;
+  /// Sugestão (texto) do que fazer no próximo contato — o "próximo passo atual"
+  /// do lead. Vem da última interação que trouxe uma sugestão; complementa a
+  /// data em [proximoContato].
+  final String? sugestaoProximoContato;
   final DateTime? dataVisita;
   final String? captadorId;
   final String? captadorNome;
@@ -80,6 +84,7 @@ class Cliente {
     this.telefoneContato,
     this.telefone2,
     this.proximoContato,
+    this.sugestaoProximoContato,
     this.dataVisita,
     this.origem,
     this.motivoNaoVenda,
@@ -130,6 +135,7 @@ class Cliente {
       'dataCadastro': Timestamp.fromDate(dataCadastro),
       'dataAtualizacao': Timestamp.fromDate(dataAtualizacao),
       'proximoContato': proximoContato != null ? Timestamp.fromDate(proximoContato!) : null,
+      'sugestaoProximoContato': sugestaoProximoContato,
       'dataVisita': dataVisita != null ? Timestamp.fromDate(dataVisita!) : null,
       'motivoNaoVenda': motivoNaoVenda,
       'motivoNaoVendaDropdown': motivoNaoVendaDropdown,
@@ -211,6 +217,10 @@ class Cliente {
       telefoneContato: data['telefoneContato'],
       telefone2: data['telefone2'],
       proximoContato: (data['proximoContato'] as Timestamp?)?.toDate(),
+      sugestaoProximoContato:
+          (data['sugestaoProximoContato'] as String?)?.isNotEmpty == true
+              ? data['sugestaoProximoContato'] as String
+              : null,
       dataVisita: (data['dataVisita'] as Timestamp?)?.toDate(),
       motivoNaoVenda: data['motivoNaoVenda'],
       motivoNaoVendaDropdown: data['motivoNaoVendaDropdown'],

@@ -831,6 +831,8 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
     final notaCtrl = TextEditingController(text: interacao?.nota ?? '');
     final oQueCombinamos =
         TextEditingController(text: interacao?.oQueCombinamos ?? '');
+    final sugestaoCtrl =
+        TextEditingController(text: interacao?.sugestaoProximoContato ?? '');
     var canalSelecionado = interacao?.canal ?? Canal.whatsapp;
     var modalidadeSelecionada = interacao?.modalidade ?? Modalidade.online;
     var houveResposta = interacao?.houveResposta ?? false;
@@ -1060,15 +1062,30 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                       maxLines: 2,
                     ),
 
-                    // ── Próximo contato (só ao registrar) ─────────────────
+                    // ── Próximo contato ───────────────────────────────────
+                    const SizedBox(height: 16),
+                    Text('Próximo contato',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(ctx).colorScheme.primary)),
+                    const SizedBox(height: 6),
+                    // Sugestão (texto) — o que fazer/falar no próximo contato.
+                    TextFormField(
+                      controller: sugestaoCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Sugestão de próximo contato (opcional)',
+                        prefixIcon: Icon(Icons.lightbulb_outline),
+                        alignLabelWithHint: true,
+                        hintText: 'Ex: Oferecer condição especial de entrada...',
+                      ),
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      maxLines: 2,
+                    ),
+                    // Data — só ao registrar (não ao editar).
                     if (!isEditing) ...[
-                      const SizedBox(height: 16),
-                      Text('Próximo contato',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(ctx).colorScheme.primary)),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
                           Expanded(
@@ -1131,6 +1148,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
                 final combinamos = oQueCombinamos.text.trim();
+                final sugestao = sugestaoCtrl.text.trim();
                 final nova = Interacao(
                   id: interacao?.id ??
                       'local_${DateTime.now().millisecondsSinceEpoch}',
@@ -1143,6 +1161,7 @@ class _FichaClienteScreenState extends State<FichaClienteScreen>
                   modalidade: modalidadeSelecionada,
                   houveResposta: houveResposta,
                   oQueCombinamos: combinamos.isEmpty ? null : combinamos,
+                  sugestaoProximoContato: sugestao.isEmpty ? null : sugestao,
                 );
                 if (_isNovo) {
                   setState(() {
