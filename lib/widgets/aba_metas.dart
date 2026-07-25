@@ -107,15 +107,15 @@ class _AbaMetasState extends State<AbaMetas> {
     }
 
     final vendedores = widget.todosUsuarios
-        .where((u) => _ehVendedor(u.perfil) && u.ativo)
+        .where((u) => _ehVendedor(u.perfil) && u.contabilizaEquipe)
         .toList()
       ..sort((a, b) => a.nome.compareTo(b.nome));
     final captadores = widget.todosUsuarios
-        .where((u) => _ehCaptacao(u.perfil) && u.ativo)
+        .where((u) => _ehCaptacao(u.perfil) && u.contabilizaEquipe)
         .toList()
       ..sort((a, b) => a.nome.compareTo(b.nome));
     final posVenda = widget.todosUsuarios
-        .where((u) => _ehPosVenda(u.perfil) && u.ativo)
+        .where((u) => _ehPosVenda(u.perfil) && u.contabilizaEquipe)
         .toList()
       ..sort((a, b) => a.nome.compareTo(b.nome));
 

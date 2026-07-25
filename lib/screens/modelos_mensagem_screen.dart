@@ -53,9 +53,11 @@ class ModelosMensagemScreen extends StatelessWidget {
                   child: Text(
                     'Use variáveis no texto (e no assunto do e-mail): {nome}, '
                     '{primeiroNome}, {esposa}, {primeiroNomeEsposa}, '
-                    '{responsavel}. Na aba Distratar também valem {contrato}, '
-                    '{cota}, {valorAtrasado}, {saldo} e {dataLimite} (prazo de '
-                    '15 dias). Tudo preenchido automaticamente ao enviar.',
+                    '{responsavel}. Ao enviar por um contrato (ex.: aba '
+                    'Distratar) também valem {contrato}, {cota}, '
+                    '{valorAtrasado}, {saldo}, {dataLimite} (prazo de 15 dias) '
+                    'e {apartamento} (quarto do sócio na Festa, se associado na '
+                    'Hospedagem). Tudo preenchido automaticamente ao enviar.',
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
@@ -245,6 +247,7 @@ class _FormModeloDialogState extends State<_FormModeloDialog> {
     '{valorAtrasado}',
     '{saldo}',
     '{dataLimite}',
+    '{apartamento}',
   ];
 
   @override
