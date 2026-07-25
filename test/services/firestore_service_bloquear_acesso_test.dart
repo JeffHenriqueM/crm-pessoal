@@ -60,4 +60,36 @@ void main() {
       expect(await service.isUsuarioAtivo('inexistente'), isTrue);
     });
   });
+
+  group('acessoDoUsuarioStream (derruba sessão ao vivo)', () {
+    test('emite true enquanto liberado e false ao bloquear', () async {
+      final emissoes = <bool>[];
+      final sub =
+          service.acessoDoUsuarioStream('maria').listen(emissoes.add);
+
+      // primeira emissão: liberado
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(emissoes.last, isTrue);
+
+      // gestor bloqueia com a pessoa logada
+      await service.bloquearAcessoUsuario(id: 'maria', bloqueado: true);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(emissoes.last, isFalse);
+
+      await sub.cancel();
+    });
+
+    test('desativar o usuário (ativo=false) também emite false', () async {
+      final emissoes = <bool>[];
+      final sub =
+          service.acessoDoUsuarioStream('maria').listen(emissoes.add);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      await service.alterarStatusUsuario(id: 'maria', ativo: false);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(emissoes.last, isFalse);
+
+      await sub.cancel();
+    });
+  });
 }

@@ -1350,6 +1350,20 @@ class FirestoreService {
     }
   }
 
+  /// Stream em tempo real do direito de acesso do usuário (ativo E sem acesso
+  /// bloqueado). Usado para derrubar a sessão AO VIVO quando um gestor bloqueia
+  /// o acesso enquanto a pessoa está logada. Emite `true` quando o doc não
+  /// existe (fail-open) para não deslogar por leitura inconsistente.
+  Stream<bool> acessoDoUsuarioStream(String uid) {
+    return _db.collection('usuarios').doc(uid).snapshots().map((doc) {
+      if (!doc.exists) return true;
+      final d = doc.data();
+      final ativo = d?['ativo'] ?? true;
+      final bloqueado = d?['acessoBloqueado'] ?? false;
+      return ativo && !bloqueado;
+    });
+  }
+
   /// Verifica se o usuário pode acessar o sistema (ativo E sem acesso
   /// bloqueado). Fail-open: falha de leitura não tranca o usuário.
   Future<bool> isUsuarioAtivo(String uid) async {
