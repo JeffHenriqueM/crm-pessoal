@@ -1332,12 +1332,34 @@ class FirestoreService {
     }
   }
 
-  /// Verifica se o usuário logado está ativo no Firestore.
+  /// Bloqueia (ou libera) o ACESSO ao sistema sem desativar o usuário: ele para
+  /// de conseguir login, mas continua atribuível a leads e mantém o histórico.
+  /// Diferente de [alterarStatusUsuario], que desativa por completo.
+  Future<void> bloquearAcessoUsuario({
+    required String id,
+    required bool bloqueado,
+  }) async {
+    try {
+      await _db
+          .collection('usuarios')
+          .doc(id)
+          .update({'acessoBloqueado': bloqueado});
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao bloquear acesso: $e');
+      throw 'Não foi possível alterar o acesso do usuário.';
+    }
+  }
+
+  /// Verifica se o usuário pode acessar o sistema (ativo E sem acesso
+  /// bloqueado). Fail-open: falha de leitura não tranca o usuário.
   Future<bool> isUsuarioAtivo(String uid) async {
     try {
       final doc = await _db.collection('usuarios').doc(uid).get();
       if (!doc.exists) return true; // usuário sem documento = considera ativo
-      return doc.data()?['ativo'] ?? true;
+      final d = doc.data();
+      final ativo = d?['ativo'] ?? true;
+      final bloqueado = d?['acessoBloqueado'] ?? false;
+      return ativo && !bloqueado;
     } catch (_) {
       return true;
     }
