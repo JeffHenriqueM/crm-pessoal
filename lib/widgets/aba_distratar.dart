@@ -47,7 +47,7 @@ class _AbaDistratarState extends State<AbaDistratar> {
   List<Contrato> _contratos = [];
   List<BaixaFinanceira> _baixas = [];
   AnaliseDistrato? _analise;
-  bool _carregando = true;
+  bool _carregando = false; // true só durante a busca (disparada pelo botão)
   int _modo = 0; // 0 = maiores atrasos, 1 = inadimplentes
   final _processando = <String>{}; // localizadores em gravação
 
@@ -73,14 +73,13 @@ class _AbaDistratarState extends State<AbaDistratar> {
   @override
   void initState() {
     super.initState();
-    if (_temPermissao) {
-      _carregar();
-    } else {
-      _carregando = false;
-    }
+    // Não busca nada ao abrir — contratos e baixas só são lidos quando o
+    // usuário clica em "Carregar" (evita leitura pesada à toa numa aba pouco
+    // usada).
   }
 
   Future<void> _carregar() async {
+    setState(() => _carregando = true);
     try {
       final contratos = await _firestore.getContratos();
       final baixas = await _firestore.getBaixasFinanceiras();
@@ -267,6 +266,39 @@ class _AbaDistratarState extends State<AbaDistratar> {
     );
   }
 
+  /// Estado inicial: a aba não busca contratos/baixas ao abrir. O usuário
+  /// dispara a leitura (pesada) clicando aqui.
+  Widget _promptCarregar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.gavel_outlined, size: 48, color: cs.primary),
+            const SizedBox(height: 12),
+            const Text('Análise não carregada',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+              'Os contratos e as baixas são buscados só quando você pede, para '
+              'evitar leituras desnecessárias.',
+              style: TextStyle(color: cs.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _carregar,
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Carregar análise'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_temPermissao) {
@@ -285,7 +317,7 @@ class _AbaDistratarState extends State<AbaDistratar> {
     }
     final analise = _analise;
     if (analise == null) {
-      return const Center(child: Text('Sem dados.'));
+      return _promptCarregar(context);
     }
 
     final base =
