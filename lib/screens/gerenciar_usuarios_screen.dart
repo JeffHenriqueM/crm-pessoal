@@ -181,6 +181,36 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                         style: TextStyle(
                             fontSize: 12, color: cs.onSurfaceVariant),
                       ),
+                      if (u.ativo && u.acessoBloqueado) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade800
+                                .withValues(alpha: 0.12),
+                            border: Border.all(
+                                color: Colors.orange.shade800
+                                    .withValues(alpha: 0.4)),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.no_accounts_outlined,
+                                  size: 12, color: Colors.orange.shade800),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Sem acesso · atribuível',
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.orange.shade800),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -316,13 +346,48 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 _confirmarResetSenha(context, u);
               },
             ),
+            // Bloquear acesso: impede login mas mantém o usuário atribuível a
+            // leads (some das rankings/metas, preserva o histórico).
+            if (u.ativo)
+              if (!u.acessoBloqueado)
+                ListTile(
+                  leading: Icon(Icons.no_accounts_outlined,
+                      color: Colors.orange.shade800),
+                  title: Text('Bloquear acesso ao sistema',
+                      style: TextStyle(color: Colors.orange.shade800)),
+                  subtitle: Text(
+                    'Impede o login, mas continua atribuível a leads',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _confirmarBloquearAcesso(context, u, bloquear: true);
+                  },
+                )
+              else
+                ListTile(
+                  leading: Icon(Icons.lock_open_outlined,
+                      color: Colors.green.shade700),
+                  title: Text('Liberar acesso ao sistema',
+                      style: TextStyle(color: Colors.green.shade700)),
+                  subtitle: Text(
+                    'Volta a permitir o login deste usuário',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _confirmarBloquearAcesso(context, u, bloquear: false);
+                  },
+                ),
             if (u.ativo)
               ListTile(
                 leading: Icon(Icons.block_outlined, color: cs.error),
-                title: Text('Desativar acesso',
+                title: Text('Desativar usuário',
                     style: TextStyle(color: cs.error)),
                 subtitle: Text(
-                  'Impede o login deste usuário',
+                  'Impede o login E remove da atribuição de leads',
                   style:
                       TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
@@ -335,7 +400,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
               ListTile(
                 leading: Icon(Icons.check_circle_outline,
                     color: Colors.green.shade700),
-                title: Text('Reativar acesso',
+                title: Text('Reativar usuário',
                     style: TextStyle(color: Colors.green.shade700)),
                 onTap: () {
                   Navigator.of(ctx).pop();
@@ -684,6 +749,60 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
               );
             },
             child: Text(ativar ? 'Reativar' : 'Desativar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmarBloquearAcesso(BuildContext context, Usuario u,
+      {required bool bloquear}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              bloquear ? Icons.no_accounts_outlined : Icons.lock_open_outlined,
+              color:
+                  bloquear ? Colors.orange.shade800 : Colors.green.shade700,
+            ),
+            const SizedBox(width: 10),
+            Text(bloquear ? 'Bloquear Acesso' : 'Liberar Acesso'),
+          ],
+        ),
+        content: Text(
+          bloquear
+              ? '${u.nome} não conseguirá mais fazer login, mas continua '
+                  'disponível para atribuir a leads e mantém todo o histórico. '
+                  'Sai das rankings e metas.'
+              : '${u.nome} voltará a poder fazer login normalmente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor:
+                  bloquear ? Colors.orange.shade800 : Colors.green.shade700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _runWithLoading(
+                context,
+                () => _firestoreService.bloquearAcessoUsuario(
+                  id: u.id,
+                  bloqueado: bloquear,
+                ),
+                successMsg: bloquear
+                    ? 'Acesso de ${u.nome} bloqueado.'
+                    : 'Acesso de ${u.nome} liberado.',
+              );
+            },
+            child: Text(bloquear ? 'Bloquear' : 'Liberar'),
           ),
         ],
       ),
