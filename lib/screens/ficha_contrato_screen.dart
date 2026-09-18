@@ -581,65 +581,6 @@ class _DadosTab extends StatelessWidget {
           const SizedBox(height: 8),
         ],
 
-        // Financeiro
-        _secao('Financeiro', [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${c.percentualEfetivo.toStringAsFixed(1)}% integralizado',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      c.estaQuitado ? 'QUITADO' : c.statusFinanceiro,
-                      style: TextStyle(
-                        color: c.estaQuitado ? Colors.green : null,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: (c.percentualEfetivo / 100).clamp(0.0, 1.0),
-                    minHeight: 8,
-                    backgroundColor: Colors.grey.shade200,
-                    valueColor: AlwaysStoppedAnimation(
-                      c.estaQuitado ? Colors.green : Colors.blue,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _campo('Valor financiado', fmtMoeda.format(c.valorFinanciado)),
-          _campo('Valor integralizado', fmtMoeda.format(c.valorIntegralizado)),
-          _campo('Saldo restante', fmtMoeda.format(c.saldoRestante)),
-          _campo('Entrada', fmtMoeda.format(c.entrada)),
-          if (c.temAtrasos)
-            _campo(
-              'Valor em atraso',
-              fmtMoeda.format(c.valorAtrasado),
-              destaque: Colors.red,
-            ),
-          if (c.dataProximoVencimento != null)
-            _campo(
-              'Próximo vencimento',
-              fmtData.format(c.dataProximoVencimento!),
-            ),
-          if (c.dataQuitacao != null)
-            _campo('Data quitação', fmtData.format(c.dataQuitacao!)),
-        ]),
-        const SizedBox(height: 8),
-
         // Último Pagamento (visível apenas para admin, financeiro, super admin).
         // A baixa só é buscada ao clicar — evita leitura à toa ao abrir a ficha.
         if (podeVerPagamento && !pagamentoCarregado) ...[

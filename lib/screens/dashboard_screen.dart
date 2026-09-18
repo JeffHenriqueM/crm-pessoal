@@ -14,6 +14,7 @@ import '../widgets/aba_lead_score.dart';
 import '../widgets/aba_relatorios.dart';
 import '../widgets/aba_risco_silencio.dart';
 import '../widgets/aba_tempo_sem_contato.dart';
+import '../widgets/aba_transicao.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userProfile;
@@ -77,36 +78,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = _userProfile == 'admin' || _userProfile == 'super admin';
+    final isSuperAdmin = _userProfile == 'super admin';
+    final isAdmin = _userProfile == 'admin' || isSuperAdmin;
 
+    // Super admin ganha a aba "Transição" (11 abas comuns + 1).
     return DefaultTabController(
-      length: isAdmin ? 11 : 6,
+      length: isAdmin ? (isSuperAdmin ? 12 : 11) : 6,
       child: isAdmin ? _buildAdminDashboard() : _buildVendedorDashboard(),
     );
   }
 
-  // ── Dashboard admin (6 abas) ──────────────────────────────────────────────
+  // ── Dashboard admin (11 abas; super admin ganha "Transição") ──────────────
   Widget _buildAdminDashboard() {
+    final isSuperAdmin = _userProfile == 'super admin';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
         toolbarHeight: 50,
-        bottom: const TabBar(
+        bottom: TabBar(
           indicatorWeight: 3,
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: [
-            Tab(text: 'Equipe',       icon: Icon(Icons.groups_outlined)),
-            Tab(text: 'Meta',         icon: Icon(Icons.flag_outlined)),
-            Tab(text: 'Captação',     icon: Icon(Icons.campaign_outlined)),
-            Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
-            Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
-            Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
-            Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
-            Tab(text: 'Sem contato',  icon: Icon(Icons.schedule_outlined)),
-            Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
-            Tab(text: 'Desempenho',   icon: Icon(Icons.speed_outlined)),
-            Tab(text: 'Calibração',   icon: Icon(Icons.science_outlined)),
+            const Tab(text: 'Equipe',       icon: Icon(Icons.groups_outlined)),
+            const Tab(text: 'Meta',         icon: Icon(Icons.flag_outlined)),
+            const Tab(text: 'Captação',     icon: Icon(Icons.campaign_outlined)),
+            const Tab(text: 'Estatísticas', icon: Icon(Icons.bar_chart_rounded)),
+            const Tab(text: 'Relatórios',   icon: Icon(Icons.analytics_outlined)),
+            const Tab(text: 'Perdas',       icon: Icon(Icons.person_off_outlined)),
+            const Tab(text: 'Risco',        icon: Icon(Icons.notifications_active_outlined)),
+            const Tab(text: 'Sem contato',  icon: Icon(Icons.schedule_outlined)),
+            const Tab(text: 'Potencial',    icon: Icon(Icons.local_fire_department_outlined)),
+            const Tab(text: 'Desempenho',   icon: Icon(Icons.speed_outlined)),
+            const Tab(text: 'Calibração',   icon: Icon(Icons.science_outlined)),
+            if (isSuperAdmin)
+              const Tab(text: 'Transição',  icon: Icon(Icons.swap_horiz_rounded)),
           ],
         ),
       ),
@@ -172,6 +178,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               // 10 — Calibração dos sinais (backtest dos pesos)
               AbaCalibracao(todosClientes: todos),
+              // 11 — Transição para o Hotel Villamor (somente super admin)
+              if (isSuperAdmin) const AbaTransicao(),
             ],
           );
         },

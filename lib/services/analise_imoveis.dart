@@ -85,6 +85,17 @@ const Map<int, String> _tiposEspeciaisC = {
   501: 'VILLAMOR SUPER MASTER', 520: 'VILLAMOR PREMIUM',
 };
 
+/// Linha de produto do imóvel a partir do seu tipo de planta.
+/// LUXO* (blocos A/B/D/E) → 'LUXO'; VILLAMOR* (bloco C) → 'VILLAMOR';
+/// BANGALO → 'BANGALÔ'. Usada na projeção de transição para o Hotel Villamor.
+String linhaProduto(String tipo) {
+  final t = tipo.toUpperCase().trim();
+  if (t.startsWith('LUXO')) return 'LUXO';
+  if (t.startsWith('VILLAMOR')) return 'VILLAMOR';
+  if (t.startsWith('BANGAL')) return 'BANGALÔ';
+  return 'OUTRO';
+}
+
 double? _metragemDoTipo(String tipo) {
   switch (tipo) {
     case 'LUXO':

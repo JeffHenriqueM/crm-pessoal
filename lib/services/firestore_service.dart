@@ -2035,6 +2035,13 @@ class FirestoreService {
         .map((s) => s.docs.map(Imovel.fromFirestore).toList());
   }
 
+  /// Leitura única do inventário de imóveis (para telas que carregam sob
+  /// demanda, sem manter um stream aberto).
+  Future<List<Imovel>> getImoveis() async {
+    final snap = await _db.collection(_colImoveis).get();
+    return snap.docs.map(Imovel.fromFirestore).toList();
+  }
+
   /// Stream das cotas (vendidas) de um imóvel específico — usado no detalhe.
   Stream<List<Cota>> getCotasDoImovel(String imovelId) {
     return _db
