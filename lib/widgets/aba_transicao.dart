@@ -43,9 +43,15 @@ class _LinhaStats {
 
 class _AbaTransicaoState extends State<AbaTransicao> {
   final _fs = FirestoreService();
-  bool _carregando = false;
+  bool _carregando = true; // carrega automaticamente ao abrir
   bool _carregado = false;
   Map<String, _LinhaStats> _stats = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _carregar();
+  }
 
   Future<void> _carregar() async {
     setState(() => _carregando = true);
@@ -258,20 +264,20 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           children: [
             Icon(Icons.swap_horiz_rounded, size: 48, color: cs.primary),
             const SizedBox(height: 12),
-            const Text('Transição para o Hotel Villamor',
+            const Text('Não foi possível carregar',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(
-              'Carregue os dados para ver quantos apartamentos LUXO e VILLAMOR '
-              'estão vendidos.',
+              'Tente novamente para ver os apartamentos LUXO e VILLAMOR '
+              'vendidos.',
               style: TextStyle(color: cs.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _carregar,
-              icon: const Icon(Icons.download_outlined),
-              label: const Text('Carregar'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Tentar novamente'),
             ),
           ],
         ),
