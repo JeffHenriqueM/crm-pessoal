@@ -5,6 +5,7 @@ import '../screens/campanhas_screen.dart';
 import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/fluxo_cliente_screen.dart';
+import '../screens/transicao_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/hospedagem_screen.dart';
@@ -66,6 +67,7 @@ class _MainShellState extends State<MainShell> {
   bool get _isListaProfile => _listaProfiles.contains(widget.userProfile);
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
+  bool get _isSuperAdmin => widget.userProfile == 'super admin';
   bool get _isPosVenda => widget.userProfile == 'pós-venda';
   // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
   bool get _isReserva => widget.userProfile == 'reserva';
@@ -106,6 +108,13 @@ class _MainShellState extends State<MainShell> {
     label: 'Hospedagem',
   );
 
+  // ── Item de transição — SOMENTE super admin ──────────────────────────────
+  static const _transicaoItem = _NavItem(
+    icon: Icons.swap_horiz_outlined,
+    activeIcon: Icons.swap_horiz_rounded,
+    label: 'Transição',
+  );
+
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
     // ── Reserva: somente Hospedagem ───────────────────────────────
@@ -114,28 +123,28 @@ class _MainShellState extends State<MainShell> {
     }
     // ── Admin: Dashboard primeiro ─────────────────────────────────
     if (_isAdmin) {
-      return const [
-        _NavItem(
+      return [
+        const _NavItem(
           icon: Icons.bar_chart_outlined,
           activeIcon: Icons.bar_chart_rounded,
           label: 'Dashboard',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.view_kanban_outlined,
           activeIcon: Icons.view_kanban,
           label: 'Funil de Vendas',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.calendar_month_outlined,
           activeIcon: Icons.calendar_month,
           label: 'Agenda',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.campaign_outlined,
           activeIcon: Icons.campaign,
           label: 'Campanhas',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.description_outlined,
           activeIcon: Icons.description,
           label: 'Pós-Venda',
@@ -145,6 +154,7 @@ class _MainShellState extends State<MainShell> {
         _ticketsItem,
         _fluxoItem,
         _recepcaoItem,
+        if (_isSuperAdmin) _transicaoItem,
       ];
     }
     // ── Vendedor/captador/recepção: Agenda primeiro ───────────────
@@ -238,6 +248,7 @@ class _MainShellState extends State<MainShell> {
       ),
       const FluxoClienteScreen(),
       const RecepcaoShell(),
+      if (_isSuperAdmin) const TransicaoScreen(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
