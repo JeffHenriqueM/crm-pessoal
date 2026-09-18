@@ -4,7 +4,6 @@ import '../screens/apresentacao_screen.dart';
 import '../screens/campanhas_screen.dart';
 import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
-import '../screens/financeiro_screen.dart';
 import '../screens/fluxo_cliente_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
@@ -100,13 +99,6 @@ class _MainShellState extends State<MainShell> {
     label: 'Fluxo',
   );
 
-  // ── Item de financeiro — financeiro, admin e super admin ─────────────────
-  static const _financeiroItem = _NavItem(
-    icon: Icons.account_balance_outlined,
-    activeIcon: Icons.account_balance,
-    label: 'Financeiro',
-  );
-
   // ── Item de hospedagem — admin/super admin e pós-venda ───────────────────
   static const _hospedagemItem = _NavItem(
     icon: Icons.hotel_outlined,
@@ -148,7 +140,6 @@ class _MainShellState extends State<MainShell> {
           activeIcon: Icons.description,
           label: 'Pós-Venda',
         ),
-        _financeiroItem,
         _hospedagemItem,
         _apresentacaoItem,
         _ticketsItem,
@@ -209,9 +200,8 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── financeiro: Financeiro + Pós-Venda (sem Dashboard/Funil/Recepção) ─
+    // ── financeiro: Pós-Venda (sem Dashboard/Funil/Recepção/Financeiro) ─
     return const [
-      _financeiroItem,
       _NavItem(
         icon: Icons.description_outlined,
         activeIcon: Icons.description,
@@ -235,7 +225,6 @@ class _MainShellState extends State<MainShell> {
       ),
       const CampanhasScreen(),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
-      FinanceiroScreen(userProfile: widget.userProfile),
       HospedagemScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(
         userProfile: widget.userProfile,
@@ -283,8 +272,7 @@ class _MainShellState extends State<MainShell> {
       ),
       const RecepcaoShell(),
     ] else ...[
-      // financeiro: Financeiro + Pós-Venda (sem Dashboard/Funil/Recepção)
-      FinanceiroScreen(userProfile: widget.userProfile),
+      // financeiro: Pós-Venda (sem Dashboard/Funil/Recepção/Financeiro)
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(
         userProfile: widget.userProfile,
