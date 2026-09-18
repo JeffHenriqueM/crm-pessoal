@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/imovel_model.dart';
 import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
 
@@ -20,8 +21,24 @@ class _LinhaStats {
   int totalUnidades = 0;
   int unidadesVendidas = 0; // com ao menos 1 cota vendida
   int esgotadas = 0;
-  int parciais = 0;
-  int cotasVendidas = 0;
+  // Cotas vendidas por tier — cada tier fraciona o apartamento de um jeito.
+  int cotasBronze = 0; // 52 por apartamento
+  int cotasPrata = 0; //  26 por apartamento
+  int cotasOuro = 0; //   13 por apartamento
+  int cotasDiamante = 0; // 1 por apartamento (apto inteiro)
+  int cotasIntegral = 0; // 1 por apartamento (apto inteiro)
+
+  int get cotasVendidas =>
+      cotasBronze + cotasPrata + cotasOuro + cotasDiamante + cotasIntegral;
+
+  /// Apartamentos vendidos convertendo cotas → apartamento: 52 bronze = 1 ap,
+  /// 26 prata = 1 ap, 13 ouro = 1 ap, integral/diamante = 1 ap.
+  double get apartamentosEquivalente =>
+      cotasBronze / 52 +
+      cotasPrata / 26 +
+      cotasOuro / 13 +
+      cotasDiamante +
+      cotasIntegral.toDouble();
 }
 
 class _AbaTransicaoState extends State<AbaTransicao> {
@@ -42,14 +59,29 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         final linha = linhaProduto(a.imovel.tipo);
         final s = map.putIfAbsent(linha, () => _LinhaStats());
         s.totalUnidades++;
-        s.cotasVendidas += a.cotasVendidas;
+        // Cotas vendidas somam no bucket do tier do imóvel (cada imóvel tem um).
+        switch (a.tier) {
+          case TierCota.bronze:
+            s.cotasBronze += a.cotasVendidas;
+            break;
+          case TierCota.prata:
+            s.cotasPrata += a.cotasVendidas;
+            break;
+          case TierCota.ouro:
+            s.cotasOuro += a.cotasVendidas;
+            break;
+          case TierCota.diamante:
+            s.cotasDiamante += a.cotasVendidas;
+            break;
+          case TierCota.integral:
+            s.cotasIntegral += a.cotasVendidas;
+            break;
+          case null:
+            break; // sem venda / tier indefinido
+        }
         if (a.situacao != SituacaoImovel.indefinido) {
           s.unidadesVendidas++;
-          if (a.situacao == SituacaoImovel.esgotado) {
-            s.esgotadas++;
-          } else {
-            s.parciais++;
-          }
+          if (a.situacao == SituacaoImovel.esgotado) s.esgotadas++;
         }
       }
       if (!mounted) return;
@@ -152,19 +184,36 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   color: cor,
                   letterSpacing: 0.5)),
           const SizedBox(height: 8),
-          Text('${s.unidadesVendidas}',
+          Text(_fmtAp(s.apartamentosEquivalente),
               style: TextStyle(
                   fontSize: 40, fontWeight: FontWeight.bold, color: cor)),
-          Text('apartamentos vendidos',
+          Text('apartamentos vendidos (equivalente)',
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           const Divider(height: 20),
-          _linhaInfo('Totalmente vendidos', '${s.esgotadas}', cs),
-          _linhaInfo('Parcialmente vendidos', '${s.parciais}', cs),
-          _linhaInfo('Cotas vendidas', '${s.cotasVendidas}', cs),
+          if (s.cotasBronze > 0)
+            _linhaInfo('Bronze', '${s.cotasBronze} cotas ÷ 52', cs),
+          if (s.cotasPrata > 0)
+            _linhaInfo('Prata', '${s.cotasPrata} cotas ÷ 26', cs),
+          if (s.cotasOuro > 0)
+            _linhaInfo('Ouro', '${s.cotasOuro} cotas ÷ 13', cs),
+          if (s.cotasDiamante > 0)
+            _linhaInfo('Diamante', '${s.cotasDiamante} (apto inteiro)', cs),
+          if (s.cotasIntegral > 0)
+            _linhaInfo('Integral', '${s.cotasIntegral} (apto inteiro)', cs),
+          const Divider(height: 20),
+          _linhaInfo('Total de cotas vendidas', '${s.cotasVendidas}', cs),
+          _linhaInfo('Unidades com venda', '${s.unidadesVendidas}', cs),
+          _linhaInfo('Totalmente vendidas', '${s.esgotadas}', cs),
           _linhaInfo('Unidades no bloco', '${s.totalUnidades}', cs),
         ],
       ),
     );
+  }
+
+  /// Formata apartamentos-equivalentes: inteiro sem casa decimal, senão 1 casa.
+  String _fmtAp(double v) {
+    final s = (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+    return s.replaceAll('.', ',');
   }
 
   Widget _linhaInfo(String label, String valor, ColorScheme cs) {
@@ -191,8 +240,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
-        '"Vendido" = apartamento com ao menos 1 cota vendida (contrato ativo). '
-        'LUXO reúne os blocos A, B, D e E; VILLAMOR é o bloco C.',
+        'Apartamentos vendidos = cotas vendidas convertidas em apartamento: '
+        '52 bronze = 1 · 26 prata = 1 · 13 ouro = 1 · integral/diamante = 1. '
+        'Fonte: contratos ativos (pós-venda). LUXO reúne os blocos A, B, D e E; '
+        'VILLAMOR é o bloco C.',
         style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
       ),
     );
