@@ -62,6 +62,30 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _diariaCtrl = TextEditingController(text: '550'); // diária média (R$)
   final _taxaCtrl = TextEditingController(text: '15'); // taxa administração (%)
   static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
+
+  // ── Temporadas (aba Pool): semanas, diária e ocupação de cada temporada ────
+  final _altaSemCtrl = TextEditingController(text: '12'); // semanas
+  final _altaDiaCtrl = TextEditingController(text: '750'); // diária (R$)
+  final _altaOcupCtrl = TextEditingController(text: '90'); // ocupação (%)
+  final _medSemCtrl = TextEditingController(text: '20');
+  final _medDiaCtrl = TextEditingController(text: '550');
+  final _medOcupCtrl = TextEditingController(text: '70');
+  final _baixaSemCtrl = TextEditingController(text: '20');
+  final _baixaDiaCtrl = TextEditingController(text: '450');
+  final _baixaOcupCtrl = TextEditingController(text: '50');
+
+  /// Temporadas: (rótulo, semanas, diária, ocupação, cor).
+  List<(String, TextEditingController, TextEditingController,
+          TextEditingController, Color)>
+      get _temporadas => [
+            ('Alta', _altaSemCtrl, _altaDiaCtrl, _altaOcupCtrl,
+                const Color(0xFFD84315)),
+            ('Média', _medSemCtrl, _medDiaCtrl, _medOcupCtrl,
+                const Color(0xFFEF6C00)),
+            ('Baixa', _baixaSemCtrl, _baixaDiaCtrl, _baixaOcupCtrl,
+                const Color(0xFF1565C0)),
+          ];
+
   // Cenários de participação da multipropriedade no hotel (fração dos aptos).
   static const List<(String, double)> _cenariosMP = [
     ('Multipropriedade = 50% do hotel', 0.5),
@@ -124,6 +148,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _taxaCtrl.dispose();
     for (final l in _linhasCusto) {
       l.$2.dispose();
+    }
+    for (final t in _temporadas) {
+      t.$2.dispose();
+      t.$3.dispose();
+      t.$4.dispose();
     }
     _minPagoCtrl.dispose();
     _naoAceitaCtrl.dispose();
@@ -730,6 +759,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           _cardPool(cs, occ, pool, diaria, taxa, diasMes),
           const SizedBox(height: 12),
         ],
+        const SizedBox(height: 8),
+        _secaoTemporada(cs, taxa),
+        const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1358,6 +1390,172 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Seção da aba Pool: ganho por cota por temporada (alta/média/baixa).
+  Widget _secaoTemporada(ColorScheme cs, double taxa) {
+    // Receita líquida anual por apartamento em cada temporada.
+    // líquida = semanas × 7 dias × ocupação × diária × (1 − taxa).
+    final liqPorTemporada = <double>[];
+    double totalSemanas = 0;
+    for (final t in _temporadas) {
+      final sem = _parse(t.$2, 0);
+      final dia = _parse(t.$3, 0);
+      final ocup = _parse(t.$4, 0) / 100.0;
+      totalSemanas += sem;
+      liqPorTemporada.add(sem * 7 * ocup * dia * (1 - taxa));
+    }
+    final liqTotal = liqPorTemporada.fold(0.0, (s, v) => s + v);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.calendar_month_outlined, size: 18, color: cs.primary),
+            const SizedBox(width: 6),
+            const Expanded(
+              child: Text('Ganho por cota, por temporada',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text('Defina semanas, diária e ocupação de cada temporada. A tabela '
+              'mostra quanto cada cota recebe por ano (líquido da taxa, antes '
+              'do condomínio).',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          // ── Parâmetros por temporada ──
+          for (final t in _temporadas) ...[
+            Row(children: [
+              Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(right: 6),
+                decoration:
+                    BoxDecoration(color: t.$5, shape: BoxShape.circle),
+              ),
+              Text(t.$1,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: t.$5)),
+            ]),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _campoNum('Semanas', t.$2, sufixo: ''),
+                _campoNum('Diária', t.$3, sufixo: 'R\$'),
+                _campoNum('Ocupação', t.$4, sufixo: '%'),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (totalSemanas != 52)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '⚠ Soma das semanas = ${totalSemanas.toStringAsFixed(0)} '
+                '(o ideal é 52).',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.orange.shade800,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          // ── Receita líquida anual por apartamento ──
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Receita líquida / apartamento / ano',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                Text(_moeda.format(liqTotal),
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: cs.primary)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          // ── Tabela: ganho por cota × temporada (R$/ano) ──
+          Text('Quanto cada cota recebe por ano',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          _tabelaCotaTemporada(cs, liqPorTemporada, liqTotal),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabelaCotaTemporada(
+      ColorScheme cs, List<double> liqPorTemporada, double liqTotal) {
+    TableRow linha(String cota, int divisor, {bool cabecalho = false}) {
+      Widget cel(String txt, {bool destaque = false, Color? cor}) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Text(txt,
+                style: TextStyle(
+                    fontSize: cabecalho ? 11 : 12,
+                    fontWeight: cabecalho || destaque
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: cabecalho ? cs.onSurfaceVariant : cor)),
+          );
+      if (cabecalho) {
+        return TableRow(
+          decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+          children: [
+            cel('Cota'),
+            for (final t in _temporadas) cel(t.$1),
+            cel('Total/ano'),
+          ],
+        );
+      }
+      return TableRow(children: [
+        cel(cota, destaque: true),
+        for (var i = 0; i < _temporadas.length; i++)
+          cel(_moeda.format(liqPorTemporada[i] / divisor)),
+        cel(_moeda.format(liqTotal / divisor),
+            destaque: true, cor: cs.primary),
+      ]);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Table(
+        border: TableBorder.symmetric(
+            inside: BorderSide(color: cs.outlineVariant)),
+        columnWidths: const {0: FlexColumnWidth(1.3)},
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: [
+          linha('', 1, cabecalho: true),
+          for (final t in _tiers)
+            linha(t.$1 == 'Diamante / Integral' ? 'Diamante' : t.$1, t.$2),
+        ],
+      ),
     );
   }
 
