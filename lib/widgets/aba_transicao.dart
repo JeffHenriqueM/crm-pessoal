@@ -110,7 +110,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _precoBronzeCtrl = TextEditingController(text: '33645');
   final _precoPrataCtrl = TextEditingController(text: '58455');
   final _precoOuroCtrl = TextEditingController(text: '124008');
-  final _precoDiamanteCtrl = TextEditingController(text: '1051700');
+  final _precoDiamanteCtrl = TextEditingController(text: '1399759');
+  // Aba Comprador (visão de quem compra a cota financiada / alavancagem).
+  final _valorCotaCtrl = TextEditingController(text: '116380'); // valor da cota
+  final _entradaCompraCtrl = TextEditingController(text: '0'); // entrada (%)
+  final _prazoCtrl = TextEditingController(text: '120'); // parcelas (meses)
+  final _jurosCtrl = TextEditingController(text: '0.68'); // juros a.m. (%)
+  final _yieldACtrl = TextEditingController(text: '6'); // yield fraco (%)
+  final _yieldBCtrl = TextEditingController(text: '8'); // yield médio (%)
+  final _yieldCCtrl = TextEditingController(text: '10'); // yield ótimo (%)
 
   /// Receita líquida anual do pool por apartamento (base temporadas).
   double _liqAnualApto(double taxa) {
@@ -200,6 +208,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _precoPrataCtrl.dispose();
     _precoOuroCtrl.dispose();
     _precoDiamanteCtrl.dispose();
+    _valorCotaCtrl.dispose();
+    _entradaCompraCtrl.dispose();
+    _prazoCtrl.dispose();
+    _jurosCtrl.dispose();
+    _yieldACtrl.dispose();
+    _yieldBCtrl.dispose();
+    _yieldCCtrl.dispose();
     super.dispose();
   }
 
@@ -329,7 +344,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
 
     return DefaultTabController(
-      length: 8,
+      length: 9,
       child: Column(
         children: [
           TabBar(
@@ -345,6 +360,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
               Tab(text: 'Condomínio', icon: Icon(Icons.receipt_long_outlined)),
               Tab(text: 'Ganhos', icon: Icon(Icons.savings_outlined)),
+              Tab(text: 'Comprador', icon: Icon(Icons.handshake_outlined)),
               Tab(text: 'Devoluções', icon: Icon(Icons.money_off_outlined)),
               Tab(text: 'Plano', icon: Icon(Icons.checklist_rounded)),
             ],
@@ -358,6 +374,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 _tabPool(cs),
                 _tabCondominio(cs),
                 _tabGanhos(cs),
+                _tabComprador(cs),
                 _tabDevolucoes(cs),
                 _tabPlano(cs),
               ],
@@ -395,6 +412,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             _cardLinha(cs, 'BANGALÔ', bangalo, Colors.brown.shade600),
           ],
           for (final e in _separados.entries) _blocoSeparado(cs, e.key, e.value),
+          const SizedBox(height: 16),
+          _cardPrecoMedio(cs),
           const SizedBox(height: 16),
           _rodape(cs),
         ],
@@ -1284,9 +1303,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
           ),
           const SizedBox(height: 6),
-          Text('Preços default = média real por tier dos contratos ativos '
-              '(Bronze R\$ 33.645 · Prata R\$ 58.455 · Ouro R\$ 124.008 · '
-              'Diamante R\$ 1.051.700). Edite para simular outro preço.',
+          Text('Preços default = média real por tier dos contratos ativos, '
+              'exceto Matheus Camelo (Bronze R\$ 33.645 · Prata R\$ 58.455 · '
+              'Ouro R\$ 124.008 · Diamante R\$ 1.399.759). Edite para simular '
+              'outro preço.',
               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
         ],
       ),
@@ -1359,6 +1379,251 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               'Renda líquida do pool / apto / ano', _moeda.format(liqAnual), cs),
           _linhaInfo('Condomínio / apto / ano', '− ${_moeda.format(condoAno)}',
               cs),
+        ],
+      ),
+    );
+  }
+
+  // ── Aba: Comprador (quem compra a cota financiada — alavancagem) ───────────
+  Widget _tabComprador(ColorScheme cs) {
+    final valor = _parse(_valorCotaCtrl, 116380);
+    final entrada = _parse(_entradaCompraCtrl, 0) / 100.0;
+    final n = _parse(_prazoCtrl, 120);
+    final i = _parse(_jurosCtrl, 0.68) / 100.0;
+    final financiado = valor * (1 - entrada);
+    final amortizacao = n > 0 ? financiado / n : financiado;
+    final jurosMes1 = financiado * i;
+    final parcelaInicial = amortizacao + jurosMes1; // SAC: 1ª (maior) parcela
+    final yields = [
+      _parse(_yieldACtrl, 6),
+      _parse(_yieldBCtrl, 8),
+      _parse(_yieldCCtrl, 10),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Visão do comprador (cota financiada)',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+        const SizedBox(height: 4),
+        Text(
+          'Para quem compra a cota financiada: o hotel repassa o rendimento '
+          '(yield) e a dívida cobra a parcela. O desembolso real do bolso é a '
+          'parcela menos o repasse — conforme o desempenho do hotel.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _campoNum('Valor da cota', _valorCotaCtrl, sufixo: 'R\$'),
+            _campoNum('Entrada', _entradaCompraCtrl, sufixo: '%'),
+            _campoNum('Prazo (meses)', _prazoCtrl, sufixo: ''),
+            _campoNum('Juros a.m.', _jurosCtrl, sufixo: '%'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _linhaInfo('Valor financiado', _moeda.format(financiado), cs),
+              _linhaInfo(
+                  'Parcela inicial (SAC, mês 1)',
+                  _moeda2.format(parcelaInicial),
+                  cs),
+              Text('SAC: a parcela cai a cada mês (a inicial é a maior). '
+                  'Amortização ${_moeda2.format(amortizacao)} + juros '
+                  '${_moeda2.format(jurosMes1)}.',
+                  style:
+                      TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text('Desempenho do hotel (yield líquido a.a.)',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _campoNum('Yield fraco', _yieldACtrl, sufixo: '%'),
+            _campoNum('Yield médio', _yieldBCtrl, sufixo: '%'),
+            _campoNum('Yield ótimo', _yieldCCtrl, sufixo: '%'),
+          ],
+        ),
+        const SizedBox(height: 14),
+        for (final y in yields) ...[
+          _cardComprador(cs, y, valor, parcelaInicial),
+          const SizedBox(height: 10),
+        ],
+        const SizedBox(height: 8),
+        _tituloSecao(cs, 'Retorno real por tier (ROI)', Icons.percent_rounded),
+        const SizedBox(height: 4),
+        Text(
+          'Retorno anual de cada cota no pool sobre o preço médio de venda — '
+          'usando as médias reais e o ganho do pool (aba Pool).',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        _tabelaRoi(cs),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Como calcula: repasse do hotel/mês = valor da cota × yield ÷ 12. '
+            'Desembolso real/mês = parcela inicial − repasse. Veredito pela '
+            'cobertura (repasse ÷ parcela): abaixo de 40% o custo da dívida '
+            'domina; acima de 55% a alavancagem compensa. Valores do mês 1 '
+            '(no SAC a parcela diminui, então o desembolso melhora com o tempo).',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cardComprador(
+      ColorScheme cs, double yieldPct, double valor, double parcela) {
+    final repasse = valor * (yieldPct / 100.0) / 12.0;
+    final desembolso = parcela - repasse;
+    final cobertura = parcela > 0 ? repasse / parcela : 0.0;
+
+    late final Color cor;
+    late final String veredito;
+    late final IconData ic;
+    if (cobertura < 0.40) {
+      cor = Colors.red.shade700;
+      veredito = 'Furada — o custo da dívida supera o repasse.';
+      ic = Icons.trending_down;
+    } else if (cobertura < 0.55) {
+      cor = Colors.orange.shade800;
+      veredito = 'Neutro — vale se focar na valorização do imóvel.';
+      ic = Icons.trending_flat;
+    } else {
+      cor = Colors.green.shade700;
+      veredito = 'Excelente — forte alavancagem de patrimônio.';
+      ic = Icons.trending_up;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(ic, size: 18, color: cor),
+            const SizedBox(width: 8),
+            Text('Yield ${yieldPct.toStringAsFixed(0)}% a.a.',
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.bold, color: cor)),
+          ]),
+          const SizedBox(height: 10),
+          Text('Desembolso real / mês',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          Text(_moeda2.format(desembolso),
+              style: TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.bold, color: cor)),
+          const Divider(height: 20),
+          _linhaInfo('Repasse do hotel (mês 1)', _moeda2.format(repasse), cs),
+          _linhaInfo('Parcela da dívida (mês 1)', _moeda2.format(parcela), cs),
+          _linhaInfo('Cobertura (repasse ÷ parcela)',
+              '${(cobertura * 100).toStringAsFixed(0)}%', cs),
+          const SizedBox(height: 6),
+          Text(veredito,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: cor)),
+        ],
+      ),
+    );
+  }
+
+  /// Tabela de ROI por tier: ganho anual do pool ÷ preço médio de venda.
+  Widget _tabelaRoi(ColorScheme cs) {
+    final taxa = _parse(_taxaCtrl, 15) / 100.0;
+    // Receita líquida de uma semana em cada temporada.
+    final valA = _temporadas.isNotEmpty
+        ? 7 *
+            (_parse(_temporadas[0].$4, 0) / 100) *
+            _parse(_temporadas[0].$3, 0) *
+            (1 - taxa)
+        : 0.0;
+    final valM = _temporadas.length > 1
+        ? 7 *
+            (_parse(_temporadas[1].$4, 0) / 100) *
+            _parse(_temporadas[1].$3, 0) *
+            (1 - taxa)
+        : 0.0;
+    final liqAnual = _liqAnualApto(taxa);
+    // (rótulo, ganho anual do pool, preço médio).
+    final linhas = <(String, double, double)>[
+      ('Bronze', (valA + valM) / 2, _parse(_precoBronzeCtrl, 0)),
+      ('Prata', valA + valM, _parse(_precoPrataCtrl, 0)),
+      ('Ouro', 2 * (valA + valM), _parse(_precoOuroCtrl, 0)),
+      ('Diamante', liqAnual, _parse(_precoDiamanteCtrl, 0)),
+    ];
+
+    Widget cel(String txt, {bool cabecalho = false, bool destaque = false, Color? cor}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Text(txt,
+              style: TextStyle(
+                  fontSize: cabecalho ? 11 : 12,
+                  fontWeight: cabecalho || destaque
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: cabecalho ? cs.onSurfaceVariant : cor)),
+        );
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Table(
+        border: TableBorder.symmetric(
+            inside: BorderSide(color: cs.outlineVariant)),
+        columnWidths: const {0: FlexColumnWidth(0.9)},
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: [
+          TableRow(
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+            children: [
+              cel('Cota', cabecalho: true),
+              cel('Preço médio', cabecalho: true),
+              cel('Ganho/ano', cabecalho: true),
+              cel('ROI a.a.', cabecalho: true),
+            ],
+          ),
+          for (final l in linhas)
+            TableRow(children: [
+              cel(l.$1, destaque: true),
+              cel(_moeda.format(l.$3)),
+              cel(_moeda.format(l.$2)),
+              cel(l.$3 > 0 ? '${(l.$2 / l.$3 * 100).toStringAsFixed(1)}%' : '—',
+                  destaque: true, cor: cs.primary),
+            ]),
         ],
       ),
     );
@@ -2021,6 +2286,45 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 cs),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Card com o preço médio de venda por cota (média real, sem Matheus Camelo).
+  Widget _cardPrecoMedio(ColorScheme cs) {
+    final linhas = <(String, TextEditingController)>[
+      ('Bronze', _precoBronzeCtrl),
+      ('Prata', _precoPrataCtrl),
+      ('Ouro', _precoOuroCtrl),
+      ('Diamante', _precoDiamanteCtrl),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.sell_outlined, size: 18, color: cs.primary),
+            const SizedBox(width: 6),
+            const Expanded(
+              child: Text('Preço médio por cota (tabela)',
+                  style:
+                      TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+            ),
+          ]),
+          const SizedBox(height: 2),
+          Text('Média real dos contratos ativos (exceto Matheus Camelo). '
+              'Editável na aba Ganhos.',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          for (final l in linhas)
+            _linhaInfo(l.$1, _moeda.format(_parse(l.$2, 0)), cs),
+        ],
       ),
     );
   }
