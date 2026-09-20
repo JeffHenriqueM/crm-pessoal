@@ -46,8 +46,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _fs = FirestoreService();
   bool _carregando = true; // carrega automaticamente ao abrir
   bool _carregado = false;
-  Map<String, _LinhaStats> _stats = {}; // sem os contratos do Matheus Camelo
-  Map<String, _LinhaStats> _statsMatheus = {}; // só os do Matheus Camelo
+  Map<String, _LinhaStats> _stats = {}; // conta principal (sem os separados)
+  // Clientes separados → estatísticas por linha (mostrados à parte).
+  Map<String, Map<String, _LinhaStats>> _separados = {};
 
   @override
   void initState() {
@@ -55,11 +56,26 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _carregar();
   }
 
-  /// Cliente cujos contratos ficam FORA da conta principal e são somados à
-  /// parte (pedido do gestor).
-  static bool _ehMatheus(String nome) {
-    final n = nome.toUpperCase();
-    return n.contains('MATHEUS') && n.contains('CAMELO');
+  /// Clientes cujos contratos ficam FORA da conta principal e são somados à
+  /// parte (pedido do gestor). Rótulo → teste no nome do comprador.
+  static final Map<String, bool Function(String)> _clientesSeparados = {
+    'Matheus Camelo': (n) {
+      final u = n.toUpperCase();
+      return u.contains('MATHEUS') && u.contains('CAMELO');
+    },
+    'Reynaldo Fabbri': (n) {
+      final u = n.toUpperCase();
+      return u.contains('REYNALDO') &&
+          (u.contains('FABBRI') || u.contains('FABRI'));
+    },
+  };
+
+  /// Rótulo do cliente separado a que o nome pertence, ou null.
+  static String? _clienteSeparado(String nome) {
+    for (final e in _clientesSeparados.entries) {
+      if (e.value(nome)) return e.key;
+    }
+    return null;
   }
 
   /// Monta as estatísticas por linha (LUXO/VILLAMOR/BANGALÔ) a partir de um
@@ -104,15 +120,22 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     setState(() => _carregando = true);
     try {
       final imoveis = await _fs.getImoveis();
+      // contratosEfetivos já mantém SOMENTE contratos com status Ativo.
       final contratos = contratosEfetivos(await _fs.getContratos());
-      final matheus =
-          contratos.where((c) => _ehMatheus(c.nomeComprador)).toList();
-      final outros =
-          contratos.where((c) => !_ehMatheus(c.nomeComprador)).toList();
+      final outros = contratos
+          .where((c) => _clienteSeparado(c.nomeComprador) == null)
+          .toList();
+      final separados = <String, Map<String, _LinhaStats>>{};
+      for (final rotulo in _clientesSeparados.keys) {
+        final doCliente = contratos
+            .where((c) => _clienteSeparado(c.nomeComprador) == rotulo)
+            .toList();
+        separados[rotulo] = _montarStats(imoveis, doCliente);
+      }
       if (!mounted) return;
       setState(() {
         _stats = _montarStats(imoveis, outros);
-        _statsMatheus = _montarStats(imoveis, matheus);
+        _separados = separados;
         _carregado = true;
         _carregando = false;
       });
@@ -162,7 +185,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             const SizedBox(height: 12),
             _cardLinha(cs, 'BANGALÔ', bangalo, Colors.brown.shade600),
           ],
-          _blocoMatheus(cs),
+          for (final e in _separados.entries) _blocoSeparado(cs, e.key, e.value),
           const SizedBox(height: 16),
           _rodape(cs),
         ],
@@ -170,11 +193,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  /// Bloco separado com os contratos do Matheus Camelo (fora da conta acima).
-  Widget _blocoMatheus(ColorScheme cs) {
-    final luxo = _statsMatheus['LUXO'] ?? _LinhaStats();
-    final villamor = _statsMatheus['VILLAMOR'] ?? _LinhaStats();
-    final bangalo = _statsMatheus['BANGALÔ'] ?? _LinhaStats();
+  /// Bloco separado com os contratos de um cliente fora da conta principal.
+  Widget _blocoSeparado(
+      ColorScheme cs, String rotulo, Map<String, _LinhaStats> stats) {
+    final luxo = stats['LUXO'] ?? _LinhaStats();
+    final villamor = stats['VILLAMOR'] ?? _LinhaStats();
+    final bangalo = stats['BANGALÔ'] ?? _LinhaStats();
     final totalAp = luxo.apartamentosEquivalente +
         villamor.apartamentosEquivalente +
         bangalo.apartamentosEquivalente;
@@ -198,7 +222,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 Icon(Icons.person_outline, size: 18, color: cor),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text('Matheus Camelo (fora da conta acima)',
+                  child: Text('$rotulo (fora da conta acima)',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
