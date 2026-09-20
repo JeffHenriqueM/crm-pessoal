@@ -171,10 +171,37 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       return _prompt(cs);
     }
 
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          TabBar(
+            labelColor: cs.primary,
+            unselectedLabelColor: cs.onSurfaceVariant,
+            indicatorColor: cs.primary,
+            tabs: const [
+              Tab(text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
+              Tab(text: 'Prioridade', icon: Icon(Icons.priority_high_rounded)),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _tabApartamentos(cs),
+                _tabPrioridade(cs),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Aba: Apartamentos (contagens LUXO/VILLAMOR + clientes separados) ──────
+  Widget _tabApartamentos(ColorScheme cs) {
     final luxo = _stats['LUXO'] ?? _LinhaStats();
     final villamor = _stats['VILLAMOR'] ?? _LinhaStats();
     final bangalo = _stats['BANGALÔ'];
-
     return RefreshIndicator(
       onRefresh: _carregar,
       child: ListView(
@@ -198,10 +225,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ],
           for (final e in _separados.entries) _blocoSeparado(cs, e.key, e.value),
           const SizedBox(height: 16),
-          _blocoPrioridade(cs),
-          const SizedBox(height: 16),
           _rodape(cs),
         ],
+      ),
+    );
+  }
+
+  // ── Aba: Prioridade (top 30 por valor pago) ───────────────────────────────
+  Widget _tabPrioridade(ColorScheme cs) {
+    return RefreshIndicator(
+      onRefresh: _carregar,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [_blocoPrioridade(cs)],
       ),
     );
   }
