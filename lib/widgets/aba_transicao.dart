@@ -106,10 +106,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _acrescimoCtrl =
       TextEditingController(text: '20'); // correção + honorários (%)
   // Preço de venda por cota (aba Ganhos — dono do empreendimento).
-  final _precoBronzeCtrl = TextEditingController(text: '35000');
-  final _precoPrataCtrl = TextEditingController(text: '70000');
-  final _precoOuroCtrl = TextEditingController(text: '140000');
-  final _precoDiamanteCtrl = TextEditingController(text: '1820000');
+  // Defaults = média real por tier dos contratos ativos (valorFinanciado).
+  final _precoBronzeCtrl = TextEditingController(text: '33645');
+  final _precoPrataCtrl = TextEditingController(text: '58455');
+  final _precoOuroCtrl = TextEditingController(text: '124008');
+  final _precoDiamanteCtrl = TextEditingController(text: '1051700');
 
   /// Receita líquida anual do pool por apartamento (base temporadas).
   double _liqAnualApto(double taxa) {
@@ -1283,7 +1284,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
           ),
           const SizedBox(height: 6),
-          Text('Preços são estimativa — ajuste com a tabela de venda real.',
+          Text('Preços default = média real por tier dos contratos ativos '
+              '(Bronze R\$ 33.645 · Prata R\$ 58.455 · Ouro R\$ 124.008 · '
+              'Diamante R\$ 1.051.700). Edite para simular outro preço.',
               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
         ],
       ),
