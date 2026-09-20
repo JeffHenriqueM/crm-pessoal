@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/contrato_model.dart';
 import '../models/imovel_model.dart';
 import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
@@ -45,7 +46,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _fs = FirestoreService();
   bool _carregando = true; // carrega automaticamente ao abrir
   bool _carregado = false;
-  Map<String, _LinhaStats> _stats = {};
+  Map<String, _LinhaStats> _stats = {}; // sem os contratos do Matheus Camelo
+  Map<String, _LinhaStats> _statsMatheus = {}; // só os do Matheus Camelo
 
   @override
   void initState() {
@@ -53,46 +55,64 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _carregar();
   }
 
+  /// Cliente cujos contratos ficam FORA da conta principal e são somados à
+  /// parte (pedido do gestor).
+  static bool _ehMatheus(String nome) {
+    final n = nome.toUpperCase();
+    return n.contains('MATHEUS') && n.contains('CAMELO');
+  }
+
+  /// Monta as estatísticas por linha (LUXO/VILLAMOR/BANGALÔ) a partir de um
+  /// conjunto de contratos.
+  Map<String, _LinhaStats> _montarStats(
+      List<Imovel> imoveis, List<Contrato> contratos) {
+    final resumo = analisarEmpreendimento(imoveis, contratos);
+    final map = <String, _LinhaStats>{};
+    for (final a in resumo.imoveis) {
+      final linha = linhaProduto(a.imovel.tipo);
+      final s = map.putIfAbsent(linha, () => _LinhaStats());
+      s.totalUnidades++;
+      // Cotas vendidas somam no bucket do tier do imóvel (cada imóvel tem um).
+      switch (a.tier) {
+        case TierCota.bronze:
+          s.cotasBronze += a.cotasVendidas;
+          break;
+        case TierCota.prata:
+          s.cotasPrata += a.cotasVendidas;
+          break;
+        case TierCota.ouro:
+          s.cotasOuro += a.cotasVendidas;
+          break;
+        case TierCota.diamante:
+          s.cotasDiamante += a.cotasVendidas;
+          break;
+        case TierCota.integral:
+          s.cotasIntegral += a.cotasVendidas;
+          break;
+        case null:
+          break; // sem venda / tier indefinido
+      }
+      if (a.situacao != SituacaoImovel.indefinido) {
+        s.unidadesVendidas++;
+        if (a.situacao == SituacaoImovel.esgotado) s.esgotadas++;
+      }
+    }
+    return map;
+  }
+
   Future<void> _carregar() async {
     setState(() => _carregando = true);
     try {
       final imoveis = await _fs.getImoveis();
       final contratos = contratosEfetivos(await _fs.getContratos());
-      final resumo = analisarEmpreendimento(imoveis, contratos);
-
-      final map = <String, _LinhaStats>{};
-      for (final a in resumo.imoveis) {
-        final linha = linhaProduto(a.imovel.tipo);
-        final s = map.putIfAbsent(linha, () => _LinhaStats());
-        s.totalUnidades++;
-        // Cotas vendidas somam no bucket do tier do imóvel (cada imóvel tem um).
-        switch (a.tier) {
-          case TierCota.bronze:
-            s.cotasBronze += a.cotasVendidas;
-            break;
-          case TierCota.prata:
-            s.cotasPrata += a.cotasVendidas;
-            break;
-          case TierCota.ouro:
-            s.cotasOuro += a.cotasVendidas;
-            break;
-          case TierCota.diamante:
-            s.cotasDiamante += a.cotasVendidas;
-            break;
-          case TierCota.integral:
-            s.cotasIntegral += a.cotasVendidas;
-            break;
-          case null:
-            break; // sem venda / tier indefinido
-        }
-        if (a.situacao != SituacaoImovel.indefinido) {
-          s.unidadesVendidas++;
-          if (a.situacao == SituacaoImovel.esgotado) s.esgotadas++;
-        }
-      }
+      final matheus =
+          contratos.where((c) => _ehMatheus(c.nomeComprador)).toList();
+      final outros =
+          contratos.where((c) => !_ehMatheus(c.nomeComprador)).toList();
       if (!mounted) return;
       setState(() {
-        _stats = map;
+        _stats = _montarStats(imoveis, outros);
+        _statsMatheus = _montarStats(imoveis, matheus);
         _carregado = true;
         _carregando = false;
       });
@@ -142,9 +162,70 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             const SizedBox(height: 12),
             _cardLinha(cs, 'BANGALÔ', bangalo, Colors.brown.shade600),
           ],
+          _blocoMatheus(cs),
           const SizedBox(height: 16),
           _rodape(cs),
         ],
+      ),
+    );
+  }
+
+  /// Bloco separado com os contratos do Matheus Camelo (fora da conta acima).
+  Widget _blocoMatheus(ColorScheme cs) {
+    final luxo = _statsMatheus['LUXO'] ?? _LinhaStats();
+    final villamor = _statsMatheus['VILLAMOR'] ?? _LinhaStats();
+    final bangalo = _statsMatheus['BANGALÔ'] ?? _LinhaStats();
+    final totalAp = luxo.apartamentosEquivalente +
+        villamor.apartamentosEquivalente +
+        bangalo.apartamentosEquivalente;
+    if (totalAp == 0) return const SizedBox.shrink();
+
+    final cor = Colors.deepPurple.shade400;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cor.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cor.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.person_outline, size: 18, color: cor),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('Matheus Camelo (fora da conta acima)',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: cor)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('${_fmtAp(totalAp)} apartamentos',
+                style: TextStyle(
+                    fontSize: 28, fontWeight: FontWeight.bold, color: cor)),
+            const Divider(height: 20),
+            if (luxo.apartamentosEquivalente > 0)
+              _linhaInfo(
+                  'LUXO', _fmtAp(luxo.apartamentosEquivalente), cs),
+            if (villamor.apartamentosEquivalente > 0)
+              _linhaInfo(
+                  'VILLAMOR', _fmtAp(villamor.apartamentosEquivalente), cs),
+            if (bangalo.apartamentosEquivalente > 0)
+              _linhaInfo(
+                  'Bangalô', _fmtAp(bangalo.apartamentosEquivalente), cs),
+            _linhaInfo(
+                'Cotas (contratos)',
+                '${luxo.cotasVendidas + villamor.cotasVendidas + bangalo.cotasVendidas}',
+                cs),
+          ],
+        ),
       ),
     );
   }
