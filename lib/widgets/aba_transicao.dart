@@ -64,10 +64,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
 
   // ── Temporadas (aba Pool): só Média e Alta (o hotel não tem baixa) ─────────
-  final _altaSemCtrl = TextEditingController(text: '20'); // semanas
+  // Movimento alto: mais semanas de alta que de média.
+  final _altaSemCtrl = TextEditingController(text: '32'); // semanas
   final _altaDiaCtrl = TextEditingController(text: '750'); // diária (R$)
   final _altaOcupCtrl = TextEditingController(text: '90'); // ocupação (%)
-  final _medSemCtrl = TextEditingController(text: '32');
+  final _medSemCtrl = TextEditingController(text: '20');
   final _medDiaCtrl = TextEditingController(text: '550');
   final _medOcupCtrl = TextEditingController(text: '70');
 
@@ -1501,9 +1502,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
           ]),
           const SizedBox(height: 4),
-          Text('Cada cota reveza: um ano cai em alta, outro em média. A tabela '
-              'mostra o que ela recebe num ano de cada tipo e a média por ano '
-              '(líquido da taxa, antes do condomínio).',
+          Text('Só o Bronze (1 semana) reveza — um ano em alta, outro em '
+              'média. Prata (1 alta + 1 média) e Ouro (2 alta + 2 média) '
+              'recebem as duas temporadas todo ano. Valores líquidos da taxa, '
+              'antes do condomínio.',
               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
           // ── Parâmetros por temporada ──
@@ -1603,10 +1605,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Revezamento: assume as semanas da cota caindo todas em alta num ano '
-            'e todas em média no outro; "Média/ano" é a média do ciclo. '
-            'Diamante/Integral possui o apartamento inteiro — recebe todas as '
-            'semanas (alta + média) todo ano, não reveza.',
+            'Bronze reveza (1 semana): num ano recebe a parte alta, no outro a '
+            'parte média — "Recebe/ano" é a média do ciclo. Prata e Ouro têm '
+            'composição fixa (alta + média) e recebem as duas todo ano. '
+            'Diamante/Integral possui o apartamento inteiro.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ],
@@ -1615,37 +1617,41 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   }
 
   Widget _tabelaCotaTemporada(ColorScheme cs, List<double> valorSemana) {
-    final n = valorSemana.length;
-    final mediaSemana =
-        n > 0 ? valorSemana.reduce((a, b) => a + b) / n : 0.0;
+    final valAlta = valorSemana.isNotEmpty ? valorSemana[0] : 0.0;
+    final valMedia = valorSemana.length > 1 ? valorSemana[1] : 0.0;
 
-    TableRow linha(String cota, int semanasCota, {bool cabecalho = false}) {
-      Widget cel(String txt, {bool destaque = false, Color? cor}) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Text(txt,
-                style: TextStyle(
-                    fontSize: cabecalho ? 11 : 12,
-                    fontWeight: cabecalho || destaque
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: cabecalho ? cs.onSurfaceVariant : cor)),
-          );
-      if (cabecalho) {
-        return TableRow(
-          decoration: BoxDecoration(color: cs.surfaceContainerHighest),
-          children: [
-            cel('Cota'),
-            for (final t in _temporadas) cel('Ano em ${t.$1}'),
-            cel('Média/ano'),
-          ],
+    // (rótulo, composição, semanas de alta, semanas de média, reveza?)
+    final cotas = <(String, String, int, int, bool)>[
+      ('Bronze', '1 sem · reveza', 1, 1, true),
+      ('Prata', '1 alta + 1 média', 1, 1, false),
+      ('Ouro', '2 alta + 2 média', 2, 2, false),
+    ];
+
+    Widget cel(String txt,
+            {bool cabecalho = false, bool destaque = false, Color? cor}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Text(txt,
+              style: TextStyle(
+                  fontSize: cabecalho ? 11 : 12,
+                  fontWeight: cabecalho || destaque
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: cabecalho ? cs.onSurfaceVariant : cor)),
         );
-      }
+
+    TableRow linhaCota(String rotulo, String comp, int semA, int semM,
+        bool reveza) {
+      final parteAlta = semA * valAlta;
+      final parteMedia = semM * valMedia;
+      final recebeAno =
+          reveza ? (parteAlta + parteMedia) / 2 : parteAlta + parteMedia;
       return TableRow(children: [
-        cel(cota, destaque: true),
-        for (var i = 0; i < n; i++)
-          cel(_moeda.format(semanasCota * valorSemana[i])),
-        cel(_moeda.format(semanasCota * mediaSemana),
-            destaque: true, cor: cs.primary),
+        cel(rotulo, destaque: true),
+        cel(comp),
+        cel(_moeda.format(parteAlta)),
+        cel(_moeda.format(parteMedia)),
+        cel(_moeda.format(recebeAno), destaque: true, cor: cs.primary),
       ]);
     }
 
@@ -1658,13 +1664,23 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       child: Table(
         border: TableBorder.symmetric(
             inside: BorderSide(color: cs.outlineVariant)),
-        columnWidths: const {0: FlexColumnWidth(1.1)},
+        columnWidths: const {
+          0: FlexColumnWidth(0.9),
+          1: FlexColumnWidth(1.4),
+        },
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: [
-          linha('', 0, cabecalho: true),
-          // Só as cotas fracionadas revezam (Diamante/Integral fica à parte).
-          for (final t in _tiers)
-            if (t.$2 > 1) linha(t.$1, 52 ~/ t.$2),
+          TableRow(
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+            children: [
+              cel('Cota', cabecalho: true),
+              cel('Composição', cabecalho: true),
+              cel('Alta', cabecalho: true),
+              cel('Média', cabecalho: true),
+              cel('Recebe/ano', cabecalho: true),
+            ],
+          ),
+          for (final c in cotas) linhaCota(c.$1, c.$2, c.$3, c.$4, c.$5),
         ],
       ),
     );
