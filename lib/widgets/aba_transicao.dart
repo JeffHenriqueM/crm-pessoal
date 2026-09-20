@@ -60,8 +60,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _hotelCtrl = TextEditingController(text: '100'); // aptos no hotel
   final _poolCtrl = TextEditingController(text: '30'); // aptos no pool
   final _diariaCtrl = TextEditingController(text: '550'); // diária média (R$)
-  final _taxaCtrl = TextEditingController(text: '30'); // taxa administração (%)
+  final _taxaCtrl = TextEditingController(text: '15'); // taxa administração (%)
   static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
+  // Cenários de participação da multipropriedade no hotel (fração dos aptos).
+  static const List<(String, double)> _cenariosMP = [
+    ('Multipropriedade = 50% do hotel', 0.5),
+    ('Multipropriedade = 100% do hotel', 1.0),
+  ];
 
   // ── Custos / Ganhos / Devoluções ──────────────────────────────────────────
   final _custoCondoCtrl =
@@ -662,7 +667,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final hotel = _parse(_hotelCtrl, 100);
     final pool = _parse(_poolCtrl, 30);
     final diaria = _parse(_diariaCtrl, 550);
-    final taxa = _parse(_taxaCtrl, 30) / 100.0; // fração
+    final taxa = _parse(_taxaCtrl, 15) / 100.0; // fração
     const diasMes = 30.0;
 
     return ListView(
@@ -825,7 +830,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   Widget _tabCondominio(ColorScheme cs) {
     final custo = _parse(_custoCondoCtrl, 400000);
     final aptos = _parse(_hotelCtrl, 100);
-    final condoApto = aptos > 0 ? custo / aptos : 0.0;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -835,9 +839,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
         const SizedBox(height: 4),
         Text(
-          'Cenário negativo: quanto cada estilo de cota pagaria de condomínio se '
-          'o custo mensal do hotel for alto. O custo é rateado por apartamento e, '
-          'dentro dele, pela fração de cada cota.',
+          'Cenário negativo: os apartamentos de multipropriedade absorvem o '
+          'custo mensal do hotel. Projetado com a MP em 50% e em 100% do hotel '
+          '— quanto menos aptos MP, mais cada um (e cada cota) paga.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 14),
@@ -850,33 +854,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ],
         ),
         const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: cs.primary.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Condomínio por apartamento',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              Text('${_moeda.format(condoApto)} / mês',
-                  style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: cs.primary)),
-              Text('${_moeda.format(condoApto * 12)} / ano  ·  '
-                  '${_moeda.format(custo)} ÷ ${aptos.toStringAsFixed(0)} aptos',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        for (final t in _tiers) ...[
-          _cardCondoTier(cs, t.$1, t.$2, t.$3, condoApto),
-          const SizedBox(height: 10),
+        for (final cen in _cenariosMP) ...[
+          _cenarioCondo(cs, cen.$1, aptos * cen.$2, custo),
+          const SizedBox(height: 16),
         ],
         Container(
           padding: const EdgeInsets.all(12),
@@ -885,16 +865,58 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            'Como calcula: custo mensal ÷ nº de apartamentos = condomínio por '
-            'apartamento. Cada cota paga a sua fração: Bronze 1/52, Prata 1/26, '
-            'Ouro 1/13, Diamante/Integral o apartamento inteiro. O valor anual é '
-            'o mensal × 12 (referência — o rateio real pode ser cobrado por '
-            'período de uso). Ajuste o custo e o nº de aptos com os números '
-            'reais do hotel.',
+            'Como calcula: custo mensal ÷ nº de aptos de multipropriedade = '
+            'condomínio por apartamento. Cada cota paga a sua fração: Bronze '
+            '1/52, Prata 1/26, Ouro 1/13, Diamante/Integral o apartamento '
+            'inteiro. Cenário negativo assume que só os aptos MP cobrem o custo '
+            'do hotel (por isso 50% dobra o valor por apto). Anual = mensal × 12 '
+            '(referência). Ajuste custo e nº de aptos com os números reais.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
       ],
+    );
+  }
+
+  /// Bloco de um cenário de condomínio (MP em 50% ou 100% do hotel).
+  Widget _cenarioCondo(
+      ColorScheme cs, String titulo, double aptosMP, double custo) {
+    final condoApto = aptosMP > 0 ? custo / aptosMP : 0.0;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.apartment_rounded, size: 18, color: cs.primary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(titulo,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: cs.primary)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text('${_moeda.format(condoApto)} / apto / mês',
+              style: TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.bold, color: cs.primary)),
+          Text('${aptosMP.toStringAsFixed(0)} aptos MP  ·  '
+              '${_moeda.format(condoApto * 12)} / apto / ano',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          for (final t in _tiers) ...[
+            _cardCondoTier(cs, t.$1, t.$2, t.$3, condoApto),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
     );
   }
 
@@ -944,10 +966,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // ── Aba: Ganhos do dono (renda do pool − condomínio) ──────────────────────
   Widget _tabGanhos(ColorScheme cs) {
     final diaria = _parse(_diariaCtrl, 550);
-    final taxa = _parse(_taxaCtrl, 30) / 100.0;
+    final taxa = _parse(_taxaCtrl, 15) / 100.0;
     final custo = _parse(_custoCondoCtrl, 400000);
     final aptos = _parse(_hotelCtrl, 100);
-    final condoApto = aptos > 0 ? custo / aptos : 0.0;
     final minPago = _parse(_minPagoCtrl, 30);
     final elegiveis = _pctPagos.where((p) => p >= minPago).length;
     const diasMes = 30.0;
@@ -961,7 +982,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         const SizedBox(height: 4),
         Text(
           'Resultado do proprietário: renda líquida do pool menos o condomínio '
-          'do apartamento. Por cota, o resultado é dividido pela fração do tier.',
+          'do apartamento. Projetado com a MP em 50% e em 100% do hotel — o '
+          'condomínio/apto muda com o cenário. Por cota, o resultado é dividido '
+          'pela fração do tier.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 14),
@@ -970,10 +993,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           runSpacing: 12,
           children: [
             _campoNum('Diária média', _diariaCtrl, sufixo: 'R\$'),
-            _campoNum('Taxa administração', _taxaCtrl, sufixo: '%'),
+            _campoNum('Taxa do pool', _taxaCtrl, sufixo: '%'),
             _campoNum('Condomínio / mês', _custoCondoCtrl, sufixo: 'R\$'),
             _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
-            _campoNum('Mín. pago p/ pool', _minPagoCtrl, sufixo: '%'),
+            _campoNum('Entrada mín. p/ usar', _minPagoCtrl, sufixo: '%'),
           ],
         ),
         const SizedBox(height: 12),
@@ -992,10 +1015,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Regra dos ${minPago.toStringAsFixed(0)}%: para entrar no pool '
-                  'e começar a usar, o dono precisa ter pago ao menos '
-                  '${minPago.toStringAsFixed(0)}% da cota. Hoje '
-                  '$elegiveis de $_ativosCount contratos ativos são elegíveis.',
+                  'Regra da entrada: para começar a usar (e entrar no pool), o '
+                  'dono precisa ter pago a entrada de ${minPago.toStringAsFixed(0)}% '
+                  'da cota. Hoje $elegiveis de $_ativosCount contratos ativos já '
+                  'atingiram esse mínimo.',
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
@@ -1003,9 +1026,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ),
         ),
         const SizedBox(height: 16),
-        for (final occ in _ocupacoes) ...[
-          _cardGanho(cs, occ, diaria, taxa, condoApto, diasMes),
-          const SizedBox(height: 12),
+        for (final cen in _cenariosMP) ...[
+          _cenarioGanho(
+              cs, cen.$1, aptos * cen.$2, custo, diaria, taxa, diasMes),
+          const SizedBox(height: 16),
         ],
         Container(
           padding: const EdgeInsets.all(12),
@@ -1015,13 +1039,42 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ),
           child: Text(
             'Como calcula: renda líquida do pool/apto = 30 × ocupação × diária × '
-            '(1 − taxa). Resultado do dono = renda líquida − condomínio/apto. '
-            'Por cota, o resultado do apartamento é dividido pela fração do tier '
-            '(Bronze ÷52, Prata ÷26, Ouro ÷13, Diamante inteiro). Valores '
-            'negativos (em vermelho) = a ocupação não cobre o condomínio.',
+            '(1 − taxa). Resultado do dono = renda líquida − condomínio/apto '
+            '(o condomínio/apto vem do cenário MP 50% ou 100%). Por cota, o '
+            'resultado do apartamento é dividido pela fração do tier (Bronze '
+            '÷52, Prata ÷26, Ouro ÷13, Diamante inteiro). Valores negativos '
+            '(em vermelho) = a ocupação não cobre o condomínio.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
+      ],
+    );
+  }
+
+  /// Bloco de um cenário de ganhos (MP em 50% ou 100% do hotel).
+  Widget _cenarioGanho(ColorScheme cs, String titulo, double aptosMP,
+      double custo, double diaria, double taxa, double diasMes) {
+    final condoApto = aptosMP > 0 ? custo / aptosMP : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Icon(Icons.apartment_rounded, size: 18, color: cs.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+                '$titulo · condomínio ${_moeda.format(condoApto)}/apto',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: cs.primary)),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        for (final occ in _ocupacoes) ...[
+          _cardGanho(cs, occ, diaria, taxa, condoApto, diasMes),
+          const SizedBox(height: 10),
+        ],
       ],
     );
   }
