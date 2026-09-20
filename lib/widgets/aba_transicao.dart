@@ -69,12 +69,33 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   ];
 
   // ── Custos / Ganhos / Devoluções ──────────────────────────────────────────
-  final _custoCondoCtrl =
-      TextEditingController(text: '400000'); // custo mensal do condomínio (R$)
+  // Composição do custo mensal do hotel (o total é a soma destes itens).
+  final _custoEnergiaCtrl = TextEditingController(text: '60000');
+  final _custoAguaCtrl = TextEditingController(text: '25000');
+  final _custoPessoalCtrl = TextEditingController(text: '120000');
+  final _custoManutCtrl = TextEditingController(text: '20000');
+  final _custoLimpezaCtrl = TextEditingController(text: '15000');
+  final _custoAdmCtrl = TextEditingController(text: '20000');
+  final _custoOutrosCtrl = TextEditingController(text: '10000');
   final _minPagoCtrl =
       TextEditingController(text: '30'); // % mínimo pago p/ entrar no pool
   final _naoAceitaCtrl =
       TextEditingController(text: '15'); // % que não aceita a transição
+
+  /// Itens da composição do custo mensal (rótulo → controlador).
+  List<(String, TextEditingController)> get _linhasCusto => [
+        ('Energia', _custoEnergiaCtrl),
+        ('Água', _custoAguaCtrl),
+        ('Funcionários (folha)', _custoPessoalCtrl),
+        ('Manutenção', _custoManutCtrl),
+        ('Limpeza / lavanderia', _custoLimpezaCtrl),
+        ('Administração', _custoAdmCtrl),
+        ('Outros', _custoOutrosCtrl),
+      ];
+
+  /// Custo mensal total do hotel = soma dos itens da composição.
+  double get _custoMensal =>
+      _linhasCusto.fold(0.0, (s, l) => s + _parse(l.$2, 0));
 
   // Dados reais dos contratos ativos (carregados em _carregar).
   double _exposicaoDevolucao = 0; // soma do valorIntegralizado dos ativos
@@ -101,7 +122,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _poolCtrl.dispose();
     _diariaCtrl.dispose();
     _taxaCtrl.dispose();
-    _custoCondoCtrl.dispose();
+    for (final l in _linhasCusto) {
+      l.$2.dispose();
+    }
     _minPagoCtrl.dispose();
     _naoAceitaCtrl.dispose();
     super.dispose();
@@ -828,7 +851,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   // ── Aba: Condomínio (rateio do custo mensal por estilo de cota) ────────────
   Widget _tabCondominio(ColorScheme cs) {
-    final custo = _parse(_custoCondoCtrl, 400000);
+    final custo = _custoMensal;
     final aptos = _parse(_hotelCtrl, 100);
 
     return ListView(
@@ -845,14 +868,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _campoNum('Custo mensal total', _custoCondoCtrl, sufixo: 'R\$'),
-            _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
-          ],
-        ),
+        _composicaoCusto(cs, custo),
+        const SizedBox(height: 14),
+        _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
         const SizedBox(height: 14),
         for (final cen in _cenariosMP) ...[
           _cenarioCondo(cs, cen.$1, aptos * cen.$2, custo),
@@ -920,6 +938,57 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
+  /// Composição editável do custo mensal do hotel (soma dos itens).
+  Widget _composicaoCusto(ColorScheme cs, double total) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.receipt_long_outlined, size: 18, color: cs.primary),
+            const SizedBox(width: 6),
+            const Text('Composição do custo mensal',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 4),
+          Text('Some os custos reais do hotel. O total abaixo alimenta o '
+              'rateio e a aba Ganhos.',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final l in _linhasCusto)
+                _campoNum(l.$1, l.$2, sufixo: 'R\$'),
+            ],
+          ),
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Custo mensal total',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              Text(_moeda.format(total),
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary)),
+            ],
+          ),
+          Text('${_moeda.format(total * 12)} / ano',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
   Widget _cardCondoTier(
       ColorScheme cs, String rotulo, int divisor, Color cor, double condoApto) {
     final mes = condoApto / divisor;
@@ -967,7 +1036,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   Widget _tabGanhos(ColorScheme cs) {
     final diaria = _parse(_diariaCtrl, 550);
     final taxa = _parse(_taxaCtrl, 15) / 100.0;
-    final custo = _parse(_custoCondoCtrl, 400000);
+    final custo = _custoMensal;
     final aptos = _parse(_hotelCtrl, 100);
     final minPago = _parse(_minPagoCtrl, 30);
     final elegiveis = _pctPagos.where((p) => p >= minPago).length;
@@ -994,10 +1063,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           children: [
             _campoNum('Diária média', _diariaCtrl, sufixo: 'R\$'),
             _campoNum('Taxa do pool', _taxaCtrl, sufixo: '%'),
-            _campoNum('Condomínio / mês', _custoCondoCtrl, sufixo: 'R\$'),
             _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
             _campoNum('Entrada mín. p/ usar', _minPagoCtrl, sufixo: '%'),
           ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Custo mensal do hotel: ${_moeda.format(custo)} '
+          '(edite a composição na aba Condomínio).',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         Container(
