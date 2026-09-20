@@ -1507,6 +1507,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 color: cs.onSurfaceVariant)),
         const SizedBox(height: 6),
         _tabelaRoi(cs, liquido: true),
+        const SizedBox(height: 16),
+        _tituloSecao(cs, 'Fluxo de caixa líquido / mês (mês 1)',
+            Icons.account_balance_wallet_outlined),
+        const SizedBox(height: 4),
+        Text(
+          'Junta tudo pelo tier: repasse do pool − parcela da dívida (SAC, '
+          'mês 1) − condomínio. Usa o preço, a entrada, o prazo e os juros '
+          'acima. No SAC a parcela cai com o tempo, então o fluxo melhora nos '
+          'meses seguintes.',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        _tabelaFluxo(cs),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -1684,6 +1697,94 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       cel(capitalEntrada > 0 ? '${roiEntrada.toStringAsFixed(1)}%' : '—',
           destaque: true, cor: cs.primary),
     ]);
+  }
+
+  /// Fluxo de caixa líquido mensal por tier (mês 1): repasse − parcela SAC −
+  /// condomínio, usando preço, entrada, prazo e juros da aba Comprador.
+  Widget _tabelaFluxo(ColorScheme cs) {
+    final taxa = _parse(_taxaCtrl, 15) / 100.0;
+    final valA = _temporadas.isNotEmpty
+        ? 7 *
+            (_parse(_temporadas[0].$4, 0) / 100) *
+            _parse(_temporadas[0].$3, 0) *
+            (1 - taxa)
+        : 0.0;
+    final valM = _temporadas.length > 1
+        ? 7 *
+            (_parse(_temporadas[1].$4, 0) / 100) *
+            _parse(_temporadas[1].$3, 0) *
+            (1 - taxa)
+        : 0.0;
+    final liqAnual = _liqAnualApto(taxa);
+    final aptos = _parse(_hotelCtrl, 100);
+    final condoAptoMes = aptos > 0 ? _custoMensal / aptos : 0.0;
+    final entrada = _parse(_minPagoCtrl, 30) / 100.0;
+    final n = _parse(_prazoCtrl, 120);
+    final i = _parse(_jurosCtrl, 0.68) / 100.0;
+
+    // (rótulo, ganho bruto anual do pool, preço, divisor do condomínio).
+    final tiers = <(String, double, double, int)>[
+      ('Bronze', (valA + valM) / 2, _parse(_precoBronzeCtrl, 0), 52),
+      ('Prata', valA + valM, _parse(_precoPrataCtrl, 0), 26),
+      ('Ouro', 2 * (valA + valM), _parse(_precoOuroCtrl, 0), 13),
+      ('Diamante', liqAnual, _parse(_precoDiamanteCtrl, 0), 1),
+    ];
+
+    Widget cel(String txt,
+            {bool cabecalho = false, bool destaque = false, Color? cor}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Text(txt,
+              style: TextStyle(
+                  fontSize: cabecalho ? 10.5 : 11.5,
+                  fontWeight: cabecalho || destaque
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: cabecalho ? cs.onSurfaceVariant : cor)),
+        );
+
+    TableRow linha(String rotulo, double ganhoAno, double preco, int div) {
+      final repasseMes = ganhoAno / 12;
+      final condoMes = condoAptoMes / div;
+      final financiado = preco * (1 - entrada);
+      final parcela = n > 0 ? financiado / n + financiado * i : financiado;
+      final fluxo = repasseMes - parcela - condoMes;
+      final cor = fluxo >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+      return TableRow(children: [
+        cel(rotulo, destaque: true),
+        cel(_moeda.format(repasseMes)),
+        cel('− ${_moeda.format(parcela)}'),
+        cel('− ${_moeda.format(condoMes)}'),
+        cel(_moeda.format(fluxo), destaque: true, cor: cor),
+      ]);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Table(
+        border: TableBorder.symmetric(
+            inside: BorderSide(color: cs.outlineVariant)),
+        columnWidths: const {0: FlexColumnWidth(0.8)},
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: [
+          TableRow(
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+            children: [
+              cel('Cota', cabecalho: true),
+              cel('Repasse', cabecalho: true),
+              cel('Parcela', cabecalho: true),
+              cel('Condomínio', cabecalho: true),
+              cel('Fluxo/mês', cabecalho: true),
+            ],
+          ),
+          for (final t in tiers) linha(t.$1, t.$2, t.$3, t.$4),
+        ],
+      ),
+    );
   }
 
   // ── Aba: Devoluções (exposição de quem não aceitar a transição) ───────────
