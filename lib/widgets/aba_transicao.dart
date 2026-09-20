@@ -159,9 +159,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             .toList();
         separados[rotulo] = _montarStats(imoveis, doCliente);
       }
-      // Prioridade de atendimento: todos os contratos ativos (inclui os de
-      // "pavimento"/avulsos) ordenados pelo valor já pago (integralizado).
-      final top = List<Contrato>.from(contratos)
+      // Prioridade de atendimento: contratos ativos (inclui os de "pavimento"/
+      // avulsos), EXCETO os clientes tratados à parte (Matheus/Reynaldo),
+      // ordenados pelo valor já pago (integralizado).
+      final top = contratos
+          .where((c) => _clienteSeparado(c.nomeComprador) == null)
+          .toList()
         ..sort((a, b) => b.valorIntegralizado.compareTo(a.valorIntegralizado));
       if (!mounted) return;
       setState(() {
@@ -193,7 +196,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         children: [
           TabBar(
@@ -207,6 +210,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               Tab(text: 'Prioridade', icon: Icon(Icons.priority_high_rounded)),
               Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
               Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
+              Tab(text: 'Plano', icon: Icon(Icons.checklist_rounded)),
             ],
           ),
           Expanded(
@@ -216,6 +220,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 _tabPrioridade(cs),
                 _tabArgumentos(cs),
                 _tabPool(cs),
+                _tabPlano(cs),
               ],
             ),
           ),
@@ -381,6 +386,236 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         const SizedBox(height: 8),
         for (final qr in _objeoesRespostas) _objecaoTile(cs, qr[0], qr[1]),
       ],
+    );
+  }
+
+  // ── Aba: Plano (estratégia de transição segura) ───────────────────────────
+  // (título, descrição) das estratégias.
+  static const List<List<String>> _estrategias = [
+    [
+      'Começar pelos maiores valores',
+      'Priorize os contratos de maior valor pago (aba Prioridade). Garantir o '
+          'buy-in dos maiores investidores primeiro reduz o risco e cria '
+          'referências de peso para os demais.',
+    ],
+    [
+      'Transição inicial de quem solicitar',
+      'Abra a migração voluntária: quem pedir, migra primeiro. Gera casos de '
+          'sucesso e prova social para convencer os indecisos, sem pressão.',
+    ],
+    [
+      'Definir o apartamento destino de cada um',
+      'Antes de negociar, tenha um mapa de qual apartamento do hotel fica para '
+          'cada contrato, respeitando a equivalência de categoria (LUXO/'
+          'VILLAMOR e tier). Critério transparente evita disputa.',
+    ],
+    [
+      'Migrar em ondas, não todos de uma vez',
+      'Faça em lotes pequenos, valide o processo (contrato, assinatura, '
+          'entrega) e ajuste antes de escalar.',
+    ],
+    [
+      'Termo de troca bem redigido (jurídico)',
+      'Aditivo/contrato que preserve o valor pago, a cota/semana e todos os '
+          'direitos. Assinatura digital para agilizar e registrar tudo.',
+    ],
+    [
+      'Oferecer visita ao hotel antes de assinar',
+      'Deixe o cliente conhecer a estrutura pronta. Ver o hotel funcionando '
+          'transforma a dúvida em desejo e derruba objeção.',
+    ],
+    [
+      'Comunicação transparente e proativa',
+      'Carta + reunião explicando o porquê, os benefícios e as garantias. '
+          'Antecipar a informação evita boato e desconfiança.',
+    ],
+    [
+      'Registrar tudo (auditoria)',
+      'Controle de quem migrou, quando e para qual apartamento. '
+          'Rastreabilidade protege a empresa e o cliente.',
+    ],
+  ];
+
+  // (pergunta do cliente, direcionamento de resposta).
+  static const List<List<String>> _perguntasClientes = [
+    [
+      'Todo apartamento do hotel será multipropriedade?',
+      'Defina e comunique claramente quais unidades entram na multipropriedade '
+          'e quais ficam de uso hoteleiro/pool. O cliente precisa saber que o '
+          'modelo dele é preservado.',
+    ],
+    [
+      'Terá festa todos os dias?',
+      'Alinhar expectativa: o hotel é um empreendimento em operação, com '
+          'programação e regras de convivência — não evento diário. Explicar a '
+          'experiência real que ele terá.',
+    ],
+    [
+      'O que vai virar o resort?',
+      'Ter uma resposta OFICIAL sobre o destino do resort em obras '
+          '(continuidade, outro uso, cronograma). Silêncio aqui gera '
+          'insegurança e boato.',
+    ],
+    [
+      'Vou poder escolher meu apartamento?',
+      'Explicar o critério de alocação (equivalência de categoria + ordem '
+          'definida) e quanto há de escolha real para o cliente.',
+    ],
+    [
+      'Minha cota / semana muda?',
+      'Não: a fração e o direito de uso são preservados. Reforçar isso por '
+          'escrito no termo de troca.',
+    ],
+    [
+      'Quando começo a usar e a receber do pool?',
+      'Deixar claro o marco: a partir da assinatura da troca, o uso e a '
+          'participação no pool começam (conforme as regras do pool).',
+    ],
+  ];
+
+  // (item a entender, nota).
+  static const List<List<String>> _aEntender = [
+    [
+      'Documentação p/ o hotel virar multipropriedade',
+      'Instituição do regime de multipropriedade (Lei 13.777/2018), convenção, '
+          'matrícula/averbação. CONFIRMAR com jurídico/cartório o que é exigido.',
+    ],
+    [
+      'Regras do pool de hospedagem',
+      'Adesão, forma de distribuição da receita, periodicidade, custos '
+          'descontados, prazo de permanência e regras de saída.',
+    ],
+    [
+      'Prestação de contas',
+      'Como e com que frequência o proprietário recebe o relatório de '
+          'ocupação/receita; transparência e comprovação.',
+    ],
+    [
+      'Capacidade x nº de contratos',
+      'Conferir se o hotel comporta todos os contratos a migrar (apartamentos '
+          'disponíveis vs contratos ativos por categoria).',
+    ],
+    [
+      'Tributação da renda do pool',
+      'IR sobre os rendimentos, emissão de notas e responsabilidades — alinhar '
+          'com a contabilidade.',
+    ],
+    [
+      'Cronograma e responsáveis',
+      'Definir fases, datas e quem conduz cada etapa (comercial, jurídico, '
+          'operação).',
+    ],
+  ];
+
+  Widget _tabPlano(ColorScheme cs) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.primaryContainer.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.flag_outlined, color: cs.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Plano para uma transição mais segura do resort (em obras) '
+                  'para o hotel (em operação). Documento vivo — vamos '
+                  'evoluindo.',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Icon(Icons.rocket_launch_outlined, color: cs.primary),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Estratégias para uma transição segura',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        for (final e in _estrategias) _cardTituloDesc(cs, e[0], e[1], cs.primary),
+        const SizedBox(height: 20),
+        Row(children: [
+          Icon(Icons.help_outline, color: Colors.orange.shade800),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Prováveis perguntas dos clientes',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        for (final q in _perguntasClientes) _objecaoTile(cs, q[0], q[1]),
+        const SizedBox(height: 20),
+        Row(children: [
+          Icon(Icons.fact_check_outlined, color: Colors.teal.shade700),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('A entender / pendências',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        for (final it in _aEntender)
+          _cardTituloDesc(cs, it[0], it[1], Colors.teal.shade700,
+              icone: Icons.radio_button_unchecked),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Itens jurídicos, fiscais e cartoriais devem ser confirmados com '
+            'advogado e contador antes de comunicar aos clientes.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cardTituloDesc(
+      ColorScheme cs, String titulo, String desc, Color cor,
+      {IconData icone = Icons.check_circle_outline}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cor.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icone, size: 18, color: cor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(titulo,
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(desc,
+                    style: TextStyle(
+                        fontSize: 12, color: cs.onSurfaceVariant, height: 1.35)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -634,7 +869,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ],
         ),
         const SizedBox(height: 2),
-        Text('Top 30 contratos ativos por valor pago (integralizado).',
+        Text(
+            'Top 30 contratos ativos por valor pago — exceto clientes tratados '
+            'à parte (Matheus / Reynaldo).',
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         const SizedBox(height: 8),
         Container(
