@@ -59,9 +59,30 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // ── Simulação do pool de hospedagem (aba Pool) ────────────────────────────
   final _hotelCtrl = TextEditingController(text: '100'); // aptos no hotel
   final _poolCtrl = TextEditingController(text: '30'); // aptos no pool
-  final _diariaCtrl = TextEditingController(text: '500'); // diária média (R$)
+  final _diariaCtrl = TextEditingController(text: '550'); // diária média (R$)
   final _taxaCtrl = TextEditingController(text: '30'); // taxa administração (%)
   static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
+
+  // ── Custos / Ganhos / Devoluções ──────────────────────────────────────────
+  final _custoCondoCtrl =
+      TextEditingController(text: '400000'); // custo mensal do condomínio (R$)
+  final _minPagoCtrl =
+      TextEditingController(text: '30'); // % mínimo pago p/ entrar no pool
+  final _naoAceitaCtrl =
+      TextEditingController(text: '15'); // % que não aceita a transição
+
+  // Dados reais dos contratos ativos (carregados em _carregar).
+  double _exposicaoDevolucao = 0; // soma do valorIntegralizado dos ativos
+  int _ativosCount = 0; // qtd de contratos ativos
+  List<double> _pctPagos = []; // % efetivo pago de cada contrato ativo
+
+  // Tiers de cota: (rótulo, cotas por apartamento, cor).
+  static final List<(String, int, Color)> _tiers = [
+    ('Bronze', 52, Color(0xFF9E6B3F)),
+    ('Prata', 26, Color(0xFF7A8390)),
+    ('Ouro', 13, Color(0xFFC9A227)),
+    ('Diamante / Integral', 1, Color(0xFF4A6FA5)),
+  ];
 
   @override
   void initState() {
@@ -75,6 +96,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _poolCtrl.dispose();
     _diariaCtrl.dispose();
     _taxaCtrl.dispose();
+    _custoCondoCtrl.dispose();
+    _minPagoCtrl.dispose();
+    _naoAceitaCtrl.dispose();
     super.dispose();
   }
 
@@ -166,11 +190,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           .where((c) => _clienteSeparado(c.nomeComprador) == null)
           .toList()
         ..sort((a, b) => b.valorIntegralizado.compareTo(a.valorIntegralizado));
+      // Exposição de devolução (pior caso) = tudo que já foi pago nos ativos.
+      // Elegibilidade ao pool: % efetivo pago de cada contrato ativo.
+      final exposicao =
+          contratos.fold<double>(0, (s, c) => s + c.valorIntegralizado);
+      final pctPagos = contratos.map((c) => c.percentualEfetivo).toList();
       if (!mounted) return;
       setState(() {
         _stats = _montarStats(imoveis, outros);
         _separados = separados;
         _top30 = top.take(30).toList();
+        _exposicaoDevolucao = exposicao;
+        _ativosCount = contratos.length;
+        _pctPagos = pctPagos;
         _carregado = true;
         _carregando = false;
       });
@@ -196,7 +228,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
 
     return DefaultTabController(
-      length: 5,
+      length: 8,
       child: Column(
         children: [
           TabBar(
@@ -210,6 +242,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               Tab(text: 'Prioridade', icon: Icon(Icons.priority_high_rounded)),
               Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
               Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
+              Tab(text: 'Condomínio', icon: Icon(Icons.receipt_long_outlined)),
+              Tab(text: 'Ganhos', icon: Icon(Icons.savings_outlined)),
+              Tab(text: 'Devoluções', icon: Icon(Icons.money_off_outlined)),
               Tab(text: 'Plano', icon: Icon(Icons.checklist_rounded)),
             ],
           ),
@@ -220,6 +255,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 _tabPrioridade(cs),
                 _tabArgumentos(cs),
                 _tabPool(cs),
+                _tabCondominio(cs),
+                _tabGanhos(cs),
+                _tabDevolucoes(cs),
                 _tabPlano(cs),
               ],
             ),
@@ -623,7 +661,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   Widget _tabPool(ColorScheme cs) {
     final hotel = _parse(_hotelCtrl, 100);
     final pool = _parse(_poolCtrl, 30);
-    final diaria = _parse(_diariaCtrl, 500);
+    final diaria = _parse(_diariaCtrl, 550);
     final taxa = _parse(_taxaCtrl, 30) / 100.0; // fração
     const diasMes = 30.0;
 
@@ -777,6 +815,422 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               (pool * diasMes * occ).toStringAsFixed(0), cs),
         ],
       ),
+    );
+  }
+
+  static final _moeda2 =
+      NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$ ', decimalDigits: 2);
+
+  // ── Aba: Condomínio (rateio do custo mensal por estilo de cota) ────────────
+  Widget _tabCondominio(ColorScheme cs) {
+    final custo = _parse(_custoCondoCtrl, 400000);
+    final aptos = _parse(_hotelCtrl, 100);
+    final condoApto = aptos > 0 ? custo / aptos : 0.0;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Rateio do condomínio por cota',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+        const SizedBox(height: 4),
+        Text(
+          'Cenário negativo: quanto cada estilo de cota pagaria de condomínio se '
+          'o custo mensal do hotel for alto. O custo é rateado por apartamento e, '
+          'dentro dele, pela fração de cada cota.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _campoNum('Custo mensal total', _custoCondoCtrl, sufixo: 'R\$'),
+            _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Condomínio por apartamento',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text('${_moeda.format(condoApto)} / mês',
+                  style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary)),
+              Text('${_moeda.format(condoApto * 12)} / ano  ·  '
+                  '${_moeda.format(custo)} ÷ ${aptos.toStringAsFixed(0)} aptos',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        for (final t in _tiers) ...[
+          _cardCondoTier(cs, t.$1, t.$2, t.$3, condoApto),
+          const SizedBox(height: 10),
+        ],
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Como calcula: custo mensal ÷ nº de apartamentos = condomínio por '
+            'apartamento. Cada cota paga a sua fração: Bronze 1/52, Prata 1/26, '
+            'Ouro 1/13, Diamante/Integral o apartamento inteiro. O valor anual é '
+            'o mensal × 12 (referência — o rateio real pode ser cobrado por '
+            'período de uso). Ajuste o custo e o nº de aptos com os números '
+            'reais do hotel.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cardCondoTier(
+      ColorScheme cs, String rotulo, int divisor, Color cor, double condoApto) {
+    final mes = condoApto / divisor;
+    final ano = mes * 12;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(rotulo,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: cor)),
+                Text(divisor == 1 ? 'apartamento inteiro' : '1/$divisor do apto',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('${_moeda2.format(mes)} / mês',
+                  style: TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.bold, color: cor)),
+              Text('${_moeda2.format(ano)} / ano',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Aba: Ganhos do dono (renda do pool − condomínio) ──────────────────────
+  Widget _tabGanhos(ColorScheme cs) {
+    final diaria = _parse(_diariaCtrl, 550);
+    final taxa = _parse(_taxaCtrl, 30) / 100.0;
+    final custo = _parse(_custoCondoCtrl, 400000);
+    final aptos = _parse(_hotelCtrl, 100);
+    final condoApto = aptos > 0 ? custo / aptos : 0.0;
+    final minPago = _parse(_minPagoCtrl, 30);
+    final elegiveis = _pctPagos.where((p) => p >= minPago).length;
+    const diasMes = 30.0;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Ganhos do dono',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+        const SizedBox(height: 4),
+        Text(
+          'Resultado do proprietário: renda líquida do pool menos o condomínio '
+          'do apartamento. Por cota, o resultado é dividido pela fração do tier.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _campoNum('Diária média', _diariaCtrl, sufixo: 'R\$'),
+            _campoNum('Taxa administração', _taxaCtrl, sufixo: '%'),
+            _campoNum('Condomínio / mês', _custoCondoCtrl, sufixo: 'R\$'),
+            _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
+            _campoNum('Mín. pago p/ pool', _minPagoCtrl, sufixo: '%'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.teal.shade700.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border:
+                Border.all(color: Colors.teal.shade700.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.verified_user_outlined,
+                  size: 18, color: Colors.teal.shade700),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Regra dos ${minPago.toStringAsFixed(0)}%: para entrar no pool '
+                  'e começar a usar, o dono precisa ter pago ao menos '
+                  '${minPago.toStringAsFixed(0)}% da cota. Hoje '
+                  '$elegiveis de $_ativosCount contratos ativos são elegíveis.',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        for (final occ in _ocupacoes) ...[
+          _cardGanho(cs, occ, diaria, taxa, condoApto, diasMes),
+          const SizedBox(height: 12),
+        ],
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Como calcula: renda líquida do pool/apto = 30 × ocupação × diária × '
+            '(1 − taxa). Resultado do dono = renda líquida − condomínio/apto. '
+            'Por cota, o resultado do apartamento é dividido pela fração do tier '
+            '(Bronze ÷52, Prata ÷26, Ouro ÷13, Diamante inteiro). Valores '
+            'negativos (em vermelho) = a ocupação não cobre o condomínio.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cardGanho(ColorScheme cs, double occ, double diaria, double taxa,
+      double condoApto, double diasMes) {
+    final poolLiqMes = diasMes * occ * diaria * (1 - taxa);
+    final resultadoMes = poolLiqMes - condoApto;
+    final resultadoAno = resultadoMes * 12;
+    final positivo = resultadoMes >= 0;
+    final cor = positivo ? Colors.green.shade700 : Colors.red.shade700;
+    final pct = (occ * 100).toStringAsFixed(0);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(positivo ? Icons.trending_up : Icons.trending_down,
+                  size: 18, color: cor),
+              const SizedBox(width: 8),
+              Text('Ocupação $pct%',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold, color: cor)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Resultado / apto / mês',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant)),
+                    Text(_moeda.format(resultadoMes),
+                        style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: cor)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Resultado / apto / ano',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant)),
+                    Text(_moeda.format(resultadoAno),
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          _linhaInfo('Renda líquida do pool / apto / mês',
+              _moeda.format(poolLiqMes), cs),
+          _linhaInfo(
+              'Condomínio / apto / mês', '− ${_moeda.format(condoApto)}', cs),
+          const SizedBox(height: 6),
+          Text('Resultado anual por cota',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant)),
+          const SizedBox(height: 2),
+          for (final t in _tiers)
+            _linhaInfo(t.$1, _moeda2.format(resultadoAno / t.$2), cs),
+        ],
+      ),
+    );
+  }
+
+  // ── Aba: Devoluções (exposição de quem não aceitar a transição) ───────────
+  Widget _tabDevolucoes(ColorScheme cs) {
+    final pct = _parse(_naoAceitaCtrl, 15) / 100.0;
+    final total = _exposicaoDevolucao;
+    final provavel = total * pct;
+    const cenarios = [5.0, 10.0, 15.0, 20.0, 30.0, 50.0, 100.0];
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Devoluções — quem não aceitar',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+        const SizedBox(height: 4),
+        Text(
+          'Estima quanto provavelmente teríamos que devolver aos donos que não '
+          'aceitarem a transição — com base no valor que cada um já pagou.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.shade700.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.red.shade700.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Exposição total (pior caso — 100% recusam)',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(_moeda.format(total),
+                  style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700)),
+              Text('Soma do valor já pago em $_ativosCount contratos ativos',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _campoNum('% que não aceita', _naoAceitaCtrl, sufixo: '%'),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Provável a devolver (${(pct * 100).toStringAsFixed(0)}%)',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(_moeda.format(provavel),
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text('Cenários',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < cenarios.length; i++)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    border: i == cenarios.length - 1
+                        ? null
+                        : Border(
+                            bottom: BorderSide(color: cs.outlineVariant)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${cenarios[i].toStringAsFixed(0)}% não aceitam',
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(_moeda.format(total * cenarios[i] / 100),
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: cenarios[i] >= 50
+                                  ? Colors.red.shade700
+                                  : cs.onSurface)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Base: soma do valor integralizado (já pago) de todos os contratos '
+            'ativos. Assume devolução integral do que foi pago — o distrato real '
+            'pode reter parte (multa/cláusula), reduzindo a devolução. É o teto '
+            'de exposição, não a perda garantida.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
     );
   }
 
