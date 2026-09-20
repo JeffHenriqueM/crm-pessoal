@@ -63,16 +63,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _taxaCtrl = TextEditingController(text: '15'); // taxa administração (%)
   static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
 
-  // ── Temporadas (aba Pool): semanas, diária e ocupação de cada temporada ────
-  final _altaSemCtrl = TextEditingController(text: '12'); // semanas
+  // ── Temporadas (aba Pool): só Média e Alta (o hotel não tem baixa) ─────────
+  final _altaSemCtrl = TextEditingController(text: '20'); // semanas
   final _altaDiaCtrl = TextEditingController(text: '750'); // diária (R$)
   final _altaOcupCtrl = TextEditingController(text: '90'); // ocupação (%)
-  final _medSemCtrl = TextEditingController(text: '20');
+  final _medSemCtrl = TextEditingController(text: '32');
   final _medDiaCtrl = TextEditingController(text: '550');
   final _medOcupCtrl = TextEditingController(text: '70');
-  final _baixaSemCtrl = TextEditingController(text: '20');
-  final _baixaDiaCtrl = TextEditingController(text: '450');
-  final _baixaOcupCtrl = TextEditingController(text: '50');
 
   /// Temporadas: (rótulo, semanas, diária, ocupação, cor).
   List<(String, TextEditingController, TextEditingController,
@@ -82,8 +79,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 const Color(0xFFD84315)),
             ('Média', _medSemCtrl, _medDiaCtrl, _medOcupCtrl,
                 const Color(0xFFEF6C00)),
-            ('Baixa', _baixaSemCtrl, _baixaDiaCtrl, _baixaOcupCtrl,
-                const Color(0xFF1565C0)),
           ];
 
   // Cenários de participação da multipropriedade no hotel (fração dos aptos).
@@ -105,6 +100,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       TextEditingController(text: '30'); // % mínimo pago p/ entrar no pool
   final _naoAceitaCtrl =
       TextEditingController(text: '15'); // % que não aceita a transição
+  final _parcelasCtrl =
+      TextEditingController(text: '12'); // parcelas do acordo judicial
+  final _acrescimoCtrl =
+      TextEditingController(text: '20'); // correção + honorários (%)
 
   /// Itens da composição do custo mensal (rótulo → controlador).
   List<(String, TextEditingController)> get _linhasCusto => [
@@ -156,6 +155,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
     _minPagoCtrl.dispose();
     _naoAceitaCtrl.dispose();
+    _parcelasCtrl.dispose();
+    _acrescimoCtrl.dispose();
     super.dispose();
   }
 
@@ -1272,6 +1273,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final total = _exposicaoDevolucao;
     final provavel = total * pct;
     const cenarios = [5.0, 10.0, 15.0, 20.0, 30.0, 50.0, 100.0];
+    // Cenário judicial: base + correção/honorários, pago em parcelas.
+    final acrescimo = _parse(_acrescimoCtrl, 20) / 100.0;
+    final parcelas = _parse(_parcelasCtrl, 12);
+    final baseJudicial = provavel * (1 + acrescimo);
+    final valorParcela = parcelas > 0 ? baseJudicial / parcelas : baseJudicial;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1374,6 +1380,65 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        // ── Cenário judicial: pagamento parcelado ──
+        Row(children: [
+          Icon(Icons.gavel_rounded, size: 18, color: Colors.red.shade700),
+          const SizedBox(width: 6),
+          const Expanded(
+            child: Text('Cenário judicial (pagamento parcelado)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          'Se o cliente entrar na justiça, além do valor pago costuma-se pagar '
+          'correção monetária + honorários, e o acordo/sentença pode ser '
+          'parcelado. Base: o provável a devolver (${(pct * 100).toStringAsFixed(0)}%).',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _campoNum('Correção + honorários', _acrescimoCtrl, sufixo: '%'),
+            _campoNum('Nº de parcelas', _parcelasCtrl, sufixo: ''),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.shade700.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border:
+                Border.all(color: Colors.red.shade700.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Valor da parcela (mensal)',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(_moeda.format(valorParcela),
+                  style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700)),
+              Text('× ${parcelas.toStringAsFixed(0)} parcelas',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              const Divider(height: 20),
+              _linhaInfo('Provável a devolver (base)',
+                  _moeda.format(provavel), cs),
+              _linhaInfo(
+                  'Acréscimo (${(acrescimo * 100).toStringAsFixed(0)}%)',
+                  '+ ${_moeda.format(baseJudicial - provavel)}',
+                  cs),
+              _linhaInfo('Total com acréscimo (judicial)',
+                  _moeda.format(baseJudicial), cs),
+            ],
+          ),
+        ),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -1384,8 +1449,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           child: Text(
             'Base: soma do valor integralizado (já pago) de todos os contratos '
             'ativos. Assume devolução integral do que foi pago — o distrato real '
-            'pode reter parte (multa/cláusula), reduzindo a devolução. É o teto '
-            'de exposição, não a perda garantida.',
+            'pode reter parte (multa/cláusula), reduzindo a devolução; já na via '
+            'judicial tende a crescer (correção + honorários). O parcelamento '
+            'dilui o desembolso no tempo (parcela mensal). Confirme os '
+            'percentuais reais com o jurídico.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
