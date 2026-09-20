@@ -56,10 +56,31 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   static final _moeda =
       NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$ ', decimalDigits: 0);
 
+  // ── Simulação do pool de hospedagem (aba Pool) ────────────────────────────
+  final _hotelCtrl = TextEditingController(text: '100'); // aptos no hotel
+  final _poolCtrl = TextEditingController(text: '30'); // aptos no pool
+  final _diariaCtrl = TextEditingController(text: '500'); // diária média (R$)
+  final _taxaCtrl = TextEditingController(text: '30'); // taxa administração (%)
+  static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
+
   @override
   void initState() {
     super.initState();
     _carregar();
+  }
+
+  @override
+  void dispose() {
+    _hotelCtrl.dispose();
+    _poolCtrl.dispose();
+    _diariaCtrl.dispose();
+    _taxaCtrl.dispose();
+    super.dispose();
+  }
+
+  double _parse(TextEditingController c, double fallback) {
+    final v = double.tryParse(c.text.replaceAll(',', '.').trim());
+    return (v == null || v < 0) ? fallback : v;
   }
 
   /// Clientes cujos contratos ficam FORA da conta principal e são somados à
@@ -172,7 +193,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           TabBar(
@@ -185,6 +206,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               Tab(text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
               Tab(text: 'Prioridade', icon: Icon(Icons.priority_high_rounded)),
               Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
+              Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
             ],
           ),
           Expanded(
@@ -193,6 +215,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 _tabApartamentos(cs),
                 _tabPrioridade(cs),
                 _tabArgumentos(cs),
+                _tabPool(cs),
               ],
             ),
           ),
@@ -358,6 +381,167 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         const SizedBox(height: 8),
         for (final qr in _objeoesRespostas) _objecaoTile(cs, qr[0], qr[1]),
       ],
+    );
+  }
+
+  // ── Aba: Pool de hospedagem (simulação de renda) ──────────────────────────
+  Widget _tabPool(ColorScheme cs) {
+    final hotel = _parse(_hotelCtrl, 100);
+    final pool = _parse(_poolCtrl, 30);
+    final diaria = _parse(_diariaCtrl, 500);
+    final taxa = _parse(_taxaCtrl, 30) / 100.0; // fração
+    const diasMes = 30.0;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Simulação do pool de hospedagem',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+        const SizedBox(height: 4),
+        Text(
+          'Estima quanto cada apartamento do pool pode render, no cenário atual '
+          'do hotel em operação. Ajuste os valores abaixo.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 14),
+        // ── Parâmetros editáveis ──
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
+            _campoNum('Aptos no pool', _poolCtrl, sufixo: ''),
+            _campoNum('Diária média', _diariaCtrl, sufixo: 'R\$'),
+            _campoNum('Taxa administração', _taxaCtrl, sufixo: '%'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '$pool de ${hotel.toStringAsFixed(0)} apartamentos no pool · '
+          'diária ${_moeda.format(diaria)} · administração '
+          '${(taxa * 100).toStringAsFixed(0)}%',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 16),
+        // ── Cenários de ocupação ──
+        for (final occ in _ocupacoes) ...[
+          _cardPool(cs, occ, pool, diaria, taxa, diasMes),
+          const SizedBox(height: 12),
+        ],
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Como calcula: no pool, a receita é somada e dividida igualmente '
+            'entre os apartamentos participantes — cada um recebe pela ocupação '
+            'MÉDIA, não só pela própria. Ganho/apto no mês = 30 × ocupação × '
+            'diária × (1 − taxa). "Diária média" e "taxa de administração" são '
+            'estimativas — ajuste com os números reais do hotel.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _campoNum(String label, TextEditingController ctrl, {String sufixo = ''}) {
+    return SizedBox(
+      width: 160,
+      child: TextField(
+        controller: ctrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          border: const OutlineInputBorder(),
+          prefixText: sufixo == 'R\$' ? 'R\$ ' : null,
+          suffixText: sufixo == '%' ? '%' : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _cardPool(ColorScheme cs, double occ, double pool, double diaria,
+      double taxa, double diasMes) {
+    // Ganho por apartamento (o tamanho do pool não altera o ganho POR apto,
+    // pois a receita escala com o pool e é dividida pelo pool).
+    final ganhoAptoMes = diasMes * occ * diaria * (1 - taxa);
+    final ganhoAptoAno = ganhoAptoMes * 12;
+    // Totais do pool (todos os apartamentos participantes juntos).
+    final brutoPoolMes = pool * diasMes * occ * diaria;
+    final liquidoPoolMes = brutoPoolMes * (1 - taxa);
+
+    final pct = (occ * 100).toStringAsFixed(0);
+    final cor = occ >= 1.0
+        ? Colors.green.shade700
+        : (occ >= 0.7 ? Colors.teal.shade700 : cs.primary);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.hotel_outlined, size: 18, color: cor),
+              const SizedBox(width: 8),
+              Text('Ocupação $pct%',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold, color: cor)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Por apartamento / mês',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant)),
+                    Text(_moeda.format(ganhoAptoMes),
+                        style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: cor)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Por apartamento / ano',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant)),
+                    Text(_moeda.format(ganhoAptoAno),
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          _linhaInfo('Receita bruta do pool / mês',
+              _moeda.format(brutoPoolMes), cs),
+          _linhaInfo('Receita líquida do pool / mês',
+              _moeda.format(liquidoPoolMes), cs),
+          _linhaInfo('Diárias ocupadas / mês (pool)',
+              (pool * diasMes * occ).toStringAsFixed(0), cs),
+        ],
+      ),
     );
   }
 
