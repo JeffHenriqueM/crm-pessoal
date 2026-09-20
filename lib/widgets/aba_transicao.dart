@@ -172,16 +172,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         children: [
           TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             labelColor: cs.primary,
             unselectedLabelColor: cs.onSurfaceVariant,
             indicatorColor: cs.primary,
             tabs: const [
               Tab(text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
               Tab(text: 'Prioridade', icon: Icon(Icons.priority_high_rounded)),
+              Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
             ],
           ),
           Expanded(
@@ -189,6 +192,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               children: [
                 _tabApartamentos(cs),
                 _tabPrioridade(cs),
+                _tabArgumentos(cs),
               ],
             ),
           ),
@@ -238,6 +242,195 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [_blocoPrioridade(cs)],
+      ),
+    );
+  }
+
+  // ── Aba: Argumentos (roteiro de abordagem da transição) ───────────────────
+  static const List<String> _porqueTrocar = [
+    'Uso imediato: o resort ainda está em obras; o hotel já está em pleno '
+        'funcionamento. Na troca, o cliente passa a usufruir AGORA, sem '
+        'esperar a conclusão da obra.',
+    'Fim da incerteza de prazo: elimina o risco de atraso de entrega. A '
+        'fruição deixa de ser uma promessa futura e vira realidade.',
+    'Estrutura pronta e testada: operação, equipe e serviços já validados por '
+        'hóspedes reais — não é projeto no papel.',
+    'Antecipa o benefício: qualquer vantagem de uso/estadia começa desde já, '
+        'e não daqui a anos.',
+    'Mesmo padrão e categoria da cota, só que começando hoje.',
+  ];
+
+  static const List<String> _porqueMesmoValor = [
+    'É uma troca de ativo equivalente: mesmo investimento, mesma fração '
+        '(cotas/semanas) e mesmo direito de uso — muda apenas o local, de um '
+        'ativo em obras para um pronto.',
+    'Todo o valor já pago é integralmente preservado e transferido para o '
+        'novo contrato. O cliente não perde nada.',
+    'Não se paga nada a mais — e se recebe mais: o uso imediato que hoje o '
+        'cliente ainda não tem.',
+    'A categoria/padrão do produto é mantida (a equivalência da cota é '
+        'preservada).',
+    'Sem custos ou perdas de distrato: as condições do contrato são honradas.',
+  ];
+
+  // (objeção do cliente, resposta sugerida)
+  static const List<List<String>> _objeoesRespostas = [
+    [
+      'Eu comprei o resort, não o hotel.',
+      'Seu direito de multipropriedade e o valor investido são integralmente '
+          'preservados. A troca só antecipa seu benefício para um '
+          'empreendimento que JÁ funciona — enquanto o resort segue em obras, '
+          'sem data garantida de uso.',
+    ],
+    [
+      'Prefiro esperar o resort ficar pronto.',
+      'Enquanto espera, seu investimento fica parado, sem poder ser usado. Na '
+          'troca, você começa a usufruir agora, pelo mesmo valor e sem o risco '
+          'de novos prazos de obra.',
+    ],
+    [
+      'Quero cancelar e reaver meu dinheiro (distrato).',
+      'O distrato normalmente implica perda de parte do que já foi pago. A '
+          'troca resolve exatamente a sua insatisfação — não poder usar agora '
+          '— mantendo 100% do seu investimento e liberando o uso imediato.',
+    ],
+    [
+      'O hotel tem o mesmo padrão que eu contratei?',
+      'A categoria da sua cota é mantida. O hotel já opera com estrutura '
+          'validada; convidamos você a conhecer e comprovar o padrão antes de '
+          'qualquer decisão.',
+    ],
+    [
+      'E se eu não gostar do hotel?',
+      'Antes de decidir, oferecemos uma visita/experiência no hotel para você '
+          'conhecer a estrutura e o atendimento na prática.',
+    ],
+    [
+      'Por que vocês querem fazer essa troca?',
+      'Transparência total: queremos que você aproveite o que comprou o quanto '
+          'antes. Em vez de esperar a obra, entregamos um ativo pronto, '
+          'honrando integralmente seu contrato. É um ganha-ganha.',
+    ],
+  ];
+
+  Widget _tabArgumentos(ColorScheme cs) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.primaryContainer.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.forum_outlined, color: cs.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Roteiro de abordagem da transição: do resort (em obras) '
+                  'para o hotel (em operação). Use como apoio — ajuste ao caso '
+                  'e confirme prazos e cláusulas no contrato.',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _secaoArg(cs, 'Por que fazer a troca', Icons.swap_horiz_rounded,
+            cs.primary, _porqueTrocar),
+        const SizedBox(height: 16),
+        _secaoArg(cs, 'Por que o valor continua o mesmo',
+            Icons.price_check_rounded, Colors.teal.shade700, _porqueMesmoValor),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Icon(Icons.question_answer_outlined, color: Colors.orange.shade800),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Objeções dos clientes e como responder',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (final qr in _objeoesRespostas) _objecaoTile(cs, qr[0], qr[1]),
+      ],
+    );
+  }
+
+  Widget _secaoArg(ColorScheme cs, String titulo, IconData icone, Color cor,
+      List<String> itens) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cor.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icone, size: 18, color: cor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(titulo,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: cor)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final t in itens)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 16, color: cor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(t, style: const TextStyle(fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _objecaoTile(ColorScheme cs, String objecao, String resposta) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        leading: Icon(Icons.chat_bubble_outline, color: Colors.orange.shade800),
+        title: Text('"$objecao"',
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600)),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.subdirectory_arrow_right,
+                  size: 16, color: Colors.green.shade700),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(resposta,
+                    style: TextStyle(
+                        fontSize: 13, color: cs.onSurfaceVariant, height: 1.4)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
