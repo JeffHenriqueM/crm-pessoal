@@ -1474,6 +1474,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       liqPorTemporada.add(sem * 7 * ocup * dia * (1 - taxa));
     }
     final liqTotal = liqPorTemporada.fold(0.0, (s, v) => s + v);
+    // Receita líquida de UMA semana em cada temporada (base do revezamento).
+    final valorSemana = <double>[];
+    for (final t in _temporadas) {
+      final dia = _parse(t.$3, 0);
+      final ocup = _parse(t.$4, 0) / 100.0;
+      valorSemana.add(7 * ocup * dia * (1 - taxa));
+    }
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1494,9 +1501,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
           ]),
           const SizedBox(height: 4),
-          Text('Defina semanas, diária e ocupação de cada temporada. A tabela '
-              'mostra quanto cada cota recebe por ano (líquido da taxa, antes '
-              'do condomínio).',
+          Text('Cada cota reveza: um ano cai em alta, outro em média. A tabela '
+              'mostra o que ela recebe num ano de cada tipo e a média por ano '
+              '(líquido da taxa, antes do condomínio).',
               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
           // ── Parâmetros por temporada ──
@@ -1561,22 +1568,58 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
           ),
           const SizedBox(height: 14),
-          // ── Tabela: ganho por cota × temporada (R$/ano) ──
-          Text('Quanto cada cota recebe por ano',
+          Text('Ganho por cota (revezando alta / média)',
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: cs.onSurfaceVariant)),
           const SizedBox(height: 6),
-          _tabelaCotaTemporada(cs, liqPorTemporada, liqTotal),
+          _tabelaCotaTemporada(cs, valorSemana),
+          const SizedBox(height: 10),
+          // Diamante/Integral: apto inteiro, recebe todas as semanas todo ano.
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4A6FA5).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border:
+                  Border.all(color: const Color(0xFF4A6FA5).withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text('Diamante / Integral (apto inteiro, o ano todo)',
+                      style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
+                Text('${_moeda.format(liqTotal)} / ano',
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4A6FA5))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Revezamento: assume as semanas da cota caindo todas em alta num ano '
+            'e todas em média no outro; "Média/ano" é a média do ciclo. '
+            'Diamante/Integral possui o apartamento inteiro — recebe todas as '
+            'semanas (alta + média) todo ano, não reveza.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
         ],
       ),
     );
   }
 
-  Widget _tabelaCotaTemporada(
-      ColorScheme cs, List<double> liqPorTemporada, double liqTotal) {
-    TableRow linha(String cota, int divisor, {bool cabecalho = false}) {
+  Widget _tabelaCotaTemporada(ColorScheme cs, List<double> valorSemana) {
+    final n = valorSemana.length;
+    final mediaSemana =
+        n > 0 ? valorSemana.reduce((a, b) => a + b) / n : 0.0;
+
+    TableRow linha(String cota, int semanasCota, {bool cabecalho = false}) {
       Widget cel(String txt, {bool destaque = false, Color? cor}) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Text(txt,
@@ -1592,16 +1635,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           decoration: BoxDecoration(color: cs.surfaceContainerHighest),
           children: [
             cel('Cota'),
-            for (final t in _temporadas) cel(t.$1),
-            cel('Total/ano'),
+            for (final t in _temporadas) cel('Ano em ${t.$1}'),
+            cel('Média/ano'),
           ],
         );
       }
       return TableRow(children: [
         cel(cota, destaque: true),
-        for (var i = 0; i < _temporadas.length; i++)
-          cel(_moeda.format(liqPorTemporada[i] / divisor)),
-        cel(_moeda.format(liqTotal / divisor),
+        for (var i = 0; i < n; i++)
+          cel(_moeda.format(semanasCota * valorSemana[i])),
+        cel(_moeda.format(semanasCota * mediaSemana),
             destaque: true, cor: cs.primary),
       ]);
     }
@@ -1615,12 +1658,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       child: Table(
         border: TableBorder.symmetric(
             inside: BorderSide(color: cs.outlineVariant)),
-        columnWidths: const {0: FlexColumnWidth(1.3)},
+        columnWidths: const {0: FlexColumnWidth(1.1)},
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: [
-          linha('', 1, cabecalho: true),
+          linha('', 0, cabecalho: true),
+          // Só as cotas fracionadas revezam (Diamante/Integral fica à parte).
           for (final t in _tiers)
-            linha(t.$1 == 'Diamante / Integral' ? 'Diamante' : t.$1, t.$2),
+            if (t.$2 > 1) linha(t.$1, 52 ~/ t.$2),
         ],
       ),
     );
