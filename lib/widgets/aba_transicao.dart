@@ -1472,12 +1472,41 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _tituloSecao(cs, 'Retorno real por tier (ROI)', Icons.percent_rounded),
         const SizedBox(height: 4),
         Text(
-          'Retorno anual de cada cota no pool sobre o preço médio de venda — '
-          'usando as médias reais e o ganho do pool (aba Pool).',
+          'Ganho anual do pool sobre o valor investido. Como o comprador paga '
+          'só a entrada de ${_parse(_minPagoCtrl, 30).toStringAsFixed(0)}% e já '
+          'recebe o repasse, o ROI sobre a entrada (capital que ele realmente '
+          'pôs) é bem maior que sobre o valor total. Edite o preço da cota e a '
+          'entrada abaixo.',
           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
-        const SizedBox(height: 8),
-        _tabelaRoi(cs),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _campoNum('Bronze', _precoBronzeCtrl, sufixo: 'R\$'),
+            _campoNum('Prata', _precoPrataCtrl, sufixo: 'R\$'),
+            _campoNum('Ouro', _precoOuroCtrl, sufixo: 'R\$'),
+            _campoNum('Diamante', _precoDiamanteCtrl, sufixo: 'R\$'),
+            _campoNum('Entrada', _minPagoCtrl, sufixo: '%'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text('ROI bruto (pool)',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        _tabelaRoi(cs, liquido: false),
+        const SizedBox(height: 12),
+        Text('ROI líquido (− condomínio)',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        _tabelaRoi(cs, liquido: true),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -1558,8 +1587,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  /// Tabela de ROI por tier: ganho anual do pool ÷ preço médio de venda.
-  Widget _tabelaRoi(ColorScheme cs) {
+  /// Tabela de ROI por tier. [liquido] desconta o condomínio do ganho.
+  /// Mostra o ROI sobre o valor total e sobre a entrada (capital investido).
+  Widget _tabelaRoi(ColorScheme cs, {required bool liquido}) {
     final taxa = _parse(_taxaCtrl, 15) / 100.0;
     // Receita líquida de uma semana em cada temporada.
     final valA = _temporadas.isNotEmpty
@@ -1575,20 +1605,26 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             (1 - taxa)
         : 0.0;
     final liqAnual = _liqAnualApto(taxa);
-    // (rótulo, ganho anual do pool, preço médio).
-    final linhas = <(String, double, double)>[
-      ('Bronze', (valA + valM) / 2, _parse(_precoBronzeCtrl, 0)),
-      ('Prata', valA + valM, _parse(_precoPrataCtrl, 0)),
-      ('Ouro', 2 * (valA + valM), _parse(_precoOuroCtrl, 0)),
-      ('Diamante', liqAnual, _parse(_precoDiamanteCtrl, 0)),
+    // Condomínio anual por apartamento (MP 100% do hotel).
+    final aptos = _parse(_hotelCtrl, 100);
+    final condoAptoAno = aptos > 0 ? (_custoMensal / aptos) * 12 : 0.0;
+    final entrada = _parse(_minPagoCtrl, 30) / 100.0;
+
+    // (rótulo, ganho bruto do pool, preço, divisor do condomínio).
+    final tiers = <(String, double, double, int)>[
+      ('Bronze', (valA + valM) / 2, _parse(_precoBronzeCtrl, 0), 52),
+      ('Prata', valA + valM, _parse(_precoPrataCtrl, 0), 26),
+      ('Ouro', 2 * (valA + valM), _parse(_precoOuroCtrl, 0), 13),
+      ('Diamante', liqAnual, _parse(_precoDiamanteCtrl, 0), 1),
     ];
 
-    Widget cel(String txt, {bool cabecalho = false, bool destaque = false, Color? cor}) =>
+    Widget cel(String txt,
+            {bool cabecalho = false, bool destaque = false, Color? cor}) =>
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: Text(txt,
               style: TextStyle(
-                  fontSize: cabecalho ? 11 : 12,
+                  fontSize: cabecalho ? 10.5 : 11.5,
                   fontWeight: cabecalho || destaque
                       ? FontWeight.w700
                       : FontWeight.w500,
@@ -1604,29 +1640,50 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       child: Table(
         border: TableBorder.symmetric(
             inside: BorderSide(color: cs.outlineVariant)),
-        columnWidths: const {0: FlexColumnWidth(0.9)},
+        columnWidths: const {0: FlexColumnWidth(0.8)},
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: [
           TableRow(
             decoration: BoxDecoration(color: cs.surfaceContainerHighest),
             children: [
               cel('Cota', cabecalho: true),
-              cel('Preço médio', cabecalho: true),
+              cel('Preço', cabecalho: true),
               cel('Ganho/ano', cabecalho: true),
-              cel('ROI a.a.', cabecalho: true),
+              cel('ROI total', cabecalho: true),
+              cel('ROI entrada', cabecalho: true),
             ],
           ),
-          for (final l in linhas)
-            TableRow(children: [
-              cel(l.$1, destaque: true),
-              cel(_moeda.format(l.$3)),
-              cel(_moeda.format(l.$2)),
-              cel(l.$3 > 0 ? '${(l.$2 / l.$3 * 100).toStringAsFixed(1)}%' : '—',
-                  destaque: true, cor: cs.primary),
-            ]),
+          for (final t in tiers)
+            _linhaRoi(cs, t.$1, t.$2, t.$3, t.$4, condoAptoAno, entrada,
+                liquido, cel),
         ],
       ),
     );
+  }
+
+  TableRow _linhaRoi(
+      ColorScheme cs,
+      String rotulo,
+      double ganhoBruto,
+      double preco,
+      int divisorCondo,
+      double condoAptoAno,
+      double entrada,
+      bool liquido,
+      Widget Function(String, {bool cabecalho, bool destaque, Color? cor}) cel) {
+    final condoCota = condoAptoAno / divisorCondo;
+    final ganho = liquido ? ganhoBruto - condoCota : ganhoBruto;
+    final roiTotal = preco > 0 ? ganho / preco * 100 : 0.0;
+    final capitalEntrada = preco * entrada;
+    final roiEntrada = capitalEntrada > 0 ? ganho / capitalEntrada * 100 : 0.0;
+    return TableRow(children: [
+      cel(rotulo, destaque: true),
+      cel(_moeda.format(preco)),
+      cel(_moeda.format(ganho)),
+      cel(preco > 0 ? '${roiTotal.toStringAsFixed(1)}%' : '—'),
+      cel(capitalEntrada > 0 ? '${roiEntrada.toStringAsFixed(1)}%' : '—',
+          destaque: true, cor: cs.primary),
+    ]);
   }
 
   // ── Aba: Devoluções (exposição de quem não aceitar a transição) ───────────
