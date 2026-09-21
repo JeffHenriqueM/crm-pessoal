@@ -754,8 +754,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         vendaPrazo > 0 ? vendaMes * (1 - entradaPct) / vendaPrazo : 0.0;
     final prazoInt = vendaPrazo.toInt();
 
-    // Venda do mês s (cresce % a.m.) e a parcela-base dessa safra.
-    double vendaDoMes(int s) => vendaMes * math.pow(1 + cresc, s - 1);
+    // Venda do mês s: crescimento LINEAR (+cresc da venda inicial por mês)
+    // — 400k, 440k, 480k… (não composto).
+    double vendaDoMes(int s) => vendaMes * (1 + cresc * (s - 1));
     double parcelaBaseSafra(int s) =>
         prazoInt > 0 ? vendaDoMes(s) * (1 - entradaPct) / prazoInt : 0.0;
 
@@ -1002,8 +1003,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            'Como ler: as vendas crescem '
-            '${(d.crescVendasPct * 100).toStringAsFixed(0)}%/mês e as 60x são '
+            'Como ler: as vendas crescem +'
+            '${(d.crescVendasPct * 100).toStringAsFixed(0)}%/mês (linear) e as 60x são '
             'corrigidas por IGPM + juros (${(d.corrMes60 * 100).toStringAsFixed(2)}%/mês). '
             '"Recebimento" = após a desistência (${_moeda.format(d.resortLiq)}) '
             '+ caixa das vendas do mês. "Sobra" = recebimento − distrato '
