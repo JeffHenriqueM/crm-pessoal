@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -188,6 +190,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _reyPoolInicioCtrl = TextEditingController(text: '12'); // mês início pool
   final _reyShareVendasCtrl =
       TextEditingController(text: '30'); // % do caixa de vendas p/ Reynaldo
+  final _reyCrescVendasCtrl =
+      TextEditingController(text: '10'); // crescimento das vendas (% a.m.)
+  final _reyIgpmCtrl = TextEditingController(text: '4'); // IGPM (% a.a.) nas 60x
+  final _reyJuros60Ctrl =
+      TextEditingController(text: '0.5'); // juros das 60x (% a.m.)
+  final _reyAluguelCtrl =
+      TextEditingController(text: '50000'); // aluguel/mês (aptos não vendidos)
+  final _reyAluguelAteCtrl =
+      TextEditingController(text: '24'); // mês em que vende 100% (fim do aluguel)
   // Início da projeção = inauguração da multipropriedade (jan/2028).
   final _reyMesIniCtrl = TextEditingController(text: '1');
   final _reyAnoIniCtrl = TextEditingController(text: '2028');
@@ -246,6 +257,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _reyPoolMesCtrl.dispose();
     _reyPoolInicioCtrl.dispose();
     _reyShareVendasCtrl.dispose();
+    _reyCrescVendasCtrl.dispose();
+    _reyIgpmCtrl.dispose();
+    _reyJuros60Ctrl.dispose();
+    _reyAluguelCtrl.dispose();
+    _reyAluguelAteCtrl.dispose();
     _reyMesIniCtrl.dispose();
     _reyAnoIniCtrl.dispose();
     super.dispose();
@@ -720,24 +736,50 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final poolMes = _parse(_reyPoolMesCtrl, 50000);
     final poolInicio = _parse(_reyPoolInicioCtrl, 12);
     final share = _parse(_reyShareVendasCtrl, 30) / 100;
+    final cresc = _parse(_reyCrescVendasCtrl, 10) / 100; // vendas +% a.m.
+    final igpm = _parse(_reyIgpmCtrl, 4) / 100; // a.a.
+    final juros60 = _parse(_reyJuros60Ctrl, 0.5) / 100; // a.m.
+    final corrMes = igpm / 12 + juros60; // correção mensal das 60x
+    final aluguelMes = _parse(_reyAluguelCtrl, 50000);
+    final aluguelAte = _parse(_reyAluguelAteCtrl, 24).toInt();
 
     final totalDistrato = base * desist;
     final distParcela =
         distPrazo > 0 ? totalDistrato / distPrazo : totalDistrato;
     // Com a desistência, o recebimento atual cai; volta a crescer com vendas.
     final resortLiq = resortBase * (1 - desist);
+    // Referência (mês 1) para exibição.
     final entradaMes = vendaMes * entradaPct;
     final parcelaSafra =
         vendaPrazo > 0 ? vendaMes * (1 - entradaPct) / vendaPrazo : 0.0;
+    final prazoInt = vendaPrazo.toInt();
+
+    // Venda do mês s (cresce % a.m.) e a parcela-base dessa safra.
+    double vendaDoMes(int s) => vendaMes * math.pow(1 + cresc, s - 1);
+    double parcelaBaseSafra(int s) =>
+        prazoInt > 0 ? vendaDoMes(s) * (1 - entradaPct) / prazoInt : 0.0;
+
+    // Caixa das vendas no mês m: entrada da safra do mês + parcelas corrigidas
+    // (IGPM + juros) das safras anteriores ainda dentro do prazo.
+    double vendasCashMes(int m) {
+      var total = vendaDoMes(m) * entradaPct;
+      for (int s = 1; s < m; s++) {
+        final idade = m - s;
+        if (idade <= prazoInt) {
+          total += parcelaBaseSafra(s) * math.pow(1 + corrMes, idade);
+        }
+      }
+      return total;
+    }
 
     const horizonte = 24;
     double acum = 0;
     final fluxo = <(int, double, double, double, double)>[];
     for (int m = 1; m <= horizonte; m++) {
-      final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
-      final vendasCash = entradaMes + parcelaSafra * vintages;
+      final vendasCash = vendasCashMes(m);
       final pool = m >= poolInicio ? poolMes : 0.0;
-      final retorno = vendasCash * share + pool;
+      final aluguel = m <= aluguelAte ? aluguelMes : 0.0;
+      final retorno = vendasCash * share + pool + aluguel;
       final recebimento = resortLiq + vendasCash; // recuperação c/ vendas
       final sobra = recebimento - distParcela - custos; // após distrato+custos
       acum += retorno;
@@ -749,10 +791,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     double c = 0;
     int? payback;
     for (int m = 1; m <= 240; m++) {
-      final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
-      final vendasCash = entradaMes + parcelaSafra * vintages;
       final pool = m >= poolInicio ? poolMes : 0.0;
-      c += vendasCash * share + pool;
+      final aluguel = m <= aluguelAte ? aluguelMes : 0.0;
+      c += vendasCashMes(m) * share + pool + aluguel;
       if (c >= aporte) {
         payback = m;
         break;
@@ -777,6 +818,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       poolMes: poolMes,
       poolInicio: poolInicio,
       sharePct: share,
+      crescVendasPct: cresc,
+      corrMes60: corrMes,
+      aluguelMes: aluguelMes,
+      aluguelAte: aluguelAte,
       anoInicio: _parse(_reyAnoIniCtrl, 2028).toInt(),
       mesInicio: _parse(_reyMesIniCtrl, 1).toInt().clamp(1, 12),
       horizonte: horizonte,
@@ -788,9 +833,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   Widget _tabReynaldo(ColorScheme cs) {
     final d = _dadosReynaldo();
-    final retMes1 = d.fluxo.isNotEmpty ? d.fluxo.first.$3 : 0.0;
-    final retUlt = d.fluxo.isNotEmpty ? d.fluxo.last.$3 : 0.0;
-    final pctAcum = d.aporte > 0 ? d.acumHorizonte / d.aporte * 100 : 0.0;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -803,7 +845,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           'Aporte de ${_moeda.format(d.aporte)} para finalizar as obras e os '
           'novos apartamentos, começando em ${d.dataDoMes(1)} (inauguração). '
           'O foco é mostrar, mês a mês, quanto volta para o Reynaldo — pelas '
-          'vendas + 15% do pool.',
+          'vendas, aluguel e 15% do pool.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
@@ -813,34 +855,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             onPressed: () => ReynaldoPdf.gerar(_dadosReynaldo()),
             icon: const Icon(Icons.print_outlined),
             label: const Text('Imprimir proposta (P&B)'),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // ── Destaque: retorno mês a mês ──
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: cs.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Volta para o Reynaldo nos primeiros ${d.horizonte} meses',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              Text(_moeda.format(d.acumHorizonte),
-                  style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                      color: cs.primary)),
-              Text(
-                  '${pctAcum.toStringAsFixed(0)}% do aporte · retorno cresce de '
-                  '${_moeda.format(retMes1)}/mês (${d.dataDoMes(1)}) para '
-                  '${_moeda.format(retUlt)}/mês (${d.dataDoMes(d.horizonte)})',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -912,9 +926,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 color: cs.onSurfaceVariant)),
         const SizedBox(height: 6),
         Wrap(spacing: 10, runSpacing: 10, children: [
-          _campoNum('Venda / mês', _reyVendaMesCtrl, sufixo: 'R\$'),
+          _campoNum('Venda / mês (inicial)', _reyVendaMesCtrl, sufixo: 'R\$'),
+          _campoNum('Crescimento vendas', _reyCrescVendasCtrl, sufixo: '%'),
           _campoNum('Entrada', _reyEntradaCtrl, sufixo: '%'),
           _campoNum('Parcelas venda', _reyVendaPrazoCtrl, sufixo: ''),
+          _campoNum('IGPM (a.a.)', _reyIgpmCtrl, sufixo: '%'),
+          _campoNum('Juros 60x (a.m.)', _reyJuros60Ctrl, sufixo: '%'),
         ]),
         const SizedBox(height: 16),
 
@@ -930,6 +947,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           _campoNum('% vendas p/ ele', _reyShareVendasCtrl, sufixo: '%'),
           _campoNum('Pool 15% / mês', _reyPoolMesCtrl, sufixo: 'R\$'),
           _campoNum('Mês início do pool', _reyPoolInicioCtrl, sufixo: ''),
+          _campoNum('Aluguel / mês', _reyAluguelCtrl, sufixo: 'R\$'),
+          _campoNum('Aluguel até o mês', _reyAluguelAteCtrl, sufixo: ''),
           _campoNum('Mês início (1-12)', _reyMesIniCtrl, sufixo: ''),
           _campoNum('Ano início', _reyAnoIniCtrl, sufixo: ''),
         ]),
@@ -983,15 +1002,17 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            'Como ler: "Recebimento" = após a desistência '
-            '(${_moeda.format(d.resortLiq)}) + caixa das novas vendas do mês '
-            '(por isso cresce). "Sobra" = recebimento − parcela do distrato '
-            '(${_moeda.format(d.distParcela)}) − custos mensais '
-            '(${_moeda.format(d.custosMensais)}); em vermelho quando não cobre. '
-            '"Retorno" = ${(d.sharePct * 100).toStringAsFixed(0)}% do caixa de '
-            'vendas + 15% do pool (a partir do mês '
-            '${d.poolInicio.toStringAsFixed(0)}). Ajuste os campos com os '
-            'números reais.',
+            'Como ler: as vendas crescem '
+            '${(d.crescVendasPct * 100).toStringAsFixed(0)}%/mês e as 60x são '
+            'corrigidas por IGPM + juros (${(d.corrMes60 * 100).toStringAsFixed(2)}%/mês). '
+            '"Recebimento" = após a desistência (${_moeda.format(d.resortLiq)}) '
+            '+ caixa das vendas do mês. "Sobra" = recebimento − distrato '
+            '(${_moeda.format(d.distParcela)}) − custos '
+            '(${_moeda.format(d.custosMensais)}); vermelho quando não cobre. '
+            '"Retorno" = ${(d.sharePct * 100).toStringAsFixed(0)}% das vendas + '
+            '15% do pool (mês ${d.poolInicio.toStringAsFixed(0)}) + aluguel '
+            '${_moeda.format(d.aluguelMes)}/mês até o mês ${d.aluguelAte} '
+            '(100% vendido). Ajuste com os números reais.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),

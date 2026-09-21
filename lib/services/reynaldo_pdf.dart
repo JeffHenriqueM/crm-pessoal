@@ -28,6 +28,10 @@ class DadosReynaldo {
   final double poolMes;
   final double poolInicio;
   final double sharePct; // fração das vendas que volta ao Reynaldo
+  final double crescVendasPct; // crescimento das vendas (% a.m., fração)
+  final double corrMes60; // correção das 60x (% a.m., fração) = IGPM/12 + juros
+  final double aluguelMes; // aluguel dos aptos não vendidos
+  final int aluguelAte; // mês em que vende 100% (fim do aluguel)
   final int anoInicio;
   final int mesInicio; // 1..12
   final int horizonte; // meses mostrados no fluxo
@@ -54,6 +58,10 @@ class DadosReynaldo {
     required this.poolMes,
     required this.poolInicio,
     required this.sharePct,
+    required this.crescVendasPct,
+    required this.corrMes60,
+    required this.aluguelMes,
+    required this.aluguelAte,
     required this.anoInicio,
     required this.mesInicio,
     required this.horizonte,
@@ -187,15 +195,18 @@ class ReynaldoPdf {
         ),
         pw.SizedBox(width: 12),
         pw.Expanded(
-          child: _bloco('Vendas projetadas', [
-            ('Vendas por mês', _moeda.format(d.vendaMes)),
+          child: _bloco('Vendas e retorno', [
+            ('Vendas iniciais/mês (+${(d.crescVendasPct * 100).toStringAsFixed(0)}%/mês)',
+                _moeda.format(d.vendaMes)),
             ('Entrada à vista (${(d.entradaPct * 100).toStringAsFixed(0)}%)',
                 '${_moeda.format(d.entradaMes)}/mês'),
-            ('Parcela por safra (${d.vendaPrazo.toStringAsFixed(0)}x)',
-                '${_moeda.format(d.parcelaSafra)}/mês'),
+            ('${d.vendaPrazo.toStringAsFixed(0)}x corrigidas (IGPM+juros)',
+                '${(d.corrMes60 * 100).toStringAsFixed(2)}%/mês'),
             ('% das vendas ao investidor',
                 '${(d.sharePct * 100).toStringAsFixed(0)}%'),
-            ('Início do pool (15%)', 'mês ${d.poolInicio.toStringAsFixed(0)}'),
+            ('Aluguel (até o mês ${d.aluguelAte})',
+                '${_moeda.format(d.aluguelMes)}/mês'),
+            ('Pool 15% a partir de', 'mês ${d.poolInicio.toStringAsFixed(0)}'),
           ]),
         ),
       ]),
@@ -213,8 +224,10 @@ class ReynaldoPdf {
         'Matheus Camelo e o próprio Reynaldo. "Recebimento" = recebimento após '
         'a desistência + caixa das novas vendas no mês. "Sobra" = recebimento − '
         'parcela do distrato − custos mensais do resort. "Retorno ao investidor" '
-        '= % das vendas destinado a ele + 15% do pool. Valores projetados, '
-        'sujeitos às condições reais de vendas, ocupação e cronograma de obras.',
+        '= % das vendas + aluguel (até 100% vendido) + 15% do pool. As vendas '
+        'crescem ao mês e as parcelas são corrigidas por IGPM + juros. Valores '
+        'projetados, sujeitos às condições reais de vendas, ocupação e '
+        'cronograma de obras.',
         style: pw.TextStyle(fontSize: 8.5, color: _cinza, lineSpacing: 1.5),
       ),
     ];
