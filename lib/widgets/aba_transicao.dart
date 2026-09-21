@@ -185,7 +185,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _reyPoolMesCtrl = TextEditingController(text: '50000'); // 15% pool/mês
   final _reyPoolInicioCtrl = TextEditingController(text: '12'); // mês início pool
   final _reyShareVendasCtrl =
-      TextEditingController(text: '100'); // % do caixa de vendas p/ Reynaldo
+      TextEditingController(text: '30'); // % do caixa de vendas p/ Reynaldo
   // Início da projeção = inauguração da multipropriedade (jan/2028).
   final _reyMesIniCtrl = TextEditingController(text: '1');
   final _reyAnoIniCtrl = TextEditingController(text: '2028');
@@ -703,15 +703,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   ];
 
   // ── Aba: Reynaldo (distratos + vendas + payback do aporte de R$ 2M) ───────
-  String _mesesTexto(int m) {
-    final anos = m ~/ 12;
-    final meses = m % 12;
-    if (anos == 0) return '$meses ${meses == 1 ? 'mês' : 'meses'}';
-    if (meses == 0) return '$anos ${anos == 1 ? 'ano' : 'anos'}';
-    return '$anos ${anos == 1 ? 'ano' : 'anos'} e $meses '
-        '${meses == 1 ? 'mês' : 'meses'}';
-  }
-
   /// Calcula toda a projeção do Reynaldo (usada pela aba e pelo PDF).
   DadosReynaldo _dadosReynaldo() {
     final base = _baseDistrato;
@@ -720,44 +711,48 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final vendaMes = _parse(_reyVendaMesCtrl, 400000);
     final entradaPct = _parse(_reyEntradaCtrl, 10) / 100;
     final vendaPrazo = _parse(_reyVendaPrazoCtrl, 60);
-    final resort = _parse(_reyResortCtrl, 300000);
+    final resortBase = _parse(_reyResortCtrl, 300000);
     final aporte = _parse(_reyAporteCtrl, 2000000);
     final poolMes = _parse(_reyPoolMesCtrl, 50000);
     final poolInicio = _parse(_reyPoolInicioCtrl, 12);
-    final share = _parse(_reyShareVendasCtrl, 100) / 100;
+    final share = _parse(_reyShareVendasCtrl, 30) / 100;
 
     final totalDistrato = base * desist;
     final distParcela =
         distPrazo > 0 ? totalDistrato / distPrazo : totalDistrato;
-    final resortSobra = resort - distParcela;
+    // Com a desistência, o recebimento atual cai; volta a crescer com vendas.
+    final resortLiq = resortBase * (1 - desist);
     final entradaMes = vendaMes * entradaPct;
     final parcelaSafra =
         vendaPrazo > 0 ? vendaMes * (1 - entradaPct) / vendaPrazo : 0.0;
 
-    double cum = 0, cumVendas = 0, cumVendasPB = 0;
+    const horizonte = 24;
+    double acum = 0;
+    final fluxo = <(int, double, double, double)>[];
+    for (int m = 1; m <= horizonte; m++) {
+      final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
+      final vendasCash = entradaMes + parcelaSafra * vintages;
+      final pool = m >= poolInicio ? poolMes : 0.0;
+      final retorno = vendasCash * share + pool;
+      final recebimento = resortLiq + vendasCash; // recuperação c/ vendas
+      acum += retorno;
+      fluxo.add((m, recebimento, retorno, acum));
+    }
+    final acumHorizonte = acum;
+
+    // Referência (não é o foco): mês em que o acumulado igualaria o aporte.
+    double c = 0;
     int? payback;
-    const marcosMes = [6, 12, 18, 24, 36, 48, 60];
-    final marcosMap = <int, double>{};
     for (int m = 1; m <= 240; m++) {
       final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
       final vendasCash = entradaMes + parcelaSafra * vintages;
       final pool = m >= poolInicio ? poolMes : 0.0;
-      cumVendas += vendasCash * share;
-      cum += vendasCash * share + pool;
-      if (payback == null && cum >= aporte) {
+      c += vendasCash * share + pool;
+      if (c >= aporte) {
         payback = m;
-        cumVendasPB = cumVendas;
+        break;
       }
-      if (marcosMes.contains(m)) marcosMap[m] = cum;
     }
-    final marcos = [
-      for (final m in marcosMes)
-        (
-          m,
-          marcosMap[m] ?? 0.0,
-          aporte > 0 ? (marcosMap[m] ?? 0) / aporte * 100 : 0.0
-        )
-    ];
 
     return DadosReynaldo(
       aporte: aporte,
@@ -766,8 +761,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       distPrazo: distPrazo,
       totalDistrato: totalDistrato,
       distParcela: distParcela,
-      resort: resort,
-      resortSobra: resortSobra,
+      resort: resortBase,
+      resortLiq: resortLiq,
       vendaMes: vendaMes,
       entradaPct: entradaPct,
       vendaPrazo: vendaPrazo,
@@ -776,30 +771,20 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       poolMes: poolMes,
       poolInicio: poolInicio,
       sharePct: share,
-      paybackMes: payback,
-      cumVendas: payback == null ? cumVendas : cumVendasPB,
       anoInicio: _parse(_reyAnoIniCtrl, 2028).toInt(),
       mesInicio: _parse(_reyMesIniCtrl, 1).toInt().clamp(1, 12),
-      marcos: marcos,
+      horizonte: horizonte,
+      paybackMes: payback,
+      acumHorizonte: acumHorizonte,
+      fluxo: fluxo,
     );
   }
 
   Widget _tabReynaldo(ColorScheme cs) {
     final d = _dadosReynaldo();
-    final aporte = d.aporte;
-    final base = d.base;
-    final desist = d.desistPct;
-    final distPrazo = d.distPrazo;
-    final totalDistrato = d.totalDistrato;
-    final distParcela = d.distParcela;
-    final resort = d.resort;
-    final resortSobra = d.resortSobra;
-    final vendaMes = d.vendaMes;
-    final entradaMes = d.entradaMes;
-    final parcelaSafra = d.parcelaSafra;
-    final vendaPrazo = d.vendaPrazo;
-    final payback = d.paybackMes;
-    final cumVendas = d.cumVendas;
+    final retMes1 = d.fluxo.isNotEmpty ? d.fluxo.first.$3 : 0.0;
+    final retUlt = d.fluxo.isNotEmpty ? d.fluxo.last.$3 : 0.0;
+    final pctAcum = d.aporte > 0 ? d.acumHorizonte / d.aporte * 100 : 0.0;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -809,11 +794,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
         const SizedBox(height: 4),
         Text(
-          'Aporte de ${_moeda.format(aporte)} para finalizar as obras e os '
-          'novos apartamentos da transição. Retorno projetado pelas vendas + '
-          '15% do pool. Os distratos e as contas são bancados pelo aporte '
-          'mensal do resort. Início em ${d.dataDoMes(1)} (inauguração da '
-          'multipropriedade).',
+          'Aporte de ${_moeda.format(d.aporte)} para finalizar as obras e os '
+          'novos apartamentos, começando em ${d.dataDoMes(1)} (inauguração). '
+          'O foco é mostrar, mês a mês, quanto volta para o Reynaldo — pelas '
+          'vendas + 15% do pool.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
@@ -827,7 +811,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         ),
         const SizedBox(height: 16),
 
-        // ── Payback (destaque) ──
+        // ── Destaque: retorno mês a mês ──
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -838,33 +822,25 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Reynaldo recupera o aporte em',
+              Text('Volta para o Reynaldo nos primeiros ${d.horizonte} meses',
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              Text(payback == null ? '> 240 meses' : _mesesTexto(payback),
+              Text(_moeda.format(d.acumHorizonte),
                   style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
                       color: cs.primary)),
-              if (payback != null)
-                Text('até ${d.dataDoMes(payback)} · $payback meses — '
-                    'devolvendo ${_moeda.format(aporte)} com vendas + 15% '
-                    'do pool',
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              if (payback != null) ...[
-                const Divider(height: 20),
-                _linhaInfo('Vindo das vendas (até o payback)',
-                    _moeda.format(cumVendas.clamp(0, aporte)), cs),
-                _linhaInfo('Vindo do pool 15% (até o payback)',
-                    _moeda.format((aporte - cumVendas).clamp(0, aporte)), cs),
-              ],
+              Text(
+                  '${pctAcum.toStringAsFixed(0)}% do aporte · retorno cresce de '
+                  '${_moeda.format(retMes1)}/mês (${d.dataDoMes(1)}) para '
+                  '${_moeda.format(retUlt)}/mês (${d.dataDoMes(d.horizonte)})',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
-        // ── Parâmetros ──
-        Text('Distratos',
+        // ── Distratos e recebimento ──
+        Text('Distratos e recebimento',
             style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
@@ -873,6 +849,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         Wrap(spacing: 10, runSpacing: 10, children: [
           _campoNum('% desistência', _reyDesistCtrl, sufixo: '%'),
           _campoNum('Parcelas distrato', _reyDistPrazoCtrl, sufixo: ''),
+          _campoNum('Recebimento hoje', _reyResortCtrl, sufixo: 'R\$'),
         ]),
         const SizedBox(height: 10),
         Container(
@@ -886,28 +863,33 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _linhaInfo('Base paga (ativos, excl. Matheus/Reynaldo)',
-                  _moeda.format(base), cs),
+                  _moeda.format(d.base), cs),
               _linhaInfo(
-                  'Total a devolver (${(desist * 100).toStringAsFixed(0)}%)',
-                  _moeda.format(totalDistrato),
+                  'Total a devolver (${(d.desistPct * 100).toStringAsFixed(0)}%)',
+                  _moeda.format(d.totalDistrato),
                   cs),
               _linhaInfo(
-                  'Parcela do distrato (${distPrazo.toStringAsFixed(0)}×)',
-                  '${_moeda.format(distParcela)}/mês',
+                  'Parcela do distrato (${d.distPrazo.toStringAsFixed(0)}×)',
+                  '${_moeda.format(d.distParcela)}/mês',
                   cs),
               const Divider(height: 18),
-              _linhaInfo('Aporte do resort/mês', _moeda.format(resort), cs),
-              _linhaInfo(
-                  resortSobra >= 0
-                      ? 'Sobra p/ outras contas'
-                      : 'Falta (resort não cobre)',
-                  '${_moeda.format(resortSobra)}/mês',
+              _linhaInfo('Recebimento hoje', '${_moeda.format(d.resort)}/mês',
                   cs),
+              _linhaInfo(
+                  'Após ${(d.desistPct * 100).toStringAsFixed(0)}% de '
+                  'desistência',
+                  '${_moeda.format(d.resortLiq)}/mês',
+                  cs),
+              const SizedBox(height: 4),
+              Text('Cai com a desistência e volta a crescer mês a mês com as '
+                  'novas vendas (ver tabela abaixo).',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
+        // ── Vendas ──
         Text('Vendas',
             style: TextStyle(
                 fontSize: 13,
@@ -919,30 +901,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           _campoNum('Entrada', _reyEntradaCtrl, sufixo: '%'),
           _campoNum('Parcelas venda', _reyVendaPrazoCtrl, sufixo: ''),
         ]),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.green.shade700.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(12),
-            border:
-                Border.all(color: Colors.green.shade700.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _linhaInfo('Entrada recebida/mês (à vista)',
-                  _moeda.format(entradaMes), cs),
-              _linhaInfo('Parcela por safra de venda',
-                  '${_moeda.format(parcelaSafra)}/mês × ${vendaPrazo.toStringAsFixed(0)}',
-                  cs),
-              _linhaInfo('Caixa de vendas em regime (cheio)',
-                  '${_moeda.format(vendaMes)}/mês', cs),
-            ],
-          ),
-        ),
         const SizedBox(height: 16),
 
+        // ── Retorno ao Reynaldo (parâmetros) ──
         Text('Retorno ao Reynaldo',
             style: TextStyle(
                 fontSize: 13,
@@ -951,14 +912,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         const SizedBox(height: 6),
         Wrap(spacing: 10, runSpacing: 10, children: [
           _campoNum('Aporte Reynaldo', _reyAporteCtrl, sufixo: 'R\$'),
-          _campoNum('% vendas p/ retorno', _reyShareVendasCtrl, sufixo: '%'),
+          _campoNum('% vendas p/ ele', _reyShareVendasCtrl, sufixo: '%'),
           _campoNum('Pool 15% / mês', _reyPoolMesCtrl, sufixo: 'R\$'),
           _campoNum('Mês início do pool', _reyPoolInicioCtrl, sufixo: ''),
           _campoNum('Mês início (1-12)', _reyMesIniCtrl, sufixo: ''),
           _campoNum('Ano início', _reyAnoIniCtrl, sufixo: ''),
         ]),
         const SizedBox(height: 12),
-        Text('Acumulado devolvido ao Reynaldo',
+        Text('Mês a mês — quanto volta para o Reynaldo',
             style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -973,24 +934,25 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           child: Table(
             border: TableBorder.symmetric(
                 inside: BorderSide(color: cs.outlineVariant)),
-            columnWidths: const {0: FlexColumnWidth(0.8)},
+            columnWidths: const {0: FlexColumnWidth(1.1)},
             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
             children: [
               TableRow(
                 decoration: BoxDecoration(color: cs.surfaceContainerHighest),
                 children: [
-                  _celReynaldo(cs, 'Quando', cabecalho: true),
+                  _celReynaldo(cs, 'Mês', cabecalho: true),
+                  _celReynaldo(cs, 'Recebimento', cabecalho: true),
+                  _celReynaldo(cs, 'Retorno', cabecalho: true),
                   _celReynaldo(cs, 'Acumulado', cabecalho: true),
-                  _celReynaldo(cs, '% do aporte', cabecalho: true),
                 ],
               ),
-              for (final mk in d.marcos)
+              for (final f in d.fluxo)
                 TableRow(children: [
-                  _celReynaldo(cs, '${d.dataDoMes(mk.$1)} (mês ${mk.$1})'),
-                  _celReynaldo(cs, _moeda.format(mk.$2)),
-                  _celReynaldo(cs, '${mk.$3.toStringAsFixed(0)}%',
-                      destaque: true,
-                      cor: mk.$3 >= 100 ? Colors.green.shade700 : cs.primary),
+                  _celReynaldo(cs, d.dataDoMes(f.$1)),
+                  _celReynaldo(cs, _moeda.format(f.$2)),
+                  _celReynaldo(cs, _moeda.format(f.$3),
+                      destaque: true, cor: cs.primary),
+                  _celReynaldo(cs, _moeda.format(f.$4)),
                 ]),
             ],
           ),
@@ -1003,12 +965,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            'Modelo: distratos = base paga (excl. Matheus/Reynaldo) × % '
-            'desistência, em N parcelas, bancados pelo resort. Vendas = entrada '
-            'à vista + parcelas que se acumulam mês a mês (safras). Retorno ao '
-            'Reynaldo = % do caixa de vendas + 15% do pool (a partir do mês de '
-            'início), até quitar o aporte. Ajuste os campos com os números '
-            'reais.',
+            'Como ler: "Recebimento" = recebimento após a desistência '
+            '(${_moeda.format(d.resortLiq)}) + o caixa das novas vendas do mês '
+            '(por isso cresce). "Retorno" = ${(d.sharePct * 100).toStringAsFixed(0)}% '
+            'do caixa de vendas + 15% do pool (a partir do mês '
+            '${d.poolInicio.toStringAsFixed(0)}). Os distratos '
+            '(${_moeda.format(d.distParcela)}/mês) saem do recebimento. Ajuste '
+            'os campos com os números reais.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
