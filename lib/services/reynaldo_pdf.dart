@@ -19,6 +19,7 @@ class DadosReynaldo {
   final double distParcela;
   final double resort; // aporte do resort/mês (hoje)
   final double resortLiq; // resort após a desistência
+  final double custosMensais; // outras contas mensais do resort
   final double vendaMes;
   final double entradaPct; // fração (0..1)
   final double vendaPrazo; // parcelas da venda
@@ -32,8 +33,8 @@ class DadosReynaldo {
   final int horizonte; // meses mostrados no fluxo
   final int? paybackMes; // mês em que o acumulado atinge o aporte (referência)
   final double acumHorizonte; // total devolvido dentro do horizonte
-  // (mês, recebimento operacional, retorno ao Reynaldo no mês, acumulado)
-  final List<(int, double, double, double)> fluxo;
+  // (mês, recebimento, retorno ao Reynaldo, acumulado, sobra do recebimento)
+  final List<(int, double, double, double, double)> fluxo;
 
   const DadosReynaldo({
     required this.aporte,
@@ -44,6 +45,7 @@ class DadosReynaldo {
     required this.distParcela,
     required this.resort,
     required this.resortLiq,
+    required this.custosMensais,
     required this.vendaMes,
     required this.entradaPct,
     required this.vendaPrazo,
@@ -172,14 +174,15 @@ class ReynaldoPdf {
       pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Expanded(
           child: _bloco('Desistências e recebimento', [
-            ('Valor pago em contratos ativos*', _moeda.format(d.base)),
-            ('Desistência (${(d.desistPct * 100).toStringAsFixed(0)}%)',
-                _moeda.format(d.totalDistrato)),
-            ('Parcela do distrato (${d.distPrazo.toStringAsFixed(0)}x)',
-                '${_moeda.format(d.distParcela)}/mês'),
             ('Recebimento hoje', '${_moeda.format(d.resort)}/mês'),
-            ('Recebimento após desistência',
+            ('Após desistência (${(d.desistPct * 100).toStringAsFixed(0)}%)',
                 '${_moeda.format(d.resortLiq)}/mês'),
+            ('(-) Parcela do distrato (${d.distPrazo.toStringAsFixed(0)}x)',
+                '${_moeda.format(d.distParcela)}/mês'),
+            ('(-) Custos mensais do resort',
+                '${_moeda.format(d.custosMensais)}/mês'),
+            ('(=) Sobra da base (s/ vendas)',
+                '${_moeda.format(d.resortLiq - d.distParcela - d.custosMensais)}/mês'),
           ]),
         ),
         pw.SizedBox(width: 12),
@@ -206,12 +209,12 @@ class ReynaldoPdf {
       pw.SizedBox(height: 10),
       pw.Divider(color: _borda),
       pw.Text(
-        '*Base: soma do valor já pago nos contratos ativos, excluídos os '
-        'contratos de Matheus Camelo e do próprio Reynaldo. "Recebimento" = '
-        'recebimento após a desistência + caixa das novas vendas no mês. '
-        '"Retorno ao investidor" = % das vendas destinado a ele + 15% do pool. '
-        'Valores projetados, sujeitos às condições reais de vendas, ocupação e '
-        'cronograma de obras.',
+        'Base do distrato: valor já pago nos contratos ativos, excluídos '
+        'Matheus Camelo e o próprio Reynaldo. "Recebimento" = recebimento após '
+        'a desistência + caixa das novas vendas no mês. "Sobra" = recebimento − '
+        'parcela do distrato − custos mensais do resort. "Retorno ao investidor" '
+        '= % das vendas destinado a ele + 15% do pool. Valores projetados, '
+        'sujeitos às condições reais de vendas, ocupação e cronograma de obras.',
         style: pw.TextStyle(fontSize: 8.5, color: _cinza, lineSpacing: 1.5),
       ),
     ];
@@ -269,10 +272,11 @@ class ReynaldoPdf {
     return pw.Table(
       border: pw.TableBorder.all(color: _borda),
       columnWidths: const {
-        0: pw.FlexColumnWidth(1.1),
-        1: pw.FlexColumnWidth(1.6),
-        2: pw.FlexColumnWidth(1.6),
-        3: pw.FlexColumnWidth(1.6),
+        0: pw.FlexColumnWidth(1.0),
+        1: pw.FlexColumnWidth(1.4),
+        2: pw.FlexColumnWidth(1.3),
+        3: pw.FlexColumnWidth(1.4),
+        4: pw.FlexColumnWidth(1.4),
       },
       children: [
         pw.TableRow(
@@ -280,7 +284,8 @@ class ReynaldoPdf {
           children: [
             cel('Mês', cab: true),
             cel('Recebimento', cab: true),
-            cel('Retorno ao investidor', cab: true),
+            cel('Sobra*', cab: true),
+            cel('Retorno investidor', cab: true),
             cel('Acumulado', cab: true),
           ],
         ),
@@ -288,6 +293,7 @@ class ReynaldoPdf {
           pw.TableRow(children: [
             cel(d.dataDoMes(f.$1)),
             cel(_moeda.format(f.$2)),
+            cel(_moeda.format(f.$5)),
             cel(_moeda.format(f.$3)),
             cel(_moeda.format(f.$4)),
           ]),

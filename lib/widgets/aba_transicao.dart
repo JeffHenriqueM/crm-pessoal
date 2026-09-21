@@ -181,6 +181,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _reyEntradaCtrl = TextEditingController(text: '10'); // % entrada da venda
   final _reyVendaPrazoCtrl = TextEditingController(text: '60'); // parcelas venda
   final _reyResortCtrl = TextEditingController(text: '300000'); // aporte resort/mês
+  final _reyCustosCtrl =
+      TextEditingController(text: '60000'); // outras contas mensais do resort
   final _reyAporteCtrl = TextEditingController(text: '2000000'); // aporte Reynaldo
   final _reyPoolMesCtrl = TextEditingController(text: '50000'); // 15% pool/mês
   final _reyPoolInicioCtrl = TextEditingController(text: '12'); // mês início pool
@@ -239,6 +241,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _reyEntradaCtrl.dispose();
     _reyVendaPrazoCtrl.dispose();
     _reyResortCtrl.dispose();
+    _reyCustosCtrl.dispose();
     _reyAporteCtrl.dispose();
     _reyPoolMesCtrl.dispose();
     _reyPoolInicioCtrl.dispose();
@@ -712,6 +715,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final entradaPct = _parse(_reyEntradaCtrl, 10) / 100;
     final vendaPrazo = _parse(_reyVendaPrazoCtrl, 60);
     final resortBase = _parse(_reyResortCtrl, 300000);
+    final custos = _parse(_reyCustosCtrl, 60000);
     final aporte = _parse(_reyAporteCtrl, 2000000);
     final poolMes = _parse(_reyPoolMesCtrl, 50000);
     final poolInicio = _parse(_reyPoolInicioCtrl, 12);
@@ -728,15 +732,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
     const horizonte = 24;
     double acum = 0;
-    final fluxo = <(int, double, double, double)>[];
+    final fluxo = <(int, double, double, double, double)>[];
     for (int m = 1; m <= horizonte; m++) {
       final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
       final vendasCash = entradaMes + parcelaSafra * vintages;
       final pool = m >= poolInicio ? poolMes : 0.0;
       final retorno = vendasCash * share + pool;
       final recebimento = resortLiq + vendasCash; // recuperação c/ vendas
+      final sobra = recebimento - distParcela - custos; // após distrato+custos
       acum += retorno;
-      fluxo.add((m, recebimento, retorno, acum));
+      fluxo.add((m, recebimento, retorno, acum, sobra));
     }
     final acumHorizonte = acum;
 
@@ -763,6 +768,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       distParcela: distParcela,
       resort: resortBase,
       resortLiq: resortLiq,
+      custosMensais: custos,
       vendaMes: vendaMes,
       entradaPct: entradaPct,
       vendaPrazo: vendaPrazo,
@@ -850,6 +856,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           _campoNum('% desistência', _reyDesistCtrl, sufixo: '%'),
           _campoNum('Parcelas distrato', _reyDistPrazoCtrl, sufixo: ''),
           _campoNum('Recebimento hoje', _reyResortCtrl, sufixo: 'R\$'),
+          _campoNum('Custos mensais resort', _reyCustosCtrl, sufixo: 'R\$'),
         ]),
         const SizedBox(height: 10),
         Container(
@@ -868,10 +875,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   'Total a devolver (${(d.desistPct * 100).toStringAsFixed(0)}%)',
                   _moeda.format(d.totalDistrato),
                   cs),
-              _linhaInfo(
-                  'Parcela do distrato (${d.distPrazo.toStringAsFixed(0)}×)',
-                  '${_moeda.format(d.distParcela)}/mês',
-                  cs),
               const Divider(height: 18),
               _linhaInfo('Recebimento hoje', '${_moeda.format(d.resort)}/mês',
                   cs),
@@ -880,9 +883,21 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   'desistência',
                   '${_moeda.format(d.resortLiq)}/mês',
                   cs),
+              _linhaInfo(
+                  'Parcela do distrato (${d.distPrazo.toStringAsFixed(0)}×)',
+                  '− ${_moeda.format(d.distParcela)}/mês',
+                  cs),
+              _linhaInfo('Custos mensais do resort',
+                  '− ${_moeda.format(d.custosMensais)}/mês', cs),
+              const Divider(height: 18),
+              _linhaInfo(
+                  'Sobra da base (antes das vendas)',
+                  '${_moeda.format(d.resortLiq - d.distParcela - d.custosMensais)}/mês',
+                  cs),
               const SizedBox(height: 4),
-              Text('Cai com a desistência e volta a crescer mês a mês com as '
-                  'novas vendas (ver tabela abaixo).',
+              Text('Essa é a sobra só do recebimento base (180k). Com as vendas '
+                  'entrando, a sobra cresce mês a mês (coluna "Sobra" na '
+                  'tabela).',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
             ],
           ),
@@ -934,7 +949,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           child: Table(
             border: TableBorder.symmetric(
                 inside: BorderSide(color: cs.outlineVariant)),
-            columnWidths: const {0: FlexColumnWidth(1.1)},
+            columnWidths: const {0: FlexColumnWidth(1.0)},
             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
             children: [
               TableRow(
@@ -942,6 +957,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 children: [
                   _celReynaldo(cs, 'Mês', cabecalho: true),
                   _celReynaldo(cs, 'Recebimento', cabecalho: true),
+                  _celReynaldo(cs, 'Sobra', cabecalho: true),
                   _celReynaldo(cs, 'Retorno', cabecalho: true),
                   _celReynaldo(cs, 'Acumulado', cabecalho: true),
                 ],
@@ -950,6 +966,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 TableRow(children: [
                   _celReynaldo(cs, d.dataDoMes(f.$1)),
                   _celReynaldo(cs, _moeda.format(f.$2)),
+                  _celReynaldo(cs, _moeda.format(f.$5),
+                      cor: f.$5 < 0 ? Colors.red.shade700 : null),
                   _celReynaldo(cs, _moeda.format(f.$3),
                       destaque: true, cor: cs.primary),
                   _celReynaldo(cs, _moeda.format(f.$4)),
@@ -965,13 +983,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            'Como ler: "Recebimento" = recebimento após a desistência '
-            '(${_moeda.format(d.resortLiq)}) + o caixa das novas vendas do mês '
-            '(por isso cresce). "Retorno" = ${(d.sharePct * 100).toStringAsFixed(0)}% '
-            'do caixa de vendas + 15% do pool (a partir do mês '
-            '${d.poolInicio.toStringAsFixed(0)}). Os distratos '
-            '(${_moeda.format(d.distParcela)}/mês) saem do recebimento. Ajuste '
-            'os campos com os números reais.',
+            'Como ler: "Recebimento" = após a desistência '
+            '(${_moeda.format(d.resortLiq)}) + caixa das novas vendas do mês '
+            '(por isso cresce). "Sobra" = recebimento − parcela do distrato '
+            '(${_moeda.format(d.distParcela)}) − custos mensais '
+            '(${_moeda.format(d.custosMensais)}); em vermelho quando não cobre. '
+            '"Retorno" = ${(d.sharePct * 100).toStringAsFixed(0)}% do caixa de '
+            'vendas + 15% do pool (a partir do mês '
+            '${d.poolInicio.toStringAsFixed(0)}). Ajuste os campos com os '
+            'números reais.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
