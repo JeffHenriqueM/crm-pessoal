@@ -67,7 +67,7 @@ class _AbaDistratarState extends State<AbaDistratar> {
 
   bool get _temPermissao {
     final p = widget.userProfile.toLowerCase().trim();
-    return p == 'super admin' || p == 'pós-venda';
+    return p == 'super admin' || p == 'pós-venda' || p == 'admin';
   }
 
   @override

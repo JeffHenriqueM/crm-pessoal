@@ -1222,9 +1222,11 @@ class _PosVendaHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A aba "Distratar" é visível para super admin e pós-venda.
-    final isSuperAdmin = userProfile.toLowerCase().trim() == 'super admin';
-    final podeDistrar = isSuperAdmin || userProfile.toLowerCase().trim() == 'pós-venda';
+    // A aba "Distratar" é visível para admin, super admin e pós-venda.
+    final perfilLc = userProfile.toLowerCase().trim();
+    final podeDistrar = perfilLc == 'super admin' ||
+        perfilLc == 'pós-venda' ||
+        perfilLc == 'admin';
 
     final tabs = <Tab>[
       const Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
