@@ -29,6 +29,8 @@ class DadosReynaldo {
   final double sharePct; // fração (0..1)
   final int? paybackMes;
   final double cumVendas; // total vindo das vendas até o payback
+  final int anoInicio; // ano de início da projeção (inauguração)
+  final int mesInicio; // mês de início (1..12)
   final List<(int, double, double)> marcos; // (mês, acumulado, % do aporte)
 
   const DadosReynaldo({
@@ -50,8 +52,23 @@ class DadosReynaldo {
     required this.sharePct,
     required this.paybackMes,
     required this.cumVendas,
+    required this.anoInicio,
+    required this.mesInicio,
     required this.marcos,
   });
+
+  static const _abrevMes = [
+    'jan', 'fev', 'mar', 'abr', 'mai', 'jun',
+    'jul', 'ago', 'set', 'out', 'nov', 'dez'
+  ];
+
+  /// Rótulo "mmm/aaaa" do mês [m] da projeção (m = 1 → início).
+  String dataDoMes(int m) {
+    final dt = DateTime(anoInicio, mesInicio + (m - 1));
+    return '${_abrevMes[dt.month - 1]}/${dt.year}';
+  }
+
+  String get paybackData => paybackMes == null ? '' : dataDoMes(paybackMes!);
 }
 
 class ReynaldoPdf {
@@ -131,13 +148,15 @@ class ReynaldoPdf {
             pw.Text(
               d.paybackMes == null
                   ? 'Retorno projetado além do horizonte simulado.'
-                  : 'Retorno total do aporte em ${_mesesTexto(d.paybackMes!)} '
-                      '(${d.paybackMes} meses).',
+                  : 'Retorno total do aporte até ${d.paybackData} — '
+                      '${_mesesTexto(d.paybackMes!)} (${d.paybackMes} meses).',
               style: pw.TextStyle(
                   fontSize: 14, fontWeight: pw.FontWeight.bold, color: _preto),
             ),
             pw.SizedBox(height: 2),
-            pw.Text('Devolução pelas vendas + 15% do pool de hospedagem.',
+            pw.Text(
+                'Início em ${d.dataDoMes(1)} (inauguração da multipropriedade). '
+                'Devolução pelas vendas + 15% do pool de hospedagem.',
                 style: pw.TextStyle(fontSize: 10, color: _cinza)),
           ]),
         ),
@@ -258,14 +277,16 @@ class ReynaldoPdf {
     return pw.Table(
       border: pw.TableBorder.all(color: _borda),
       columnWidths: const {
-        0: pw.FlexColumnWidth(1),
-        1: pw.FlexColumnWidth(2),
-        2: pw.FlexColumnWidth(1.4),
+        0: pw.FlexColumnWidth(1.1),
+        1: pw.FlexColumnWidth(0.7),
+        2: pw.FlexColumnWidth(1.8),
+        3: pw.FlexColumnWidth(1.2),
       },
       children: [
         pw.TableRow(
           decoration: const pw.BoxDecoration(color: _fundoCab),
           children: [
+            cel('Data', cab: true),
             cel('Mês', cab: true),
             cel('Acumulado devolvido', cab: true),
             cel('% do aporte', cab: true),
@@ -273,6 +294,7 @@ class ReynaldoPdf {
         ),
         for (final m in d.marcos)
           pw.TableRow(children: [
+            cel(d.dataDoMes(m.$1), bold: m.$3 >= 100),
             cel('${m.$1}', bold: m.$3 >= 100),
             cel(_moeda.format(m.$2), bold: m.$3 >= 100),
             cel('${m.$3.toStringAsFixed(0)}%', bold: m.$3 >= 100),

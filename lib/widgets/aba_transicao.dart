@@ -186,6 +186,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _reyPoolInicioCtrl = TextEditingController(text: '12'); // mês início pool
   final _reyShareVendasCtrl =
       TextEditingController(text: '100'); // % do caixa de vendas p/ Reynaldo
+  // Início da projeção = inauguração da multipropriedade (jan/2028).
+  final _reyMesIniCtrl = TextEditingController(text: '1');
+  final _reyAnoIniCtrl = TextEditingController(text: '2028');
 
   // Tiers de cota: (rótulo, cotas por apartamento, cor).
   static final List<(String, int, Color)> _tiers = [
@@ -240,6 +243,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _reyPoolMesCtrl.dispose();
     _reyPoolInicioCtrl.dispose();
     _reyShareVendasCtrl.dispose();
+    _reyMesIniCtrl.dispose();
+    _reyAnoIniCtrl.dispose();
     super.dispose();
   }
 
@@ -773,6 +778,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       sharePct: share,
       paybackMes: payback,
       cumVendas: payback == null ? cumVendas : cumVendasPB,
+      anoInicio: _parse(_reyAnoIniCtrl, 2028).toInt(),
+      mesInicio: _parse(_reyMesIniCtrl, 1).toInt().clamp(1, 12),
       marcos: marcos,
     );
   }
@@ -805,7 +812,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           'Aporte de ${_moeda.format(aporte)} para finalizar as obras e os '
           'novos apartamentos da transição. Retorno projetado pelas vendas + '
           '15% do pool. Os distratos e as contas são bancados pelo aporte '
-          'mensal do resort.',
+          'mensal do resort. Início em ${d.dataDoMes(1)} (inauguração da '
+          'multipropriedade).',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
@@ -838,8 +846,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                       fontWeight: FontWeight.bold,
                       color: cs.primary)),
               if (payback != null)
-                Text('$payback meses — devolvendo ${_moeda.format(aporte)} '
-                    'com vendas + 15% do pool',
+                Text('até ${d.dataDoMes(payback)} · $payback meses — '
+                    'devolvendo ${_moeda.format(aporte)} com vendas + 15% '
+                    'do pool',
                     style:
                         TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               if (payback != null) ...[
@@ -945,6 +954,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           _campoNum('% vendas p/ retorno', _reyShareVendasCtrl, sufixo: '%'),
           _campoNum('Pool 15% / mês', _reyPoolMesCtrl, sufixo: 'R\$'),
           _campoNum('Mês início do pool', _reyPoolInicioCtrl, sufixo: ''),
+          _campoNum('Mês início (1-12)', _reyMesIniCtrl, sufixo: ''),
+          _campoNum('Ano início', _reyAnoIniCtrl, sufixo: ''),
         ]),
         const SizedBox(height: 12),
         Text('Acumulado devolvido ao Reynaldo',
@@ -968,14 +979,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               TableRow(
                 decoration: BoxDecoration(color: cs.surfaceContainerHighest),
                 children: [
-                  _celReynaldo(cs, 'Mês', cabecalho: true),
+                  _celReynaldo(cs, 'Quando', cabecalho: true),
                   _celReynaldo(cs, 'Acumulado', cabecalho: true),
                   _celReynaldo(cs, '% do aporte', cabecalho: true),
                 ],
               ),
               for (final mk in d.marcos)
                 TableRow(children: [
-                  _celReynaldo(cs, '${mk.$1}'),
+                  _celReynaldo(cs, '${d.dataDoMes(mk.$1)} (mês ${mk.$1})'),
                   _celReynaldo(cs, _moeda.format(mk.$2)),
                   _celReynaldo(cs, '${mk.$3.toStringAsFixed(0)}%',
                       destaque: true,
