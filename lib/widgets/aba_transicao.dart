@@ -169,8 +169,22 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   // Dados reais dos contratos ativos (carregados em _carregar).
   double _exposicaoDevolucao = 0; // soma do valorIntegralizado dos ativos
+  double _baseDistrato = 0; // soma valorIntegralizado, excl. Matheus+Reynaldo
   int _ativosCount = 0; // qtd de contratos ativos
   List<double> _pctPagos = []; // % efetivo pago de cada contrato ativo
+
+  // ── Aba Reynaldo (projeção de distratos, vendas e payback do aporte) ──────
+  final _reyDesistCtrl = TextEditingController(text: '40'); // % desistência
+  final _reyDistPrazoCtrl = TextEditingController(text: '48'); // parcelas distrato
+  final _reyVendaMesCtrl = TextEditingController(text: '400000'); // venda/mês
+  final _reyEntradaCtrl = TextEditingController(text: '10'); // % entrada da venda
+  final _reyVendaPrazoCtrl = TextEditingController(text: '60'); // parcelas venda
+  final _reyResortCtrl = TextEditingController(text: '300000'); // aporte resort/mês
+  final _reyAporteCtrl = TextEditingController(text: '2000000'); // aporte Reynaldo
+  final _reyPoolMesCtrl = TextEditingController(text: '50000'); // 15% pool/mês
+  final _reyPoolInicioCtrl = TextEditingController(text: '12'); // mês início pool
+  final _reyShareVendasCtrl =
+      TextEditingController(text: '100'); // % do caixa de vendas p/ Reynaldo
 
   // Tiers de cota: (rótulo, cotas por apartamento, cor).
   static final List<(String, int, Color)> _tiers = [
@@ -215,6 +229,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _yieldACtrl.dispose();
     _yieldBCtrl.dispose();
     _yieldCCtrl.dispose();
+    _reyDesistCtrl.dispose();
+    _reyDistPrazoCtrl.dispose();
+    _reyVendaMesCtrl.dispose();
+    _reyEntradaCtrl.dispose();
+    _reyVendaPrazoCtrl.dispose();
+    _reyResortCtrl.dispose();
+    _reyAporteCtrl.dispose();
+    _reyPoolMesCtrl.dispose();
+    _reyPoolInicioCtrl.dispose();
+    _reyShareVendasCtrl.dispose();
     super.dispose();
   }
 
@@ -310,6 +334,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       // Elegibilidade ao pool: % efetivo pago de cada contrato ativo.
       final exposicao =
           contratos.fold<double>(0, (s, c) => s + c.valorIntegralizado);
+      // Base de distrato: exclui Matheus Camelo e Reynaldo (tratados à parte).
+      final baseDist = contratos
+          .where((c) => _clienteSeparado(c.nomeComprador) == null)
+          .fold<double>(0, (s, c) => s + c.valorIntegralizado);
       final pctPagos = contratos.map((c) => c.percentualEfetivo).toList();
       if (!mounted) return;
       setState(() {
@@ -317,6 +345,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _separados = separados;
         _top30 = top.take(30).toList();
         _exposicaoDevolucao = exposicao;
+        _baseDistrato = baseDist;
         _ativosCount = contratos.length;
         _pctPagos = pctPagos;
         _carregado = true;
@@ -344,7 +373,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
 
     return DefaultTabController(
-      length: 9,
+      length: 10,
       child: Column(
         children: [
           TabBar(
@@ -362,6 +391,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               Tab(text: 'Ganhos', icon: Icon(Icons.savings_outlined)),
               Tab(text: 'Comprador', icon: Icon(Icons.handshake_outlined)),
               Tab(text: 'Devoluções', icon: Icon(Icons.money_off_outlined)),
+              Tab(text: 'Reynaldo', icon: Icon(Icons.account_balance_outlined)),
               Tab(text: 'Plano', icon: Icon(Icons.checklist_rounded)),
             ],
           ),
@@ -376,6 +406,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 _tabGanhos(cs),
                 _tabComprador(cs),
                 _tabDevolucoes(cs),
+                _tabReynaldo(cs),
                 _tabPlano(cs),
               ],
             ),
@@ -664,6 +695,277 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           'operação).',
     ],
   ];
+
+  // ── Aba: Reynaldo (distratos + vendas + payback do aporte de R$ 2M) ───────
+  String _mesesTexto(int m) {
+    final anos = m ~/ 12;
+    final meses = m % 12;
+    if (anos == 0) return '$meses ${meses == 1 ? 'mês' : 'meses'}';
+    if (meses == 0) return '$anos ${anos == 1 ? 'ano' : 'anos'}';
+    return '$anos ${anos == 1 ? 'ano' : 'anos'} e $meses '
+        '${meses == 1 ? 'mês' : 'meses'}';
+  }
+
+  Widget _tabReynaldo(ColorScheme cs) {
+    final base = _baseDistrato;
+    final desist = _parse(_reyDesistCtrl, 40) / 100;
+    final distPrazo = _parse(_reyDistPrazoCtrl, 48);
+    final vendaMes = _parse(_reyVendaMesCtrl, 400000);
+    final entradaPct = _parse(_reyEntradaCtrl, 10) / 100;
+    final vendaPrazo = _parse(_reyVendaPrazoCtrl, 60);
+    final resort = _parse(_reyResortCtrl, 300000);
+    final aporte = _parse(_reyAporteCtrl, 2000000);
+    final poolMes = _parse(_reyPoolMesCtrl, 50000);
+    final poolInicio = _parse(_reyPoolInicioCtrl, 12);
+    final share = _parse(_reyShareVendasCtrl, 100) / 100;
+
+    // ── Distratos ──
+    final totalDistrato = base * desist;
+    final distParcela =
+        distPrazo > 0 ? totalDistrato / distPrazo : totalDistrato;
+    final resortSobra = resort - distParcela;
+
+    // ── Vendas ──
+    final entradaMes = vendaMes * entradaPct;
+    final parcelaSafra =
+        vendaPrazo > 0 ? vendaMes * (1 - entradaPct) / vendaPrazo : 0.0;
+
+    // ── Simulação mês a mês do retorno do Reynaldo ──
+    double cum = 0, cumVendas = 0;
+    int? payback;
+    const marcosMes = [6, 12, 18, 24, 36, 48, 60];
+    final marcos = <int, double>{};
+    for (int m = 1; m <= 240; m++) {
+      final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
+      final vendasCash = entradaMes + parcelaSafra * vintages;
+      final pool = m >= poolInicio ? poolMes : 0.0;
+      final repayVendas = vendasCash * share;
+      cumVendas += repayVendas;
+      cum += repayVendas + pool;
+      if (payback == null && cum >= aporte) payback = m;
+      if (marcosMes.contains(m)) marcos[m] = cum;
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Proposta de investimento — Reynaldo',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+        const SizedBox(height: 4),
+        Text(
+          'Aporte de ${_moeda.format(aporte)} para finalizar as obras e os '
+          'novos apartamentos da transição. Retorno projetado pelas vendas + '
+          '15% do pool. Os distratos e as contas são bancados pelo aporte '
+          'mensal do resort.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 16),
+
+        // ── Payback (destaque) ──
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Reynaldo recupera o aporte em',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(payback == null ? '> 240 meses' : _mesesTexto(payback),
+                  style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary)),
+              if (payback != null)
+                Text('$payback meses — devolvendo ${_moeda.format(aporte)} '
+                    'com vendas + 15% do pool',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              if (payback != null) ...[
+                const Divider(height: 20),
+                _linhaInfo('Vindo das vendas (até o payback)',
+                    _moeda.format(cumVendas.clamp(0, aporte)), cs),
+                _linhaInfo('Vindo do pool 15% (até o payback)',
+                    _moeda.format((aporte - cumVendas).clamp(0, aporte)), cs),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ── Parâmetros ──
+        Text('Distratos',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          _campoNum('% desistência', _reyDesistCtrl, sufixo: '%'),
+          _campoNum('Parcelas distrato', _reyDistPrazoCtrl, sufixo: ''),
+        ]),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.red.shade700.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.red.shade700.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _linhaInfo('Base paga (ativos, excl. Matheus/Reynaldo)',
+                  _moeda.format(base), cs),
+              _linhaInfo(
+                  'Total a devolver (${(desist * 100).toStringAsFixed(0)}%)',
+                  _moeda.format(totalDistrato),
+                  cs),
+              _linhaInfo(
+                  'Parcela do distrato (${distPrazo.toStringAsFixed(0)}×)',
+                  '${_moeda.format(distParcela)}/mês',
+                  cs),
+              const Divider(height: 18),
+              _linhaInfo('Aporte do resort/mês', _moeda.format(resort), cs),
+              _linhaInfo(
+                  resortSobra >= 0
+                      ? 'Sobra p/ outras contas'
+                      : 'Falta (resort não cobre)',
+                  '${_moeda.format(resortSobra)}/mês',
+                  cs),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        Text('Vendas',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          _campoNum('Venda / mês', _reyVendaMesCtrl, sufixo: 'R\$'),
+          _campoNum('Entrada', _reyEntradaCtrl, sufixo: '%'),
+          _campoNum('Parcelas venda', _reyVendaPrazoCtrl, sufixo: ''),
+        ]),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.green.shade700.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: Colors.green.shade700.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _linhaInfo('Entrada recebida/mês (à vista)',
+                  _moeda.format(entradaMes), cs),
+              _linhaInfo('Parcela por safra de venda',
+                  '${_moeda.format(parcelaSafra)}/mês × ${vendaPrazo.toStringAsFixed(0)}',
+                  cs),
+              _linhaInfo('Caixa de vendas em regime (cheio)',
+                  '${_moeda.format(vendaMes)}/mês', cs),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        Text('Retorno ao Reynaldo',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          _campoNum('Aporte Reynaldo', _reyAporteCtrl, sufixo: 'R\$'),
+          _campoNum('% vendas p/ retorno', _reyShareVendasCtrl, sufixo: '%'),
+          _campoNum('Pool 15% / mês', _reyPoolMesCtrl, sufixo: 'R\$'),
+          _campoNum('Mês início do pool', _reyPoolInicioCtrl, sufixo: ''),
+        ]),
+        const SizedBox(height: 12),
+        Text('Acumulado devolvido ao Reynaldo',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Table(
+            border: TableBorder.symmetric(
+                inside: BorderSide(color: cs.outlineVariant)),
+            columnWidths: const {0: FlexColumnWidth(0.8)},
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [
+              TableRow(
+                decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+                children: [
+                  _celReynaldo(cs, 'Mês', cabecalho: true),
+                  _celReynaldo(cs, 'Acumulado', cabecalho: true),
+                  _celReynaldo(cs, '% do aporte', cabecalho: true),
+                ],
+              ),
+              for (final m in marcosMes)
+                TableRow(children: [
+                  _celReynaldo(cs, '$m'),
+                  _celReynaldo(cs, _moeda.format(marcos[m] ?? 0)),
+                  _celReynaldo(
+                      cs,
+                      aporte > 0
+                          ? '${((marcos[m] ?? 0) / aporte * 100).clamp(0, 100).toStringAsFixed(0)}%'
+                          : '—',
+                      destaque: true,
+                      cor: (marcos[m] ?? 0) >= aporte
+                          ? Colors.green.shade700
+                          : cs.primary),
+                ]),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'Modelo: distratos = base paga (excl. Matheus/Reynaldo) × % '
+            'desistência, em N parcelas, bancados pelo resort. Vendas = entrada '
+            'à vista + parcelas que se acumulam mês a mês (safras). Retorno ao '
+            'Reynaldo = % do caixa de vendas + 15% do pool (a partir do mês de '
+            'início), até quitar o aporte. Ajuste os campos com os números '
+            'reais.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _celReynaldo(ColorScheme cs, String txt,
+      {bool cabecalho = false, bool destaque = false, Color? cor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Text(txt,
+          style: TextStyle(
+              fontSize: cabecalho ? 11 : 12,
+              fontWeight:
+                  cabecalho || destaque ? FontWeight.w700 : FontWeight.w500,
+              color: cabecalho ? cs.onSurfaceVariant : cor)),
+    );
+  }
 
   Widget _tabPlano(ColorScheme cs) {
     return ListView(
