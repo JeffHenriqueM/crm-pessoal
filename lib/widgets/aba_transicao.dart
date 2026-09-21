@@ -5,6 +5,7 @@ import '../models/contrato_model.dart';
 import '../models/imovel_model.dart';
 import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
+import '../services/reynaldo_pdf.dart';
 
 /// Aba "Transição" (exclusiva do super admin): projeta a futura migração dos
 /// contratos do resort para o novo Hotel Villamor.
@@ -706,7 +707,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         '${meses == 1 ? 'mês' : 'meses'}';
   }
 
-  Widget _tabReynaldo(ColorScheme cs) {
+  /// Calcula toda a projeção do Reynaldo (usada pela aba e pelo PDF).
+  DadosReynaldo _dadosReynaldo() {
     final base = _baseDistrato;
     final desist = _parse(_reyDesistCtrl, 40) / 100;
     final distPrazo = _parse(_reyDistPrazoCtrl, 48);
@@ -719,32 +721,78 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final poolInicio = _parse(_reyPoolInicioCtrl, 12);
     final share = _parse(_reyShareVendasCtrl, 100) / 100;
 
-    // ── Distratos ──
     final totalDistrato = base * desist;
     final distParcela =
         distPrazo > 0 ? totalDistrato / distPrazo : totalDistrato;
     final resortSobra = resort - distParcela;
-
-    // ── Vendas ──
     final entradaMes = vendaMes * entradaPct;
     final parcelaSafra =
         vendaPrazo > 0 ? vendaMes * (1 - entradaPct) / vendaPrazo : 0.0;
 
-    // ── Simulação mês a mês do retorno do Reynaldo ──
-    double cum = 0, cumVendas = 0;
+    double cum = 0, cumVendas = 0, cumVendasPB = 0;
     int? payback;
     const marcosMes = [6, 12, 18, 24, 36, 48, 60];
-    final marcos = <int, double>{};
+    final marcosMap = <int, double>{};
     for (int m = 1; m <= 240; m++) {
       final vintages = (m - 1).clamp(0, vendaPrazo.toInt());
       final vendasCash = entradaMes + parcelaSafra * vintages;
       final pool = m >= poolInicio ? poolMes : 0.0;
-      final repayVendas = vendasCash * share;
-      cumVendas += repayVendas;
-      cum += repayVendas + pool;
-      if (payback == null && cum >= aporte) payback = m;
-      if (marcosMes.contains(m)) marcos[m] = cum;
+      cumVendas += vendasCash * share;
+      cum += vendasCash * share + pool;
+      if (payback == null && cum >= aporte) {
+        payback = m;
+        cumVendasPB = cumVendas;
+      }
+      if (marcosMes.contains(m)) marcosMap[m] = cum;
     }
+    final marcos = [
+      for (final m in marcosMes)
+        (
+          m,
+          marcosMap[m] ?? 0.0,
+          aporte > 0 ? (marcosMap[m] ?? 0) / aporte * 100 : 0.0
+        )
+    ];
+
+    return DadosReynaldo(
+      aporte: aporte,
+      base: base,
+      desistPct: desist,
+      distPrazo: distPrazo,
+      totalDistrato: totalDistrato,
+      distParcela: distParcela,
+      resort: resort,
+      resortSobra: resortSobra,
+      vendaMes: vendaMes,
+      entradaPct: entradaPct,
+      vendaPrazo: vendaPrazo,
+      entradaMes: entradaMes,
+      parcelaSafra: parcelaSafra,
+      poolMes: poolMes,
+      poolInicio: poolInicio,
+      sharePct: share,
+      paybackMes: payback,
+      cumVendas: payback == null ? cumVendas : cumVendasPB,
+      marcos: marcos,
+    );
+  }
+
+  Widget _tabReynaldo(ColorScheme cs) {
+    final d = _dadosReynaldo();
+    final aporte = d.aporte;
+    final base = d.base;
+    final desist = d.desistPct;
+    final distPrazo = d.distPrazo;
+    final totalDistrato = d.totalDistrato;
+    final distParcela = d.distParcela;
+    final resort = d.resort;
+    final resortSobra = d.resortSobra;
+    final vendaMes = d.vendaMes;
+    final entradaMes = d.entradaMes;
+    final parcelaSafra = d.parcelaSafra;
+    final vendaPrazo = d.vendaPrazo;
+    final payback = d.paybackMes;
+    final cumVendas = d.cumVendas;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -759,6 +807,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           '15% do pool. Os distratos e as contas são bancados pelo aporte '
           'mensal do resort.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            onPressed: () => ReynaldoPdf.gerar(_dadosReynaldo()),
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('Imprimir proposta (P&B)'),
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -916,19 +973,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   _celReynaldo(cs, '% do aporte', cabecalho: true),
                 ],
               ),
-              for (final m in marcosMes)
+              for (final mk in d.marcos)
                 TableRow(children: [
-                  _celReynaldo(cs, '$m'),
-                  _celReynaldo(cs, _moeda.format(marcos[m] ?? 0)),
-                  _celReynaldo(
-                      cs,
-                      aporte > 0
-                          ? '${((marcos[m] ?? 0) / aporte * 100).clamp(0, 100).toStringAsFixed(0)}%'
-                          : '—',
+                  _celReynaldo(cs, '${mk.$1}'),
+                  _celReynaldo(cs, _moeda.format(mk.$2)),
+                  _celReynaldo(cs, '${mk.$3.toStringAsFixed(0)}%',
                       destaque: true,
-                      cor: (marcos[m] ?? 0) >= aporte
-                          ? Colors.green.shade700
-                          : cs.primary),
+                      cor: mk.$3 >= 100 ? Colors.green.shade700 : cs.primary),
                 ]),
             ],
           ),
