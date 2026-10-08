@@ -2632,10 +2632,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       liqPorTemporada.add(sem * 7 * ocup * dia * (1 - taxa));
     }
     final liqTotal = liqPorTemporada.fold(0.0, (s, v) => s + v);
-    // Condomínio por apartamento/ano (rateio: custo mensal ÷ aptos × 12).
-    final aptosHotel = _parse(_hotelCtrl, 100);
-    final condoAptoAno =
-        aptosHotel > 0 ? (_custoMensal / aptosHotel) * 12 : 0.0;
+    // Condomínio por apartamento/ano no cenário MP = 50% do hotel (cenário
+    // negativo: só metade dos aptos é multipropriedade e absorve o custo, por
+    // isso o rateio por apto dobra). Fração 50% vem de _cenariosMP.
+    final fracaoMP = _cenariosMP.first.$2; // 0.5 = MP é 50% do hotel
+    final aptosMP = _parse(_hotelCtrl, 100) * fracaoMP;
+    final condoAptoAno = aptosMP > 0 ? (_custoMensal / aptosMP) * 12 : 0.0;
     // Diamante/Integral = apto inteiro, desconta o condomínio cheio.
     final aposCondoTotal = liqTotal - condoAptoAno;
     // Receita líquida de UMA semana em cada temporada (base do revezamento).
@@ -2782,8 +2784,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             'parte média — "Recebe/ano" é a média do ciclo. Prata e Ouro têm '
             'composição fixa (alta + média) e recebem as duas todo ano. '
             'Diamante/Integral possui o apartamento inteiro. "− Condomínio" é o '
-            'recebimento já descontado o rateio do condomínio por cota (custo do '
-            'hotel ÷ aptos: Bronze 1/52, Prata 1/26, Ouro 1/13, Diamante o apto '
+            'recebimento já descontado o rateio do condomínio por cota no '
+            'cenário MP = 50% do hotel (custo do hotel ÷ 50% dos aptos, dividido '
+            'por cota: Bronze 1/52, Prata 1/26, Ouro 1/13, Diamante o apto '
             'inteiro). Ajuste custo/aptos na aba Condomínio.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
