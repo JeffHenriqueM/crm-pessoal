@@ -543,32 +543,32 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       'DUPLEX',
       Color(0xFFF2DD1A),
       'Apartamento em dois níveis.',
-      [128, 138]
+      [128, 130]
     ),
     (
       'TRIPLO',
       Color(0xFF1E7A3D),
       'Acomodação para três hóspedes.',
-      [101, 105, 131, 132, 133, 134, 136, 137, 139, 140]
+      [101, 105]
     ),
     (
       'MASTER',
       Color(0xFF8A8A2B),
       'Frente para as piscinas, varanda com cadeiras de balanço e rede.',
-      [121, 122, 123, 124, 126, 127, 129, 130, 201, 202, 203, 204, 205, 206,
-          207, 208, 209, 210]
+      [201, 202, 203, 204, 205, 206, 207, 208, 209, 210]
     ),
     (
       'COMFORT TÉRREO',
       Color(0xFF3B2E5A),
       'Apto próximo ao Jardim do Éden, térreo, varanda.',
-      [141, 142, 144, 145, 146, 147, 148, 149]
+      [121, 122, 123, 124, 126, 127, 129, 141, 142, 144, 145, 146, 147, 148, 149]
     ),
     (
       'COMFORT 1° ANDAR',
       Color(0xFF4CD137),
       'Comfort no 1° andar, linda vista para o mar.',
-      [153, 154, 155, 156, 157, 158, 159, 160, 161]
+      [131, 132, 133, 134, 136, 137, 138, 139, 140, 153, 154, 155, 156, 157,
+          158, 159, 160, 161]
     ),
     (
       'COMFORT 2° ANDAR',
@@ -2753,6 +2753,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       liqPorTemporada.add(sem * 7 * ocup * dia * (1 - taxa));
     }
     final liqTotal = liqPorTemporada.fold(0.0, (s, v) => s + v);
+    // Receita anual "fora do pool" (valor cheio, sem o corte da taxa).
+    final semPoolTotal = (1 - taxa) > 0 ? liqTotal / (1 - taxa) : liqTotal;
     // Receita líquida de UMA semana em cada temporada (base do revezamento).
     final valorSemana = <double>[];
     for (final t in _temporadas) {
@@ -2854,7 +2856,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   fontWeight: FontWeight.w700,
                   color: cs.onSurfaceVariant)),
           const SizedBox(height: 6),
-          _tabelaCotaTemporada(cs, valorSemana),
+          _tabelaCotaTemporada(cs, valorSemana, taxa),
           const SizedBox(height: 10),
           // Diamante/Integral: apto inteiro, recebe todas as semanas todo ano.
           Container(
@@ -2873,11 +2875,21 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                       style: TextStyle(
                           fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
-                Text('${_moeda.format(liqTotal)} / ano',
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF4A6FA5))),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('${_moeda.format(liqTotal)} / ano',
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF4A6FA5))),
+                    Text('${_moeda.format(semPoolTotal)} / ano fora do pool',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1E7A3D))),
+                  ],
+                ),
               ],
             ),
           ),
@@ -2886,7 +2898,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             'Bronze reveza (1 semana): num ano recebe a parte alta, no outro a '
             'parte média — "Recebe/ano" é a média do ciclo. Prata e Ouro têm '
             'composição fixa (alta + média) e recebem as duas todo ano. '
-            'Diamante/Integral possui o apartamento inteiro.',
+            'Diamante/Integral possui o apartamento inteiro. "Fora do pool" é o '
+            'recebimento cheio, sem o corte da taxa do pool '
+            '(${(taxa * 100).toStringAsFixed(0)}%).',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ],
@@ -2894,9 +2908,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  Widget _tabelaCotaTemporada(ColorScheme cs, List<double> valorSemana) {
+  Widget _tabelaCotaTemporada(
+      ColorScheme cs, List<double> valorSemana, double taxa) {
     final valAlta = valorSemana.isNotEmpty ? valorSemana[0] : 0.0;
     final valMedia = valorSemana.length > 1 ? valorSemana[1] : 0.0;
+    // Fator para "desfazer" a taxa do pool e mostrar o valor cheio (fora do pool).
+    final fatorSemPool = (1 - taxa) > 0 ? 1 / (1 - taxa) : 1.0;
+    const corSemPool = Color(0xFF1E7A3D); // verde — recebimento fora do pool
 
     // (rótulo, composição, semanas de alta, semanas de média, reveza?)
     final cotas = <(String, String, int, int, bool)>[
@@ -2924,12 +2942,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       final parteMedia = semM * valMedia;
       final recebeAno =
           reveza ? (parteAlta + parteMedia) / 2 : parteAlta + parteMedia;
+      final recebeAnoSemPool = recebeAno * fatorSemPool;
       return TableRow(children: [
         cel(rotulo, destaque: true),
         cel(comp),
         cel(_moeda.format(parteAlta)),
         cel(_moeda.format(parteMedia)),
         cel(_moeda.format(recebeAno), destaque: true, cor: cs.primary),
+        cel(_moeda.format(recebeAnoSemPool), destaque: true, cor: corSemPool),
       ]);
     }
 
@@ -2943,8 +2963,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         border: TableBorder.symmetric(
             inside: BorderSide(color: cs.outlineVariant)),
         columnWidths: const {
-          0: FlexColumnWidth(0.9),
-          1: FlexColumnWidth(1.4),
+          0: FlexColumnWidth(0.8),
+          1: FlexColumnWidth(1.25),
         },
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: [
@@ -2956,6 +2976,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               cel('Alta', cabecalho: true),
               cel('Média', cabecalho: true),
               cel('Recebe/ano', cabecalho: true),
+              cel('Fora do pool', cabecalho: true),
             ],
           ),
           for (final c in cotas) linhaCota(c.$1, c.$2, c.$3, c.$4, c.$5),
