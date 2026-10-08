@@ -1698,8 +1698,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               _moeda.format(brutoPoolMes), cs),
           _linhaInfo('Receita líquida do pool / mês',
               _moeda.format(liquidoPoolMes), cs),
-          _linhaInfo('Diárias ocupadas / mês (pool)',
-              (pool * diasMes * occ).toStringAsFixed(0), cs),
+          _linhaInfo('Diárias ocupadas / mês (por apto)',
+              (diasMes * occ).toStringAsFixed(0), cs),
         ],
       ),
     );
