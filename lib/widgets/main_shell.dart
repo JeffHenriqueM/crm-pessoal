@@ -6,6 +6,7 @@ import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/fluxo_cliente_screen.dart';
 import '../screens/transicao_screen.dart';
+import '../screens/hotel_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/hospedagem_screen.dart';
@@ -72,6 +73,8 @@ class _MainShellState extends State<MainShell> {
   // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
   bool get _isReserva => widget.userProfile == 'reserva';
   bool get _isRecepcao => widget.userProfile == 'recepcao';
+  // Perfil restrito: acessa SOMENTE o módulo de Transição.
+  bool get _isTransicao => widget.userProfile == 'transicao';
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
@@ -108,15 +111,26 @@ class _MainShellState extends State<MainShell> {
     label: 'Hospedagem',
   );
 
-  // ── Item de transição — SOMENTE super admin ──────────────────────────────
+  // ── Item de transição — super admin e perfil transição ───────────────────
   static const _transicaoItem = _NavItem(
     icon: Icons.swap_horiz_outlined,
     activeIcon: Icons.swap_horiz_rounded,
     label: 'Transição',
   );
 
+  // ── Item de hotel — super admin e perfil transição ───────────────────────
+  static const _hotelItem = _NavItem(
+    icon: Icons.hotel_class_outlined,
+    activeIcon: Icons.hotel_class,
+    label: 'Hotel',
+  );
+
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
+    // ── Transição: só Transição + Hotel ───────────────────────────
+    if (_isTransicao) {
+      return const [_transicaoItem, _hotelItem];
+    }
     // ── Reserva: somente Hospedagem ───────────────────────────────
     if (_isReserva) {
       return const [_hospedagemItem];
@@ -155,6 +169,7 @@ class _MainShellState extends State<MainShell> {
         _fluxoItem,
         _recepcaoItem,
         if (_isSuperAdmin) _transicaoItem,
+        if (_isSuperAdmin) _hotelItem,
       ];
     }
     // ── Vendedor/captador/recepção: Agenda primeiro ───────────────
@@ -224,7 +239,10 @@ class _MainShellState extends State<MainShell> {
 
   // ── Páginas (IndexedStack preserva o estado) ──────────────────────────────
   late final List<Widget> _pages = [
-    if (_isReserva) ...[
+    if (_isTransicao) ...[
+      const TransicaoScreen(),
+      const HotelScreen(),
+    ] else if (_isReserva) ...[
       HospedagemScreen(userProfile: widget.userProfile),
     ] else if (_isAdmin) ...[
       DashboardScreen(userProfile: widget.userProfile),
@@ -249,6 +267,7 @@ class _MainShellState extends State<MainShell> {
       const FluxoClienteScreen(),
       const RecepcaoShell(),
       if (_isSuperAdmin) const TransicaoScreen(),
+      if (_isSuperAdmin) const HotelScreen(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),

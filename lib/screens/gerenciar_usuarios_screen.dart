@@ -25,8 +25,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
 
   // Super admin pode atribuir qualquer perfil; admin vê todos exceto super admin
   List<String> get _perfisDisponiveis => _isSuperAdmin
-      ? ['super admin', 'admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao', 'reserva']
-      : ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao', 'reserva'];
+      ? ['super admin', 'admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao', 'reserva', 'transicao']
+      : ['admin', 'captador', 'vendedor', 'pós-venda', 'financeiro', 'recepcao', 'reserva', 'transicao'];
 
   // ── Build principal ───────────────────────────────────────────────────────
   @override
@@ -861,6 +861,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         return Colors.purple.shade600;
       case 'recepcao':
         return Colors.teal.shade600;
+      case 'transicao':
+        return Colors.indigo.shade600;
       default:
         return cs.outline;
     }

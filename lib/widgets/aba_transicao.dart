@@ -9,14 +9,17 @@ import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
 import '../services/reynaldo_pdf.dart';
 
-/// Aba "Transição" (exclusiva do super admin): projeta a futura migração dos
-/// contratos do resort para o novo Hotel Villamor.
-///
-/// Primeira entrega: contar quantos apartamentos estão vendidos por linha de
-/// produto — LUXO (blocos A/B/D/E) × VILLAMOR (bloco C) — para dimensionar a
-/// transição. Dados carregados sob demanda (não lê o Firestore ao abrir).
+/// Define qual conjunto de abas o widget mostra.
+/// - [transicao]: Apartamentos (vendas), Prioridade, Argumentos, Comprador,
+///   Devoluções, Reynaldo, Plano.
+/// - [hotel]: Apartamentos (categorias), Áreas, Pool, Condomínio, Ganhos.
+enum ModoAba { transicao, hotel }
+
+/// Widget base das telas "Transição" e "Hotel". Compartilha todo o estado
+/// (contratos, temporadas, custos, preços) e escolhe as abas pelo [modo].
 class AbaTransicao extends StatefulWidget {
-  const AbaTransicao({super.key});
+  final ModoAba modo;
+  const AbaTransicao({super.key, this.modo = ModoAba.transicao});
 
   @override
   State<AbaTransicao> createState() => _AbaTransicaoState();
@@ -397,8 +400,75 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       return _prompt(cs);
     }
 
+    final hotel = widget.modo == ModoAba.hotel;
+
+    // (Tab, builder) por modo — mesma lógica/estado, abas diferentes.
+    final abas = hotel
+        ? <(Tab, Widget)>[
+            (
+              const Tab(
+                  text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
+              _tabApartamentosHotel(cs)
+            ),
+            (
+              const Tab(text: 'Áreas', icon: Icon(Icons.pool_rounded)),
+              _tabAreas(cs)
+            ),
+            (
+              const Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
+              _tabPool(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Condomínio',
+                  icon: Icon(Icons.receipt_long_outlined)),
+              _tabCondominio(cs)
+            ),
+            (
+              const Tab(text: 'Ganhos', icon: Icon(Icons.savings_outlined)),
+              _tabGanhos(cs)
+            ),
+          ]
+        : <(Tab, Widget)>[
+            (
+              const Tab(
+                  text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
+              _tabApartamentos(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Prioridade',
+                  icon: Icon(Icons.priority_high_rounded)),
+              _tabPrioridade(cs)
+            ),
+            (
+              const Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
+              _tabArgumentos(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Comprador', icon: Icon(Icons.handshake_outlined)),
+              _tabComprador(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Devoluções', icon: Icon(Icons.money_off_outlined)),
+              _tabDevolucoes(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Reynaldo',
+                  icon: Icon(Icons.account_balance_outlined)),
+              _tabReynaldo(cs)
+            ),
+            (
+              const Tab(text: 'Plano', icon: Icon(Icons.checklist_rounded)),
+              _tabPlano(cs)
+            ),
+          ];
+
     return DefaultTabController(
-      length: 10,
+      length: abas.length,
       child: Column(
         children: [
           TabBar(
@@ -407,34 +477,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             labelColor: cs.primary,
             unselectedLabelColor: cs.onSurfaceVariant,
             indicatorColor: cs.primary,
-            tabs: const [
-              Tab(text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
-              Tab(text: 'Prioridade', icon: Icon(Icons.priority_high_rounded)),
-              Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
-              Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
-              Tab(text: 'Condomínio', icon: Icon(Icons.receipt_long_outlined)),
-              Tab(text: 'Ganhos', icon: Icon(Icons.savings_outlined)),
-              Tab(text: 'Comprador', icon: Icon(Icons.handshake_outlined)),
-              Tab(text: 'Devoluções', icon: Icon(Icons.money_off_outlined)),
-              Tab(text: 'Reynaldo', icon: Icon(Icons.account_balance_outlined)),
-              Tab(text: 'Plano', icon: Icon(Icons.checklist_rounded)),
-            ],
+            tabs: [for (final a in abas) a.$1],
           ),
           Expanded(
-            child: TabBarView(
-              children: [
-                _tabApartamentos(cs),
-                _tabPrioridade(cs),
-                _tabArgumentos(cs),
-                _tabPool(cs),
-                _tabCondominio(cs),
-                _tabGanhos(cs),
-                _tabComprador(cs),
-                _tabDevolucoes(cs),
-                _tabReynaldo(cs),
-                _tabPlano(cs),
-              ],
-            ),
+            child: TabBarView(children: [for (final a in abas) a.$2]),
           ),
         ],
       ),
@@ -474,6 +520,243 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           _rodape(cs),
         ],
       ),
+    );
+  }
+
+  // ── Aba: Apartamentos (Hotel) — categorias e unidades do mapa ─────────────
+  // (nome, cor, descrição curta, unidades). Numeração baseada no mapa do hotel.
+  static const List<(String, Color, String, List<int>)> _categoriasHotel = [
+    (
+      'LUXO',
+      Color(0xFF29ABE2),
+      'Apto com frigobar, TV, cama box queen, ar-condicionado, roupeiro.',
+      [51, 52, 53, 54, 55, 56, 57, 58, 59, 102, 103, 104, 106, 107, 108, 109,
+          110, 111, 112, 114, 115, 116, 117]
+    ),
+    (
+      'STUDIO ROOM',
+      Color(0xFFCB5A1A),
+      'Quarto compacto tipo studio.',
+      [71, 72, 73]
+    ),
+    (
+      'DUPLEX',
+      Color(0xFFF2DD1A),
+      'Apartamento em dois níveis.',
+      [128, 138]
+    ),
+    (
+      'TRIPLO',
+      Color(0xFF1E7A3D),
+      'Acomodação para três hóspedes.',
+      [101, 105, 131, 132, 133, 134, 136, 137, 139, 140]
+    ),
+    (
+      'MASTER',
+      Color(0xFF8A8A2B),
+      'Frente para as piscinas, varanda com cadeiras de balanço e rede.',
+      [121, 122, 123, 124, 126, 127, 129, 130, 201, 202, 203, 204, 205, 206,
+          207, 208, 209, 210]
+    ),
+    (
+      'COMFORT TÉRREO',
+      Color(0xFF3B2E5A),
+      'Apto próximo ao Jardim do Éden, térreo, varanda.',
+      [141, 142, 144, 145, 146, 147, 148, 149]
+    ),
+    (
+      'COMFORT 1° ANDAR',
+      Color(0xFF4CD137),
+      'Comfort no 1° andar, linda vista para o mar.',
+      [153, 154, 155, 156, 157, 158, 159, 160, 161]
+    ),
+    (
+      'COMFORT 2° ANDAR',
+      Color(0xFF2E2E3A),
+      'Comfort no 2° andar, com elevador.',
+      [162, 163, 164, 165, 166, 167, 168, 169, 170]
+    ),
+    (
+      'SUÍTE VILLAMOR',
+      Color(0xFFC2185B),
+      'Suíte ampla, acomodações diferenciadas.',
+      [135, 143]
+    ),
+    (
+      'SUÍTE DUPLEX',
+      Color(0xFF7B2FBE),
+      'Suíte em dois níveis.',
+      [125, 150, 151, 152]
+    ),
+  ];
+
+  Widget _tabApartamentosHotel(ColorScheme cs) {
+    final totalUnid =
+        _categoriasHotel.fold<int>(0, (s, c) => s + c.$4.length);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(children: [
+          Icon(Icons.hotel_rounded, color: cs.primary),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Categorias de apartamentos',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text('Hotel Villamor — $totalUnid unidades em '
+            '${_categoriasHotel.length} categorias.',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 12),
+        for (final c in _categoriasHotel) ...[
+          _cardCategoria(cs, c),
+          const SizedBox(height: 10),
+        ],
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            '⚠ Numeração das unidades transcrita do mapa do hotel — confira e me '
+            'avise as correções. As cores seguem a legenda do mapa.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cardCategoria(
+      ColorScheme cs, (String, Color, String, List<int>) c) {
+    final (nome, cor, desc, unidades) = c;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                  color: cor, borderRadius: BorderRadius.circular(4)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(nome,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: cor,
+                      letterSpacing: 0.3)),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: cor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('${unidades.length} un.',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: cor)),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Text(desc,
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurfaceVariant, height: 1.3)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final n in unidades)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: cor.withValues(alpha: 0.4)),
+                  ),
+                  child: Text('$n',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Aba: Áreas (comodidades do hotel) ─────────────────────────────────────
+  static const List<(String, IconData)> _areasHotel = [
+    ('Piscina Principal', Icons.pool),
+    ('Piscina (rooftop)', Icons.pool_outlined),
+    ('Academia', Icons.fitness_center),
+    ('Rooftop', Icons.deck),
+    ('Ôfuro', Icons.hot_tub),
+    ('Templo de Afrodite', Icons.account_balance),
+    ('Avião Boate', Icons.nightlife),
+    ('Jardim do Éden', Icons.park),
+    ('Showroom Villamor Tambaba Resort', Icons.tv),
+    ('Banho Romano', Icons.bathtub),
+    ('Massagem', Icons.spa),
+    ('Restaurante', Icons.restaurant),
+    ('Sauna e Hidro', Icons.hot_tub_outlined),
+    ('Recepção', Icons.meeting_room),
+    ('Estacionamento', Icons.local_parking),
+  ];
+
+  Widget _tabAreas(ColorScheme cs) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(children: [
+          Icon(Icons.map_outlined, color: cs.primary),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Áreas e comodidades',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text('${_areasHotel.length} áreas do Hotel Villamor (conforme o mapa).',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 12),
+        for (final a in _areasHotel) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Row(children: [
+              Icon(a.$2, color: cs.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(a.$1,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+              ),
+            ]),
+          ),
+        ],
+      ],
     );
   }
 
@@ -719,6 +1002,35 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       'Definir fases, datas e quem conduz cada etapa (comercial, jurídico, '
           'operação).',
     ],
+  ];
+
+  // (nº da etapa, tarefa, prazo/observação) — cronograma da transição.
+  static const List<(String, String, String)> _tarefasTransicao = [
+    ('02', 'Reunião on-line com todos os sócios proprietários e propor a '
+        'transição', '10/2026'),
+    ('03', 'Abrir aos sócios a utilização das cotas (com 30% pago)',
+        'a partir de 31/12/2027'),
+    ('03', 'Execução do novo calendário das cotas', ''),
+    ('04', 'Cancelamento e contrato novo', ''),
+    ('05', 'Definir nova tabela de preço', ''),
+  ];
+
+  // (nº, melhoria) — ampliações / pontos positivos do empreendimento.
+  static const List<(String, String)> _ampliacoes = [
+    ('01', 'Ampliação do restaurante'),
+    ('02', 'Reformar os aptos e deixá-los próximos ao modelo Resort'),
+    ('03', 'Construção de 8 aptos com banheiras de imersão (aptos Villamor '
+        'vendidos)'),
+    ('04', 'Construção de 9 aptos, 1º andar, sobre os luxos 52 a 59'),
+    ('05', 'Construção de apto presidencial na antiga academia (suprir venda '
+        'de um bangalô)'),
+    ('06', 'Reforma e ampliação da recepção com loja de conveniência'),
+    ('07', 'Construção de nova academia'),
+    ('08', 'Construção de 1 apto substituindo o ôfuro'),
+    ('09', 'Uso do apto modelo na grade de reservas'),
+    ('10', 'Construção de Spa (terreno agregado)'),
+    ('14', 'Execução de Cinema na área da boate'),
+    ('15', 'Execução de Sexy Cassino na área da boate'),
   ];
 
   // ── Aba: Reynaldo (distratos + vendas + payback do aporte de R$ 2M) ───────
@@ -1061,6 +1373,30 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         ),
         const SizedBox(height: 16),
         Row(children: [
+          Icon(Icons.checklist_rtl_rounded, color: Colors.indigo.shade600),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Tarefas a fazer (cronograma)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        for (final t in _tarefasTransicao)
+          _tarefaNumerada(cs, t.$1, t.$2, Colors.indigo.shade600, prazo: t.$3),
+        const SizedBox(height: 20),
+        Row(children: [
+          Icon(Icons.auto_awesome_outlined, color: Colors.green.shade700),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Ampliação (pontos positivos)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        for (final a in _ampliacoes)
+          _tarefaNumerada(cs, a.$1, a.$2, Colors.green.shade700),
+        const SizedBox(height: 20),
+        Row(children: [
           Icon(Icons.rocket_launch_outlined, color: cs.primary),
           const SizedBox(width: 8),
           const Expanded(
@@ -1138,6 +1474,60 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 Text(desc,
                     style: TextStyle(
                         fontSize: 12, color: cs.onSurfaceVariant, height: 1.35)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Item numerado (etapa/tarefa) com badge do número e prazo opcional.
+  Widget _tarefaNumerada(ColorScheme cs, String numero, String texto, Color cor,
+      {String prazo = ''}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cor.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: cor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Text(numero,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold, color: cor)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(texto,
+                    style: const TextStyle(
+                        fontSize: 13, height: 1.3, fontWeight: FontWeight.w600)),
+                if (prazo.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Row(children: [
+                    Icon(Icons.event_outlined, size: 13, color: cor),
+                    const SizedBox(width: 4),
+                    Text(prazo,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: cor)),
+                  ]),
+                ],
               ],
             ),
           ),
