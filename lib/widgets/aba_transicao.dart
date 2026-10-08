@@ -561,7 +561,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       'COMFORT TÉRREO',
       Color(0xFF3B2E5A),
       'Apto próximo ao Jardim do Éden, térreo, varanda.',
-      [121, 122, 123, 124, 126, 127, 129, 141, 142, 144, 145, 146, 147, 148, 149]
+      [121, 122, 123, 124, 125, 126, 127, 129, 141, 142, 144, 145, 146, 147,
+          148, 149]
     ),
     (
       'COMFORT 1° ANDAR',
@@ -586,7 +587,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       'SUÍTE DUPLEX',
       Color(0xFF7B2FBE),
       'Suíte em dois níveis.',
-      [125, 150, 151, 152]
+      [150, 151, 152]
     ),
   ];
 
