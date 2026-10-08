@@ -70,3 +70,24 @@ class FestaAssociacao {
             d['associadoPorNome'] as String?,
       );
 }
+
+/// Número do quarto (chave do mapa de [associacoes]) vinculado ao contrato de
+/// [localizador], ou `null` se o contrato não está associado a nenhum quarto.
+///
+/// Casa pelo `contratoId` OU por qualquer um dos `contratosIds` (quartos com
+/// vários contratos combinados). Quartos vagos são ignorados. Alimenta a
+/// variável `{apartamento}` dos modelos de mensagem, resolvida a partir das
+/// associações manuais da Festa dos Sócios (o único vínculo quarto→contrato).
+String? quartoDoContrato(
+  Map<String, FestaAssociacao> associacoes,
+  String? localizador,
+) {
+  final loc = (localizador ?? '').trim();
+  if (loc.isEmpty) return null;
+  for (final e in associacoes.entries) {
+    final a = e.value;
+    if (a.vago) continue;
+    if (a.contratoId == loc || a.contratosIds.contains(loc)) return e.key;
+  }
+  return null;
+}

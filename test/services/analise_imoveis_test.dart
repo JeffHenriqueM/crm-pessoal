@@ -490,4 +490,26 @@ void main() {
       expect(col[6], '51'); // Disponível = 52 - 1 - 0
     });
   });
+
+  group('linhaProduto (transição LUXO × VILLAMOR)', () {
+    test('tipos LUXO viram linha LUXO', () {
+      for (final t in ['LUXO', 'LUXO PREMIUM', 'LUXO MASTER', 'LUXO EXTRA', 'LUXO PRIME']) {
+        expect(linhaProduto(t), 'LUXO', reason: t);
+      }
+    });
+    test('tipos VILLAMOR viram linha VILLAMOR', () {
+      for (final t in ['VILLAMOR', 'VILLAMOR PREMIUM', 'VILLAMOR SUPER MASTER']) {
+        expect(linhaProduto(t), 'VILLAMOR', reason: t);
+      }
+    });
+    test('bangalô e desconhecido', () {
+      expect(linhaProduto('BANGALO'), 'BANGALÔ');
+      expect(linhaProduto('QUALQUER'), 'OUTRO');
+      expect(linhaProduto(''), 'OUTRO');
+    });
+    test('é case-insensitive e tolera espaços', () {
+      expect(linhaProduto('  luxo master '), 'LUXO');
+      expect(linhaProduto('villamor'), 'VILLAMOR');
+    });
+  });
 }

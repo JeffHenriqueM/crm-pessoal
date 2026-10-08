@@ -28,6 +28,7 @@ Future<EscolhaMensagem?> escolherMensagemWhatsApp(
   String? valorAtrasado,
   String? saldo,
   String? dataLimite,
+  String? apartamento,
   FirestoreService? fs,
 }) async {
   final servico = fs ?? FirestoreService();
@@ -117,6 +118,7 @@ Future<EscolhaMensagem?> escolherMensagemWhatsApp(
                         valorAtrasado: valorAtrasado,
                         saldo: saldo,
                         dataLimite: dataLimite,
+                        apartamento: apartamento,
                       );
                       return ListTile(
                         leading: Icon(

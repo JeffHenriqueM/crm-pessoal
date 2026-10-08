@@ -1165,6 +1165,15 @@ class _RecepcaoLeadsTabState extends State<_RecepcaoLeadsTab> {
                                     fontSize: 11,
                                     color: cs.onSurfaceVariant)),
                         ]),
+                        // Reimprimir a ficha deste atendimento a qualquer momento.
+                        if (c.numeroAtendimento != null && !c.deletado)
+                          IconButton(
+                            icon: const Icon(Icons.print_outlined, size: 20),
+                            tooltip: 'Imprimir ficha',
+                            color: cs.onSurfaceVariant,
+                            onPressed: () =>
+                                FichaAtendimentoPdf.gerar(fichaDeCliente(c)),
+                          ),
                         if (_isAdmin)
                           PopupMenuButton<String>(
                             icon: Icon(Icons.more_vert,
@@ -1490,3 +1499,25 @@ class RegistrarAtendimentoScreen extends StatelessWidget {
     );
   }
 }
+
+/// Monta os dados da ficha de atendimento a partir de um [Cliente] já salvo,
+/// permitindo reimprimir a ficha a partir da lista (não só logo após registrar).
+/// `sala` e `dataEntrada` caem em valores seguros quando ausentes.
+FichaAtendimentoData fichaDeCliente(Cliente c) => FichaAtendimentoData(
+      nome: c.nome,
+      idade: c.idade,
+      profissao: c.profissao,
+      telefone: c.telefoneContato,
+      conjuge: c.nomeEsposa,
+      idadeConjuge: c.idadeConjuge,
+      profissaoConjuge: c.profissaoConjuge,
+      telefoneConjuge: c.telefone2,
+      brinde: c.brinde,
+      captadorNome: c.captadorNome,
+      linerNome: c.linerNome,
+      vendedorNome: c.vendedorNome,
+      sala: c.sala ?? '',
+      pontoCapatcao: c.origem,
+      numeroAtendimento: c.numeroAtendimento,
+      dataEntrada: c.dataEntradaSala ?? c.dataCadastro,
+    );

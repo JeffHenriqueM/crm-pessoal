@@ -78,6 +78,20 @@ void main() {
       final r = aplicarVariaveisMensagem('[{valorAtrasado}]', nome: 'X');
       expect(r, '[]');
     });
+
+    test('{apartamento} entra como veio (sem capitalizar)', () {
+      final r = aplicarVariaveisMensagem(
+        'Seu quarto na Festa é o {apartamento}.',
+        nome: 'X',
+        apartamento: '133',
+      );
+      expect(r, 'Seu quarto na Festa é o 133.');
+    });
+
+    test('{apartamento} sem valor vira vazio', () {
+      final r = aplicarVariaveisMensagem('[{apartamento}]', nome: 'X');
+      expect(r, '[]');
+    });
   });
 
   group('capitalizarNome', () {

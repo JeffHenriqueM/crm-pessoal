@@ -31,8 +31,12 @@ class AuthService {
       if (uid != null) {
         try {
           final doc = await _db.collection('usuarios').doc(uid).get();
-          final ativo = doc.exists ? (doc.data()?['ativo'] ?? true) : true;
-          if (!ativo) {
+          final dados = doc.exists ? doc.data() : null;
+          final ativo = dados?['ativo'] ?? true;
+          // Acesso pode estar bloqueado sem desativar o usuário (ele segue
+          // atribuível a leads, mas não faz login).
+          final acessoBloqueado = dados?['acessoBloqueado'] ?? false;
+          if (!ativo || acessoBloqueado) {
             await _auth.signOut();
             return 'Seu acesso foi desativado. Entre em contato com o administrador.';
           }

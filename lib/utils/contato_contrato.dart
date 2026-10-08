@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../models/contrato_model.dart';
+import '../models/festa_associacao.dart';
 import '../services/firestore_service.dart';
 import 'email_modelos.dart';
 import 'url_launcher_service.dart';
@@ -32,6 +33,19 @@ final _dataFmt = DateFormat('dd/MM/yyyy');
   );
 }
 
+/// Número do quarto do contrato na Festa dos Sócios (variável `{apartamento}`),
+/// resolvido pela associação manual da Hospedagem. Retorna `null` se não houver
+/// vínculo — e nunca deixa uma falha de leitura travar o envio da mensagem.
+Future<String?> _apartamentoDoContrato(Contrato c, FirestoreService? fs) async {
+  try {
+    final assocs = await (fs ?? FirestoreService()).getAssociacoesFesta();
+    return quartoDoContrato(assocs, c.localizador);
+  } catch (e) {
+    debugPrint('[Contrato] Falha ao resolver apartamento: $e');
+    return null;
+  }
+}
+
 /// Abre o WhatsApp do comprador do contrato, passando pelo seletor de modelos
 /// (com as variáveis de contrato preenchidas). Usado na lista de contratos, na
 /// ficha do contrato e na aba Distratar.
@@ -47,6 +61,8 @@ Future<void> abrirWhatsAppContrato(
     return;
   }
   final v = variaveisContrato(c);
+  final apartamento = await _apartamentoDoContrato(c, fs);
+  if (!context.mounted) return;
   final escolha = await escolherMensagemWhatsApp(
     context,
     nome: c.nomeComprador,
@@ -56,6 +72,7 @@ Future<void> abrirWhatsAppContrato(
     valorAtrasado: v.valorAtrasado,
     saldo: v.saldo,
     dataLimite: v.dataLimite,
+    apartamento: apartamento,
     fs: fs,
   );
   if (escolha == null) return; // cancelou
@@ -86,6 +103,8 @@ Future<void> enviarEmailContrato(
     return;
   }
   final v = variaveisContrato(c);
+  final apartamento = await _apartamentoDoContrato(c, fs);
+  if (!context.mounted) return;
   final escolha = await escolherModeloEmail(
     context,
     nome: c.nomeComprador,
@@ -95,6 +114,7 @@ Future<void> enviarEmailContrato(
     valorAtrasado: v.valorAtrasado,
     saldo: v.saldo,
     dataLimite: v.dataLimite,
+    apartamento: apartamento,
     fs: fs,
   );
   if (escolha == null) return; // cancelou

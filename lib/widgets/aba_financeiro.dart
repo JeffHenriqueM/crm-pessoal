@@ -45,7 +45,10 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   List<BaixaFinanceira> _baixas = [];
   List<Contrato> _contratos = [];
   bool _importando = false;
-  bool _carregando = true; // true enquanto faz a leitura inicial do Firestore
+  bool _carregando = false; // true só durante a busca (disparada pelo botão)
+  // As baixas só são buscadas quando o usuário clica em "Carregar baixas"
+  // (leitura pesada da coleção — evita ler à toa ao abrir a aba).
+  bool _baixasCarregadas = false;
   String? _mesFiltro; // null = todos os meses
 
   static final _moeda = NumberFormat.currency(
@@ -65,10 +68,11 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
   @override
   void initState() {
     super.initState();
-    _carregarBaixasDoFirestore();
+    // Não busca baixas ao abrir — aguarda o clique em "Carregar baixas".
   }
 
   Future<void> _carregarBaixasDoFirestore() async {
+    setState(() => _carregando = true);
     try {
       final baixas = await _firestore.getBaixasFinanceiras();
       final contratos = await _firestore.getContratos();
@@ -77,6 +81,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
         _baixas = baixas;
         _contratos = contratos;
         _carregando = false;
+        _baixasCarregadas = true;
       });
       debugPrint(
         'AbaFinanceiro: ${baixas.length} baixas carregadas do Firestore.',
@@ -493,6 +498,7 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
       if (!mounted) return;
       setState(() {
         _baixas = baixasAtualizadas;
+        _baixasCarregadas = true;
         _importando = false;
         _mesFiltro = null;
       });
@@ -518,6 +524,38 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
         ),
       );
     }
+  }
+
+  /// Estado inicial: a aba não lê as baixas ao abrir. O usuário decide quando
+  /// buscar (leitura pesada da coleção), clicando aqui.
+  Widget _promptCarregarBaixas(ColorScheme cs) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.receipt_long_outlined, size: 48, color: cs.primary),
+            const SizedBox(height: 12),
+            const Text('Dados financeiros não carregados',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+              'As baixas são buscadas só quando você pede, para evitar leituras '
+              'desnecessárias.',
+              style: TextStyle(color: cs.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _carregarBaixasDoFirestore,
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Carregar baixas'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -558,6 +596,11 @@ class _AbaFinanceiroState extends State<AbaFinanceiro> {
           ],
         ),
       );
+    }
+
+    // Baixas só são lidas do Firestore ao clicar — evita leitura pesada à toa.
+    if (!_baixasCarregadas) {
+      return _promptCarregarBaixas(cs);
     }
 
     if (_importando) {

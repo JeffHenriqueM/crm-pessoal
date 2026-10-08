@@ -119,6 +119,8 @@ String capitalizarNome(String? s) {
 /// Variáveis de contrato (preenchidas só onde há contrato, ex.: aba Distratar):
 /// `{contrato}`, `{cota}`, `{valorAtrasado}`, `{saldo}`, `{dataLimite}`. Estas
 /// chegam já formatadas pelo chamador (moeda/data) e não são capitalizadas.
+/// `{apartamento}` = número do quarto do sócio na Festa (via associação manual
+/// da Hospedagem); vazio quando o contrato não está associado a nenhum quarto.
 String aplicarVariaveisMensagem(
   String texto, {
   String? nome,
@@ -129,6 +131,7 @@ String aplicarVariaveisMensagem(
   String? valorAtrasado,
   String? saldo,
   String? dataLimite,
+  String? apartamento,
 }) {
   String primeiro(String? s) {
     final t = (s ?? '').trim();
@@ -146,5 +149,6 @@ String aplicarVariaveisMensagem(
       .replaceAll('{cota}', cota ?? '')
       .replaceAll('{valorAtrasado}', valorAtrasado ?? '')
       .replaceAll('{saldo}', saldo ?? '')
-      .replaceAll('{dataLimite}', dataLimite ?? '');
+      .replaceAll('{dataLimite}', dataLimite ?? '')
+      .replaceAll('{apartamento}', apartamento ?? '');
 }

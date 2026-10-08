@@ -183,6 +183,8 @@ class FichaTimelineTab extends StatelessWidget {
   Widget _buildManualItem(Interacao item, ColorScheme cs) {
     final temCombinamos =
         item.oQueCombinamos != null && item.oQueCombinamos!.isNotEmpty;
+    final temSugestao = item.sugestaoProximoContato != null &&
+        item.sugestaoProximoContato!.isNotEmpty;
 
     return GestureDetector(
       onTap: () => onItemTap(item),
@@ -317,6 +319,41 @@ class FichaTimelineTab extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.green.shade800,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // ── Sugestão de próximo contato ───────────────────────────────
+              if (temSugestao) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade800.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Colors.amber.shade800.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.lightbulb_outline,
+                          size: 13, color: Colors.amber.shade800),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          item.sugestaoProximoContato!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber.shade900,
                             fontWeight: FontWeight.w600,
                           ),
                           maxLines: 2,

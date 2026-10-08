@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -57,9 +59,37 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   final _authService = AuthService();
+  final _firestoreService = FirestoreService();
   String? _perfil;
   String? _currentUserName;
   bool _carregandoPerfil = false;
+
+  // Guarda de acesso ao vivo: derruba a sessão se um gestor bloquear/desativar
+  // o usuário enquanto ele está logado (o gate do login só age na entrada).
+  StreamSubscription<bool>? _acessoSub;
+  String? _uidVigiado;
+
+  @override
+  void dispose() {
+    _acessoSub?.cancel();
+    super.dispose();
+  }
+
+  /// Passa a vigiar o direito de acesso do [uid]; ao perder o acesso, desloga.
+  void _vigiarAcesso(String uid) {
+    if (_uidVigiado == uid) return; // já vigiando este usuário
+    _uidVigiado = uid;
+    _acessoSub?.cancel();
+    _acessoSub = _firestoreService.acessoDoUsuarioStream(uid).listen((liberado) {
+      if (!liberado) _authService.signOut();
+    });
+  }
+
+  void _pararDeVigiar() {
+    _acessoSub?.cancel();
+    _acessoSub = null;
+    _uidVigiado = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +104,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         // Não autenticado
         if (user == null) {
+          if (_uidVigiado != null) _pararDeVigiar();
           if (_perfil != null) {
             WidgetsBinding.instance.addPostFrameCallback(
                 (_) => setState(() {
@@ -83,6 +114,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
           }
           return const TelaLoginScreen();
         }
+
+        // Autenticado: garante a vigilância de acesso ao vivo deste uid.
+        _vigiarAcesso(user.uid);
 
         // Autenticado — carregando perfil + nome
         if (_perfil == null) {

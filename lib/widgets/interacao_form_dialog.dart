@@ -82,6 +82,7 @@ class _InteracaoFormDialogState extends State<InteracaoFormDialog> {
   final _tituloCtrl = TextEditingController();
   final _notaCtrl = TextEditingController();
   final _combinamosCtrl = TextEditingController();
+  final _sugestaoCtrl = TextEditingController();
   bool _salvando = false;
 
   @override
@@ -89,6 +90,7 @@ class _InteracaoFormDialogState extends State<InteracaoFormDialog> {
     _tituloCtrl.dispose();
     _notaCtrl.dispose();
     _combinamosCtrl.dispose();
+    _sugestaoCtrl.dispose();
     super.dispose();
   }
 
@@ -157,6 +159,17 @@ class _InteracaoFormDialogState extends State<InteracaoFormDialog> {
               decoration:
                   const InputDecoration(labelText: 'O que combinamos?'),
             ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _sugestaoCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Sugestão de próximo contato',
+                prefixIcon: Icon(Icons.lightbulb_outline),
+                hintText: 'Ex: Oferecer condição especial de entrada...',
+              ),
+              textCapitalization: TextCapitalization.sentences,
+              maxLines: 2,
+            ),
           ],
         ),
       ),
@@ -191,6 +204,7 @@ class _InteracaoFormDialogState extends State<InteracaoFormDialog> {
 
     setState(() => _salvando = true);
     final combinamos = _combinamosCtrl.text.trim();
+    final sugestao = _sugestaoCtrl.text.trim();
     final interacao = Interacao(
       titulo: titulo.isEmpty ? null : titulo,
       nota: nota,
@@ -199,6 +213,7 @@ class _InteracaoFormDialogState extends State<InteracaoFormDialog> {
       modalidade: _modalidade,
       houveResposta: _houveResposta,
       oQueCombinamos: combinamos.isEmpty ? null : combinamos,
+      sugestaoProximoContato: sugestao.isEmpty ? null : sugestao,
     );
 
     try {

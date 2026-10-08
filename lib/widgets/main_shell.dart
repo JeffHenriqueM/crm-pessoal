@@ -4,8 +4,9 @@ import '../screens/apresentacao_screen.dart';
 import '../screens/campanhas_screen.dart';
 import '../screens/configuracoes_screen.dart';
 import '../screens/dashboard_screen.dart';
-import '../screens/financeiro_screen.dart';
 import '../screens/fluxo_cliente_screen.dart';
+import '../screens/transicao_screen.dart';
+import '../screens/hotel_screen.dart';
 import '../screens/gerenciar_produtos_screen.dart';
 import '../screens/gerenciar_usuarios_screen.dart';
 import '../screens/hospedagem_screen.dart';
@@ -67,10 +68,13 @@ class _MainShellState extends State<MainShell> {
   bool get _isListaProfile => _listaProfiles.contains(widget.userProfile);
   bool get _isAdmin =>
       widget.userProfile == 'admin' || widget.userProfile == 'super admin';
+  bool get _isSuperAdmin => widget.userProfile == 'super admin';
   bool get _isPosVenda => widget.userProfile == 'pós-venda';
   // Perfil restrito: acessa SOMENTE o módulo de Hospedagem.
   bool get _isReserva => widget.userProfile == 'reserva';
   bool get _isRecepcao => widget.userProfile == 'recepcao';
+  // Perfil restrito: acessa SOMENTE o módulo de Transição.
+  bool get _isTransicao => widget.userProfile == 'transicao';
 
   // ── Item de recepção — aparece em todos os perfis ────────────────────────
   static const _recepcaoItem = _NavItem(
@@ -100,13 +104,6 @@ class _MainShellState extends State<MainShell> {
     label: 'Fluxo',
   );
 
-  // ── Item de financeiro — financeiro, admin e super admin ─────────────────
-  static const _financeiroItem = _NavItem(
-    icon: Icons.account_balance_outlined,
-    activeIcon: Icons.account_balance,
-    label: 'Financeiro',
-  );
-
   // ── Item de hospedagem — admin/super admin e pós-venda ───────────────────
   static const _hospedagemItem = _NavItem(
     icon: Icons.hotel_outlined,
@@ -114,46 +111,65 @@ class _MainShellState extends State<MainShell> {
     label: 'Hospedagem',
   );
 
+  // ── Item de transição — super admin e perfil transição ───────────────────
+  static const _transicaoItem = _NavItem(
+    icon: Icons.swap_horiz_outlined,
+    activeIcon: Icons.swap_horiz_rounded,
+    label: 'Transição',
+  );
+
+  // ── Item de hotel — super admin e perfil transição ───────────────────────
+  static const _hotelItem = _NavItem(
+    icon: Icons.hotel_class_outlined,
+    activeIcon: Icons.hotel_class,
+    label: 'Hotel',
+  );
+
   // ── Itens de navegação (variam por perfil) ────────────────────────────────
   List<_NavItem> get _navItems {
+    // ── Transição: só Transição + Hotel ───────────────────────────
+    if (_isTransicao) {
+      return const [_transicaoItem, _hotelItem];
+    }
     // ── Reserva: somente Hospedagem ───────────────────────────────
     if (_isReserva) {
       return const [_hospedagemItem];
     }
     // ── Admin: Dashboard primeiro ─────────────────────────────────
     if (_isAdmin) {
-      return const [
-        _NavItem(
+      return [
+        const _NavItem(
           icon: Icons.bar_chart_outlined,
           activeIcon: Icons.bar_chart_rounded,
           label: 'Dashboard',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.view_kanban_outlined,
           activeIcon: Icons.view_kanban,
           label: 'Funil de Vendas',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.calendar_month_outlined,
           activeIcon: Icons.calendar_month,
           label: 'Agenda',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.campaign_outlined,
           activeIcon: Icons.campaign,
           label: 'Campanhas',
         ),
-        _NavItem(
+        const _NavItem(
           icon: Icons.description_outlined,
           activeIcon: Icons.description,
           label: 'Pós-Venda',
         ),
-        _financeiroItem,
         _hospedagemItem,
         _apresentacaoItem,
         _ticketsItem,
         _fluxoItem,
         _recepcaoItem,
+        if (_isSuperAdmin) _transicaoItem,
+        if (_isSuperAdmin) _hotelItem,
       ];
     }
     // ── Vendedor/captador/recepção: Agenda primeiro ───────────────
@@ -209,9 +225,8 @@ class _MainShellState extends State<MainShell> {
         _recepcaoItem,
       ];
     }
-    // ── financeiro: Financeiro + Pós-Venda (sem Dashboard/Funil/Recepção) ─
+    // ── financeiro: Pós-Venda (sem Dashboard/Funil/Recepção/Financeiro) ─
     return const [
-      _financeiroItem,
       _NavItem(
         icon: Icons.description_outlined,
         activeIcon: Icons.description,
@@ -224,7 +239,10 @@ class _MainShellState extends State<MainShell> {
 
   // ── Páginas (IndexedStack preserva o estado) ──────────────────────────────
   late final List<Widget> _pages = [
-    if (_isReserva) ...[
+    if (_isTransicao) ...[
+      const TransicaoScreen(),
+      const HotelScreen(),
+    ] else if (_isReserva) ...[
       HospedagemScreen(userProfile: widget.userProfile),
     ] else if (_isAdmin) ...[
       DashboardScreen(userProfile: widget.userProfile),
@@ -235,7 +253,6 @@ class _MainShellState extends State<MainShell> {
       ),
       const CampanhasScreen(),
       _PosVendaHomeScreen(userProfile: widget.userProfile),
-      FinanceiroScreen(userProfile: widget.userProfile),
       HospedagemScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(
         userProfile: widget.userProfile,
@@ -249,6 +266,8 @@ class _MainShellState extends State<MainShell> {
       ),
       const FluxoClienteScreen(),
       const RecepcaoShell(),
+      if (_isSuperAdmin) const TransicaoScreen(),
+      if (_isSuperAdmin) const HotelScreen(),
     ] else if (!_isListaProfile) ...[
       VendedorHomeScreen(currentUserId: widget.currentUserId),
       ListaClientesScreen(userProfile: widget.userProfile),
@@ -283,8 +302,7 @@ class _MainShellState extends State<MainShell> {
       ),
       const RecepcaoShell(),
     ] else ...[
-      // financeiro: Financeiro + Pós-Venda (sem Dashboard/Funil/Recepção)
-      FinanceiroScreen(userProfile: widget.userProfile),
+      // financeiro: Pós-Venda (sem Dashboard/Funil/Recepção/Financeiro)
       _PosVendaHomeScreen(userProfile: widget.userProfile),
       ApresentacaoScreen(
         userProfile: widget.userProfile,
@@ -1223,9 +1241,11 @@ class _PosVendaHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A aba "Distratar" é visível para super admin e pós-venda.
-    final isSuperAdmin = userProfile.toLowerCase().trim() == 'super admin';
-    final podeDistrar = isSuperAdmin || userProfile.toLowerCase().trim() == 'pós-venda';
+    // A aba "Distratar" é visível para admin, super admin e pós-venda.
+    final perfilLc = userProfile.toLowerCase().trim();
+    final podeDistrar = perfilLc == 'super admin' ||
+        perfilLc == 'pós-venda' ||
+        perfilLc == 'admin';
 
     final tabs = <Tab>[
       const Tab(text: 'Visão Geral', icon: Icon(Icons.dashboard_outlined)),
