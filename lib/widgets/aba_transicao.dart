@@ -65,7 +65,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // ── Simulação do pool de hospedagem (aba Pool) ────────────────────────────
   final _hotelCtrl = TextEditingController(text: '100'); // aptos no hotel
   final _poolCtrl = TextEditingController(text: '30'); // aptos no pool
-  final _diariaCtrl = TextEditingController(text: '550'); // diária média (R$)
   final _taxaCtrl = TextEditingController(text: '15'); // taxa administração (%)
   static const List<double> _ocupacoes = [0.5, 0.7, 1.0];
 
@@ -118,13 +117,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   final _precoOuroCtrl = TextEditingController(text: '124008');
   final _precoDiamanteCtrl = TextEditingController(text: '1399759');
   // Aba Comprador (visão de quem compra a cota financiada / alavancagem).
-  final _valorCotaCtrl = TextEditingController(text: '116380'); // valor da cota
-  final _entradaCompraCtrl = TextEditingController(text: '0'); // entrada (%)
+  // Renda vem do pool (temporadas); financiamento SAC por tier (preço + entrada).
   final _prazoCtrl = TextEditingController(text: '120'); // parcelas (meses)
   final _jurosCtrl = TextEditingController(text: '0.68'); // juros a.m. (%)
-  final _yieldACtrl = TextEditingController(text: '6'); // yield fraco (%)
-  final _yieldBCtrl = TextEditingController(text: '8'); // yield médio (%)
-  final _yieldCCtrl = TextEditingController(text: '10'); // yield ótimo (%)
 
   /// Receita líquida anual do pool por apartamento (base temporadas).
   double _liqAnualApto(double taxa) {
@@ -136,6 +131,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   }
 
   /// Receita BRUTA anual do pool por apartamento (antes da taxa).
+  /// Diária média do hotel, ponderada pelas semanas de cada temporada.
+  /// Fonte única para os cards de ocupação da aba Pool (antes era um campo
+  /// "Diária média" separado, que divergia das temporadas).
+  double _diariaMediaTemporadas() {
+    double somaSemanas = 0, somaReceita = 0;
+    for (final t in _temporadas) {
+      final sem = _parse(t.$2, 0);
+      somaSemanas += sem;
+      somaReceita += sem * _parse(t.$3, 0);
+    }
+    return somaSemanas > 0 ? somaReceita / somaSemanas : 0.0;
+  }
+
   double _brutoAnualApto() {
     double s = 0;
     for (final t in _temporadas) {
@@ -224,7 +232,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   void dispose() {
     _hotelCtrl.dispose();
     _poolCtrl.dispose();
-    _diariaCtrl.dispose();
     _taxaCtrl.dispose();
     for (final l in _linhasCusto) {
       l.$2.dispose();
@@ -242,13 +249,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _precoPrataCtrl.dispose();
     _precoOuroCtrl.dispose();
     _precoDiamanteCtrl.dispose();
-    _valorCotaCtrl.dispose();
-    _entradaCompraCtrl.dispose();
     _prazoCtrl.dispose();
     _jurosCtrl.dispose();
-    _yieldACtrl.dispose();
-    _yieldBCtrl.dispose();
-    _yieldCCtrl.dispose();
     _reyDesistCtrl.dispose();
     _reyDistPrazoCtrl.dispose();
     _reyVendaMesCtrl.dispose();
@@ -1541,7 +1543,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   Widget _tabPool(ColorScheme cs) {
     final hotel = _parse(_hotelCtrl, 100);
     final pool = _parse(_poolCtrl, 30);
-    final diaria = _parse(_diariaCtrl, 550);
+    // Diária média PONDERADA pelas semanas das temporadas (fonte única — a
+    // mesma usada em "Ganho por cota", Ganhos e Comprador). Sem campo solto.
+    final diaria = _diariaMediaTemporadas();
     final taxa = _parse(_taxaCtrl, 15) / 100.0; // fração
     const diasMes = 30.0;
 
@@ -1565,15 +1569,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           children: [
             _campoNum('Aptos no hotel', _hotelCtrl, sufixo: ''),
             _campoNum('Aptos no pool', _poolCtrl, sufixo: ''),
-            _campoNum('Diária média', _diariaCtrl, sufixo: 'R\$'),
             _campoNum('Taxa administração', _taxaCtrl, sufixo: '%'),
           ],
         ),
         const SizedBox(height: 8),
         Text(
           '$pool de ${hotel.toStringAsFixed(0)} apartamentos no pool · '
-          'diária ${_moeda.format(diaria)} · administração '
-          '${(taxa * 100).toStringAsFixed(0)}%',
+          'diária média ${_moeda.format(diaria)} (ponderada das temporadas) · '
+          'administração ${(taxa * 100).toStringAsFixed(0)}%',
           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 16),
@@ -1595,8 +1598,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             'Como calcula: no pool, a receita é somada e dividida igualmente '
             'entre os apartamentos participantes — cada um recebe pela ocupação '
             'MÉDIA, não só pela própria. Ganho/apto no mês = 30 × ocupação × '
-            'diária × (1 − taxa). "Diária média" e "taxa de administração" são '
-            'estimativas — ajuste com os números reais do hotel.',
+            'diária × (1 − taxa). A diária é a média ponderada das temporadas '
+            '(editável em "Ganho por cota, por temporada" logo abaixo) — fonte '
+            'única usada também em Ganhos e Comprador.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
@@ -2146,20 +2150,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   // ── Aba: Comprador (quem compra a cota financiada — alavancagem) ───────────
   Widget _tabComprador(ColorScheme cs) {
-    final valor = _parse(_valorCotaCtrl, 116380);
-    final entrada = _parse(_entradaCompraCtrl, 0) / 100.0;
-    final n = _parse(_prazoCtrl, 120);
-    final i = _parse(_jurosCtrl, 0.68) / 100.0;
-    final financiado = valor * (1 - entrada);
-    final amortizacao = n > 0 ? financiado / n : financiado;
-    final jurosMes1 = financiado * i;
-    final parcelaInicial = amortizacao + jurosMes1; // SAC: 1ª (maior) parcela
-    final yields = [
-      _parse(_yieldACtrl, 6),
-      _parse(_yieldBCtrl, 8),
-      _parse(_yieldCCtrl, 10),
-    ];
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -2168,67 +2158,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
         const SizedBox(height: 4),
         Text(
-          'Para quem compra a cota financiada: o hotel repassa o rendimento '
-          '(yield) e a dívida cobra a parcela. O desembolso real do bolso é a '
-          'parcela menos o repasse — conforme o desempenho do hotel.',
+          'Para quem compra a cota financiada: o apartamento rende pelo pool '
+          '(as mesmas temporadas, taxa e condomínio das outras abas) e a dívida '
+          'cobra a parcela (SAC). Abaixo, o retorno por tier e o fluxo de caixa '
+          'real — tudo na mesma fonte de números.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _campoNum('Valor da cota', _valorCotaCtrl, sufixo: 'R\$'),
-            _campoNum('Entrada', _entradaCompraCtrl, sufixo: '%'),
-            _campoNum('Prazo (meses)', _prazoCtrl, sufixo: ''),
-            _campoNum('Juros a.m.', _jurosCtrl, sufixo: '%'),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _linhaInfo('Valor financiado', _moeda.format(financiado), cs),
-              _linhaInfo(
-                  'Parcela inicial (SAC, mês 1)',
-                  _moeda2.format(parcelaInicial),
-                  cs),
-              Text('SAC: a parcela cai a cada mês (a inicial é a maior). '
-                  'Amortização ${_moeda2.format(amortizacao)} + juros '
-                  '${_moeda2.format(jurosMes1)}.',
-                  style:
-                      TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text('Desempenho do hotel (yield líquido a.a.)',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: cs.onSurfaceVariant)),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _campoNum('Yield fraco', _yieldACtrl, sufixo: '%'),
-            _campoNum('Yield médio', _yieldBCtrl, sufixo: '%'),
-            _campoNum('Yield ótimo', _yieldCCtrl, sufixo: '%'),
-          ],
-        ),
-        const SizedBox(height: 14),
-        for (final y in yields) ...[
-          _cardComprador(cs, y, valor, parcelaInicial),
-          const SizedBox(height: 10),
-        ],
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _tituloSecao(cs, 'Retorno real por tier (ROI)', Icons.percent_rounded),
         const SizedBox(height: 4),
         Text(
@@ -2249,6 +2185,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             _campoNum('Ouro', _precoOuroCtrl, sufixo: 'R\$'),
             _campoNum('Diamante', _precoDiamanteCtrl, sufixo: 'R\$'),
             _campoNum('Entrada', _minPagoCtrl, sufixo: '%'),
+            _campoNum('Prazo (meses)', _prazoCtrl, sufixo: ''),
+            _campoNum('Juros a.m.', _jurosCtrl, sufixo: '%'),
           ],
         ),
         const SizedBox(height: 12),
@@ -2288,75 +2226,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            'Como calcula: repasse do hotel/mês = valor da cota × yield ÷ 12. '
-            'Desembolso real/mês = parcela inicial − repasse. Veredito pela '
-            'cobertura (repasse ÷ parcela): abaixo de 40% o custo da dívida '
-            'domina; acima de 55% a alavancagem compensa. Valores do mês 1 '
-            '(no SAC a parcela diminui, então o desembolso melhora com o tempo).',
+            'Como calcula: o repasse do pool vem das temporadas (líquido da '
+            'taxa), a parcela é SAC (preço × (1 − entrada), com o prazo e os '
+            'juros acima) e o condomínio é o rateio do custo do hotel. '
+            'Fluxo/mês = repasse − parcela (mês 1) − condomínio. No SAC a '
+            'parcela diminui, então o fluxo melhora com o tempo.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _cardComprador(
-      ColorScheme cs, double yieldPct, double valor, double parcela) {
-    final repasse = valor * (yieldPct / 100.0) / 12.0;
-    final desembolso = parcela - repasse;
-    final cobertura = parcela > 0 ? repasse / parcela : 0.0;
-
-    late final Color cor;
-    late final String veredito;
-    late final IconData ic;
-    if (cobertura < 0.40) {
-      cor = Colors.red.shade700;
-      veredito = 'Furada — o custo da dívida supera o repasse.';
-      ic = Icons.trending_down;
-    } else if (cobertura < 0.55) {
-      cor = Colors.orange.shade800;
-      veredito = 'Neutro — vale se focar na valorização do imóvel.';
-      ic = Icons.trending_flat;
-    } else {
-      cor = Colors.green.shade700;
-      veredito = 'Excelente — forte alavancagem de patrimônio.';
-      ic = Icons.trending_up;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cor.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cor.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(ic, size: 18, color: cor),
-            const SizedBox(width: 8),
-            Text('Yield ${yieldPct.toStringAsFixed(0)}% a.a.',
-                style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold, color: cor)),
-          ]),
-          const SizedBox(height: 10),
-          Text('Desembolso real / mês',
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-          Text(_moeda2.format(desembolso),
-              style: TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.bold, color: cor)),
-          const Divider(height: 20),
-          _linhaInfo('Repasse do hotel (mês 1)', _moeda2.format(repasse), cs),
-          _linhaInfo('Parcela da dívida (mês 1)', _moeda2.format(parcela), cs),
-          _linhaInfo('Cobertura (repasse ÷ parcela)',
-              '${(cobertura * 100).toStringAsFixed(0)}%', cs),
-          const SizedBox(height: 6),
-          Text(veredito,
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: cor)),
-        ],
-      ),
     );
   }
 
@@ -2754,8 +2632,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       liqPorTemporada.add(sem * 7 * ocup * dia * (1 - taxa));
     }
     final liqTotal = liqPorTemporada.fold(0.0, (s, v) => s + v);
-    // Receita anual "fora do pool" (valor cheio, sem o corte da taxa).
-    final semPoolTotal = (1 - taxa) > 0 ? liqTotal / (1 - taxa) : liqTotal;
+    // Condomínio por apartamento/ano (rateio: custo mensal ÷ aptos × 12).
+    final aptosHotel = _parse(_hotelCtrl, 100);
+    final condoAptoAno =
+        aptosHotel > 0 ? (_custoMensal / aptosHotel) * 12 : 0.0;
+    // Diamante/Integral = apto inteiro, desconta o condomínio cheio.
+    final aposCondoTotal = liqTotal - condoAptoAno;
     // Receita líquida de UMA semana em cada temporada (base do revezamento).
     final valorSemana = <double>[];
     for (final t in _temporadas) {
@@ -2857,7 +2739,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   fontWeight: FontWeight.w700,
                   color: cs.onSurfaceVariant)),
           const SizedBox(height: 6),
-          _tabelaCotaTemporada(cs, valorSemana, taxa),
+          _tabelaCotaTemporada(cs, valorSemana, condoAptoAno),
           const SizedBox(height: 10),
           // Diamante/Integral: apto inteiro, recebe todas as semanas todo ano.
           Container(
@@ -2884,7 +2766,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF4A6FA5))),
-                    Text('${_moeda.format(semPoolTotal)} / ano fora do pool',
+                    Text('${_moeda.format(aposCondoTotal)} / ano − condomínio',
                         style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -2899,9 +2781,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             'Bronze reveza (1 semana): num ano recebe a parte alta, no outro a '
             'parte média — "Recebe/ano" é a média do ciclo. Prata e Ouro têm '
             'composição fixa (alta + média) e recebem as duas todo ano. '
-            'Diamante/Integral possui o apartamento inteiro. "Fora do pool" é o '
-            'recebimento cheio, sem o corte da taxa do pool '
-            '(${(taxa * 100).toStringAsFixed(0)}%).',
+            'Diamante/Integral possui o apartamento inteiro. "− Condomínio" é o '
+            'recebimento já descontado o rateio do condomínio por cota (custo do '
+            'hotel ÷ aptos: Bronze 1/52, Prata 1/26, Ouro 1/13, Diamante o apto '
+            'inteiro). Ajuste custo/aptos na aba Condomínio.',
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ],
@@ -2910,18 +2793,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   }
 
   Widget _tabelaCotaTemporada(
-      ColorScheme cs, List<double> valorSemana, double taxa) {
+      ColorScheme cs, List<double> valorSemana, double condoAptoAno) {
     final valAlta = valorSemana.isNotEmpty ? valorSemana[0] : 0.0;
     final valMedia = valorSemana.length > 1 ? valorSemana[1] : 0.0;
-    // Fator para "desfazer" a taxa do pool e mostrar o valor cheio (fora do pool).
-    final fatorSemPool = (1 - taxa) > 0 ? 1 / (1 - taxa) : 1.0;
-    const corSemPool = Color(0xFF1E7A3D); // verde — recebimento fora do pool
+    const corAposCondo = Color(0xFF1E7A3D); // verde — líquido após condomínio
 
-    // (rótulo, composição, semanas de alta, semanas de média, reveza?)
-    final cotas = <(String, String, int, int, bool)>[
-      ('Bronze', '1 sem · reveza', 1, 1, true),
-      ('Prata', '1 alta + 1 média', 1, 1, false),
-      ('Ouro', '2 alta + 2 média', 2, 2, false),
+    // (rótulo, composição, semanas de alta, semanas de média, reveza?, divisor condo)
+    final cotas = <(String, String, int, int, bool, int)>[
+      ('Bronze', '1 sem · reveza', 1, 1, true, 52),
+      ('Prata', '1 alta + 1 média', 1, 1, false, 26),
+      ('Ouro', '2 alta + 2 média', 2, 2, false, 13),
     ];
 
     Widget cel(String txt,
@@ -2938,19 +2819,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         );
 
     TableRow linhaCota(String rotulo, String comp, int semA, int semM,
-        bool reveza) {
+        bool reveza, int divisorCondo) {
       final parteAlta = semA * valAlta;
       final parteMedia = semM * valMedia;
       final recebeAno =
           reveza ? (parteAlta + parteMedia) / 2 : parteAlta + parteMedia;
-      final recebeAnoSemPool = recebeAno * fatorSemPool;
+      final aposCondo = recebeAno - condoAptoAno / divisorCondo;
       return TableRow(children: [
         cel(rotulo, destaque: true),
         cel(comp),
         cel(_moeda.format(parteAlta)),
         cel(_moeda.format(parteMedia)),
         cel(_moeda.format(recebeAno), destaque: true, cor: cs.primary),
-        cel(_moeda.format(recebeAnoSemPool), destaque: true, cor: corSemPool),
+        cel(_moeda.format(aposCondo), destaque: true, cor: corAposCondo),
       ]);
     }
 
@@ -2977,10 +2858,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               cel('Alta', cabecalho: true),
               cel('Média', cabecalho: true),
               cel('Recebe/ano', cabecalho: true),
-              cel('Fora do pool', cabecalho: true),
+              cel('− Condomínio', cabecalho: true),
             ],
           ),
-          for (final c in cotas) linhaCota(c.$1, c.$2, c.$3, c.$4, c.$5),
+          for (final c in cotas) linhaCota(c.$1, c.$2, c.$3, c.$4, c.$5, c.$6),
         ],
       ),
     );
