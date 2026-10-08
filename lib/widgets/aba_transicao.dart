@@ -49,6 +49,27 @@ class _LinhaStats {
       cotasIntegral.toDouble();
 }
 
+/// Categoria editável da aba Multipropriedade (nome, cor e apartamentos).
+/// Começa como cópia do layout do Hotel e é reorganizada livremente.
+class _CategoriaMP {
+  String nome;
+  int cor; // ARGB (Color.toARGB32)
+  List<int> aptos;
+  _CategoriaMP({required this.nome, required this.cor, required this.aptos});
+
+  Map<String, dynamic> toMap() =>
+      {'nome': nome, 'cor': cor, 'aptos': aptos};
+
+  factory _CategoriaMP.fromMap(Map<String, dynamic> m) => _CategoriaMP(
+        nome: (m['nome'] as String?) ?? '',
+        cor: (m['cor'] as num?)?.toInt() ?? 0xFF888888,
+        aptos: ((m['aptos'] as List?) ?? const [])
+            .whereType<num>()
+            .map((e) => e.toInt())
+            .toList(),
+      );
+}
+
 class _AbaTransicaoState extends State<AbaTransicao> {
   final _fs = FirestoreService();
   bool _carregando = true; // carrega automaticamente ao abrir
@@ -180,6 +201,29 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   /// Custo mensal total do hotel = soma dos itens da composição.
   double get _custoMensal =>
       _linhasCusto.fold(0.0, (s, l) => s + _parse(l.$2, 0));
+
+  // Cota definida manualmente por apartamento no Hotel (aba Cotas).
+  // Chave = número do apto (String); valor = 'ouro' | 'prata' | 'bronze'.
+  Map<String, String> _cotasHotel = {};
+
+  // Cotas selecionáveis na aba (rótulo exibido, chave salva, cor).
+  static final List<(String, String, Color)> _cotasOpcoes = [
+    ('Ouro', 'ouro', Color(0xFFC9A227)),
+    ('Prata', 'prata', Color(0xFF7A8390)),
+    ('Bronze', 'bronze', Color(0xFF9E6B3F)),
+  ];
+
+  // Categorias da Multipropriedade (editáveis pelo usuário). Carregadas de
+  // config/multipropriedade; se vazio, seed a partir do layout do Hotel.
+  List<_CategoriaMP> _mp = [];
+
+  // Paleta para escolher/gerar cor de categoria na Multipropriedade.
+  static const List<int> _paletaMP = [
+    0xFF29ABE2, 0xFFCB5A1A, 0xFFF2DD1A, 0xFF1E7A3D, 0xFF8A8A2B,
+    0xFF3B2E5A, 0xFF4CD137, 0xFF2E2E3A, 0xFFC2185B, 0xFF7B2FBE,
+    0xFF00897B, 0xFFD84315, 0xFF5D4037, 0xFF455A64, 0xFF6A1B9A,
+    0xFF0277BD,
+  ];
 
   // Dados reais dos contratos ativos (carregados em _carregar).
   double _exposicaoDevolucao = 0; // soma do valorIntegralizado dos ativos
@@ -369,6 +413,26 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           .where((c) => _clienteSeparado(c.nomeComprador) == null)
           .fold<double>(0, (s, c) => s + c.valorIntegralizado);
       final pctPagos = contratos.map((c) => c.percentualEfetivo).toList();
+      // Cotas por apartamento (só relevante no modo Hotel; barato ler sempre).
+      final cotas = widget.modo == ModoAba.hotel
+          ? await _fs.getCotasHotel()
+          : <String, String>{};
+      // Categorias da Multipropriedade (modo Hotel): carrega ou faz o seed.
+      var mp = <_CategoriaMP>[];
+      if (widget.modo == ModoAba.hotel) {
+        final raw = await _fs.getMultipropriedade();
+        if (raw != null && raw.isNotEmpty) {
+          mp = raw.map(_CategoriaMP.fromMap).toList();
+        } else {
+          mp = [
+            for (final c in _categoriasHotel)
+              _CategoriaMP(
+                  nome: c.$1,
+                  cor: c.$2.toARGB32(),
+                  aptos: List<int>.from(c.$4)),
+          ];
+        }
+      }
       if (!mounted) return;
       setState(() {
         _stats = _montarStats(imoveis, outros);
@@ -378,6 +442,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _baseDistrato = baseDist;
         _ativosCount = contratos.length;
         _pctPagos = pctPagos;
+        _cotasHotel = cotas;
+        _mp = mp;
         _carregado = true;
         _carregando = false;
       });
@@ -411,6 +477,17 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               const Tab(
                   text: 'Apartamentos', icon: Icon(Icons.apartment_outlined)),
               _tabApartamentosHotel(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Cotas', icon: Icon(Icons.workspace_premium_outlined)),
+              _tabCotas(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Multipropriedade',
+                  icon: Icon(Icons.holiday_village_outlined)),
+              _tabMultipropriedade(cs)
             ),
             (
               const Tab(text: 'Áreas', icon: Icon(Icons.pool_rounded)),
@@ -704,26 +781,751 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
+  // ── Aba: Cotas (define a cota de cada apartamento do Hotel) ───────────────
+  /// Cor da cota (Ouro/Prata/Bronze) ou null se o apto não tem cota definida.
+  Color? _corCota(String? cota) {
+    for (final o in _cotasOpcoes) {
+      if (o.$2 == cota) return o.$3;
+    }
+    return null;
+  }
+
+  /// Rótulo de exibição da cota ('Ouro'…) ou null.
+  String? _rotuloCota(String? cota) {
+    for (final o in _cotasOpcoes) {
+      if (o.$2 == cota) return o.$1;
+    }
+    return null;
+  }
+
+  /// Define (ou limpa, com [cota] == null) a cota de um apartamento, salvando
+  /// no Firestore. Atualização otimista: reverte se a gravação falhar.
+  Future<void> _setCota(String apto, String? cota) async {
+    final anterior = _cotasHotel[apto];
+    setState(() {
+      if (cota == null) {
+        _cotasHotel.remove(apto);
+      } else {
+        _cotasHotel[apto] = cota;
+      }
+    });
+    try {
+      await _fs.setCotaHotel(apto, cota);
+    } catch (e) {
+      debugPrint('AbaTransicao._setCota: $e');
+      if (!mounted) return;
+      setState(() {
+        if (anterior == null) {
+          _cotasHotel.remove(apto);
+        } else {
+          _cotasHotel[apto] = anterior;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não consegui salvar a cota. Tente de novo.')),
+      );
+    }
+  }
+
+  /// Aplica (ou limpa) uma cota a todos os apartamentos de uma categoria.
+  Future<void> _setCotaLote(List<int> aptos, String? cota) async {
+    final anterior = {for (final n in aptos) '$n': _cotasHotel['$n']};
+    setState(() {
+      for (final n in aptos) {
+        if (cota == null) {
+          _cotasHotel.remove('$n');
+        } else {
+          _cotasHotel['$n'] = cota;
+        }
+      }
+    });
+    try {
+      await _fs.setCotasHotelEmLote([for (final n in aptos) '$n'], cota);
+    } catch (e) {
+      debugPrint('AbaTransicao._setCotaLote: $e');
+      if (!mounted) return;
+      setState(() {
+        anterior.forEach((k, v) {
+          if (v == null) {
+            _cotasHotel.remove(k);
+          } else {
+            _cotasHotel[k] = v;
+          }
+        });
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não consegui salvar as cotas. Tente de novo.')),
+      );
+    }
+  }
+
+  Widget _tabCotas(ColorScheme cs) {
+    final todos = [for (final c in _categoriasHotel) ...c.$4];
+    var ouro = 0, prata = 0, bronze = 0;
+    for (final n in todos) {
+      switch (_cotasHotel['$n']) {
+        case 'ouro':
+          ouro++;
+          break;
+        case 'prata':
+          prata++;
+          break;
+        case 'bronze':
+          bronze++;
+          break;
+      }
+    }
+    final sem = todos.length - ouro - prata - bronze;
+    return RefreshIndicator(
+      onRefresh: _carregar,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            Icon(Icons.workspace_premium_outlined, color: cs.primary),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Cotas por apartamento',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text('Toque em um apartamento para definir a cota (Ouro, Prata ou '
+              'Bronze). Use "aplicar à categoria" para definir todos de uma vez.',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _pilulaResumo('Ouro', ouro, const Color(0xFFC9A227)),
+              _pilulaResumo('Prata', prata, const Color(0xFF7A8390)),
+              _pilulaResumo('Bronze', bronze, const Color(0xFF9E6B3F)),
+              _pilulaResumo('Sem cota', sem, cs.onSurfaceVariant),
+            ],
+          ),
+          const SizedBox(height: 16),
+          for (final c in _categoriasHotel) ...[
+            _cardCotasCategoria(cs, c),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _pilulaResumo(String rotulo, int n, Color cor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text('$n $rotulo',
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w700, color: cor)),
+      ]),
+    );
+  }
+
+  Widget _cardCotasCategoria(
+      ColorScheme cs, (String, Color, String, List<int>) c) {
+    final (nome, cor, _, unidades) = c;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                  color: cor, borderRadius: BorderRadius.circular(4)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(nome,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: cor,
+                      letterSpacing: 0.3)),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Aplicar uma cota a todos os ${unidades.length} aptos',
+              onSelected: (v) =>
+                  _setCotaLote(unidades, v == 'limpar' ? null : v),
+              itemBuilder: (_) => [
+                for (final o in _cotasOpcoes)
+                  PopupMenuItem(
+                    value: o.$2,
+                    child: Row(children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                            color: o.$3, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('Todos → ${o.$1}'),
+                    ]),
+                  ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                    value: 'limpar', child: Text('Limpar todos')),
+              ],
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.layers_outlined,
+                    size: 16, color: cs.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Text('aplicar à categoria',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                Icon(Icons.arrow_drop_down, color: cs.onSurfaceVariant),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [for (final n in unidades) _chipCotaApto(cs, n)],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipCotaApto(ColorScheme cs, int n) {
+    final cota = _cotasHotel['$n'];
+    final cor = _corCota(cota);
+    final definida = cor != null;
+    return PopupMenuButton<String>(
+      tooltip: 'Cota do apto $n'
+          '${definida ? ' — ${_rotuloCota(cota)}' : ''}',
+      onSelected: (v) => _setCota('$n', v == 'limpar' ? null : v),
+      itemBuilder: (_) => [
+        for (final o in _cotasOpcoes)
+          PopupMenuItem(
+            value: o.$2,
+            child: Row(children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration:
+                    BoxDecoration(color: o.$3, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Text(o.$1),
+              if (o.$2 == cota) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.check, size: 16),
+              ],
+            ]),
+          ),
+        if (definida) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'limpar', child: Text('Limpar')),
+        ],
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: definida ? cor : cs.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: definida
+                  ? cor
+                  : cs.outlineVariant.withValues(alpha: 0.8)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('$n',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: definida ? Colors.white : cs.onSurface)),
+          if (definida) ...[
+            const SizedBox(width: 5),
+            Text(_rotuloCota(cota)![0],
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white)),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  // ── Aba: Multipropriedade (categorias editáveis pelo usuário) ─────────────
+  /// Aplica uma mutação em [_mp] de forma otimista e salva no Firestore.
+  /// Se a gravação falhar, desfaz a mudança e avisa.
+  Future<void> _mutarMP(void Function() fn) async {
+    final backup = _mp
+        .map((c) => _CategoriaMP(
+            nome: c.nome, cor: c.cor, aptos: List<int>.of(c.aptos)))
+        .toList();
+    setState(fn);
+    try {
+      await _fs.salvarMultipropriedade(_mp.map((c) => c.toMap()).toList());
+    } catch (e) {
+      debugPrint('AbaTransicao._mutarMP: $e');
+      if (!mounted) return;
+      setState(() => _mp = backup);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Não consegui salvar. Tente de novo.')),
+      );
+    }
+  }
+
+  /// Caixa de texto simples (nome de categoria ou número de apto).
+  Future<String?> _pedirTexto(String titulo,
+      {String inicial = '', String hint = '', bool numero = false}) async {
+    final ctrl = TextEditingController(text: inicial);
+    final r = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(titulo),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: numero ? TextInputType.number : null,
+          textCapitalization: numero
+              ? TextCapitalization.none
+              : TextCapitalization.characters,
+          decoration: InputDecoration(hintText: hint),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return (r == null || r.isEmpty) ? null : r;
+  }
+
+  Future<void> _novaCategoriaMP() async {
+    final nome = await _pedirTexto('Nova categoria', hint: 'Ex.: PREMIUM');
+    if (nome == null) return;
+    final cor = _paletaMP[_mp.length % _paletaMP.length];
+    _mutarMP(() => _mp.add(_CategoriaMP(nome: nome, cor: cor, aptos: [])));
+  }
+
+  Future<void> _renomearCategoriaMP(int i) async {
+    final nome =
+        await _pedirTexto('Renomear categoria', inicial: _mp[i].nome);
+    if (nome == null) return;
+    _mutarMP(() => _mp[i].nome = nome);
+  }
+
+  Future<void> _escolherCorMP(int i) async {
+    final escolha = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Cor de "${_mp[i].nome}"',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final cor in _paletaMP)
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx, cor),
+                      borderRadius: BorderRadius.circular(40),
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Color(cor),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _mp[i].cor == cor
+                                ? Theme.of(ctx).colorScheme.onSurface
+                                : Colors.transparent,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (escolha != null) _mutarMP(() => _mp[i].cor = escolha);
+  }
+
+  Future<void> _adicionarAptoMP(int i) async {
+    final txt = await _pedirTexto('Adicionar apartamento',
+        hint: 'Número do apto', numero: true);
+    if (txt == null) return;
+    final n = int.tryParse(txt);
+    if (n == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Número de apto inválido.')),
+      );
+      return;
+    }
+    _mutarMP(() {
+      for (final c in _mp) {
+        c.aptos.remove(n); // garante que não fique duplicado
+      }
+      _mp[i].aptos
+        ..add(n)
+        ..sort();
+    });
+  }
+
+  Future<void> _excluirCategoriaMP(int i) async {
+    final c = _mp[i];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Excluir "${c.nome}"?'),
+        content: Text(c.aptos.isEmpty
+            ? 'A categoria será removida.'
+            : 'Os ${c.aptos.length} apartamentos sairão da multipropriedade '
+                '(você pode readicioná-los depois).'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Excluir')),
+        ],
+      ),
+    );
+    if (ok == true) _mutarMP(() => _mp.removeAt(i));
+  }
+
+  Future<void> _restaurarLayoutHotelMP() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restaurar layout do Hotel?'),
+        content: const Text(
+            'As categorias da multipropriedade voltam a ser iguais às do '
+            'Hotel. Suas alterações aqui serão perdidas.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Restaurar')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      _mutarMP(() {
+        _mp = [
+          for (final c in _categoriasHotel)
+            _CategoriaMP(
+                nome: c.$1, cor: c.$2.toARGB32(), aptos: List<int>.from(c.$4)),
+        ];
+      });
+    }
+  }
+
+  Future<void> _abrirMoverApto(int fromIndex, int apto) async {
+    await showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('Apartamento $apto',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            for (var j = 0; j < _mp.length; j++)
+              ListTile(
+                leading: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                      color: Color(_mp[j].cor),
+                      borderRadius: BorderRadius.circular(4)),
+                ),
+                title: Text(_mp[j].nome),
+                trailing: j == fromIndex
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (j != fromIndex) {
+                    _mutarMP(() {
+                      _mp[fromIndex].aptos.remove(apto);
+                      _mp[j].aptos
+                        ..add(apto)
+                        ..sort();
+                    });
+                  }
+                },
+              ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Remover da multipropriedade',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _mutarMP(() => _mp[fromIndex].aptos.remove(apto));
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabMultipropriedade(ColorScheme cs) {
+    final totalAptos = _mp.fold<int>(0, (s, c) => s + c.aptos.length);
+    return RefreshIndicator(
+      onRefresh: _carregar,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            Icon(Icons.holiday_village_outlined, color: cs.primary),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Multipropriedade',
+                  style:
+                      TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            IconButton(
+              tooltip: 'Restaurar layout do Hotel',
+              onPressed: _restaurarLayoutHotelMP,
+              icon: const Icon(Icons.restore),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text('$totalAptos apartamentos em ${_mp.length} categorias. '
+              'Começa igual ao Hotel — reorganize as categorias e os aptos '
+              'aqui como quiser.',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: _novaCategoriaMP,
+              icon: const Icon(Icons.add),
+              label: const Text('Nova categoria'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < _mp.length; i++) _cardMP(cs, i),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              'As mudanças salvam automaticamente. Toque num apartamento para '
+              'movê-lo de categoria ou removê-lo; um apto fica em uma única '
+              'categoria.',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardMP(ColorScheme cs, int i) {
+    final c = _mp[i];
+    final cor = Color(c.cor);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            InkWell(
+              onTap: () => _escolherCorMP(i),
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                    color: cor, borderRadius: BorderRadius.circular(6)),
+                child: const Icon(Icons.edit, size: 13, color: Colors.white),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _renomearCategoriaMP(i),
+                child: Text(c.nome,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: cor,
+                        letterSpacing: 0.3)),
+              ),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: cor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('${c.aptos.length} un.',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: cor)),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Opções da categoria',
+              onSelected: (v) {
+                switch (v) {
+                  case 'renomear':
+                    _renomearCategoriaMP(i);
+                    break;
+                  case 'cor':
+                    _escolherCorMP(i);
+                    break;
+                  case 'apto':
+                    _adicionarAptoMP(i);
+                    break;
+                  case 'excluir':
+                    _excluirCategoriaMP(i);
+                    break;
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'renomear', child: Text('Renomear')),
+                PopupMenuItem(value: 'cor', child: Text('Mudar cor')),
+                PopupMenuItem(value: 'apto', child: Text('Adicionar apto')),
+                PopupMenuDivider(),
+                PopupMenuItem(
+                    value: 'excluir', child: Text('Excluir categoria')),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final n in c.aptos)
+                InkWell(
+                  onTap: () => _abrirMoverApto(i, n),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: cor.withValues(alpha: 0.4)),
+                    ),
+                    child: Text('$n',
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              InkWell(
+                onTap: () => _adicionarAptoMP(i),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: cor.withValues(alpha: 0.6)),
+                  ),
+                  child: Icon(Icons.add, size: 16, color: cor),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Aba: Áreas (comodidades do hotel) ─────────────────────────────────────
-  static const List<(String, IconData)> _areasHotel = [
-    ('Piscina Principal', Icons.pool),
-    ('Piscina (rooftop)', Icons.pool_outlined),
-    ('Academia', Icons.fitness_center),
-    ('Rooftop', Icons.deck),
-    ('Ôfuro', Icons.hot_tub),
-    ('Templo de Afrodite', Icons.account_balance),
-    ('Avião Boate', Icons.nightlife),
-    ('Jardim do Éden', Icons.park),
-    ('Showroom Villamor Tambaba Resort', Icons.tv),
-    ('Banho Romano', Icons.bathtub),
-    ('Massagem', Icons.spa),
-    ('Restaurante', Icons.restaurant),
-    ('Sauna e Hidro', Icons.hot_tub_outlined),
-    ('Recepção', Icons.meeting_room),
-    ('Estacionamento', Icons.local_parking),
+  // (nome, ícone, éAreaDoSocio). As marcadas pelo Jeff como "NÃO É ÁREA DO
+  // SÓCIO" ficam com o 3º campo = false (uso comercial/terceiros).
+  static const List<(String, IconData, bool)> _areasHotel = [
+    ('Piscina Principal', Icons.pool, true),
+    ('Piscina (rooftop)', Icons.pool_outlined, true),
+    ('Rooftop', Icons.deck, true),
+    ('Ôfuro', Icons.hot_tub, true),
+    ('Templo de Afrodite', Icons.account_balance, true),
+    ('Jardim do Éden', Icons.park, true),
+    ('Showroom Villamor Tambaba Resort', Icons.tv, true),
+    ('Banho Romano', Icons.bathtub, true),
+    ('Massagem', Icons.spa, true),
+    ('Sauna', Icons.hot_tub_outlined, true),
+    ('Recepção', Icons.meeting_room, true),
+    ('Estacionamento', Icons.local_parking, true),
+    // Áreas de uso comercial / exploração — NÃO são áreas do sócio.
+    ('Loja de Conveniência', Icons.local_convenience_store, false),
+    ('SPA', Icons.spa_outlined, false),
+    ('Restaurante', Icons.restaurant, false),
+    ('Academia', Icons.fitness_center, false),
+    ('Bar Piscina', Icons.local_bar, false),
+    ('Bar Jardim do Éden', Icons.local_bar, false),
+    ('Bar Rooftop', Icons.local_bar, false),
+    ('Bar Templo de Afrodite', Icons.local_bar, false),
+    ('Boate', Icons.nightlife, false),
   ];
 
   Widget _tabAreas(ColorScheme cs) {
+    final socio = _areasHotel.where((a) => a.$3).toList();
+    final naoSocio = _areasHotel.where((a) => !a.$3).toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -736,30 +1538,75 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ),
         ]),
         const SizedBox(height: 4),
-        Text('${_areasHotel.length} áreas do Hotel Villamor (conforme o mapa).',
+        Text('${_areasHotel.length} áreas do Hotel Villamor — '
+            '${socio.length} do sócio e ${naoSocio.length} de uso comercial.',
             style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-        const SizedBox(height: 12),
-        for (final a in _areasHotel) ...[
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: cs.primary.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: cs.outlineVariant),
-            ),
-            child: Row(children: [
-              Icon(a.$2, color: cs.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(a.$1,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
-            ]),
-          ),
-        ],
+        const SizedBox(height: 16),
+        _tituloGrupoArea(cs, 'Áreas do sócio', socio.length,
+            const Color(0xFF1E7A3D)),
+        const SizedBox(height: 8),
+        for (final a in socio) _cardArea(cs, a),
+        const SizedBox(height: 16),
+        _tituloGrupoArea(cs, 'Não são áreas do sócio', naoSocio.length,
+            const Color(0xFFCB5A1A)),
+        const SizedBox(height: 4),
+        Text('Uso comercial / exploração (lojas, bares, restaurante, etc).',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 8),
+        for (final a in naoSocio) _cardArea(cs, a),
       ],
+    );
+  }
+
+  Widget _tituloGrupoArea(ColorScheme cs, String titulo, int n, Color cor) {
+    return Row(children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 8),
+      Text(titulo,
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w800, color: cor)),
+      const SizedBox(width: 6),
+      Text('($n)',
+          style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+    ]);
+  }
+
+  Widget _cardArea(ColorScheme cs, (String, IconData, bool) a) {
+    final cor = a.$3 ? const Color(0xFF1E7A3D) : const Color(0xFFCB5A1A);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cor.withValues(alpha: 0.35)),
+      ),
+      child: Row(children: [
+        Icon(a.$2, color: cor),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(a.$1,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600)),
+        ),
+        if (!a.$3)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: cor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text('não é do sócio',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: cor)),
+          ),
+      ]),
     );
   }
 

@@ -262,6 +262,77 @@ class FirestoreService {
   Future<void> removerEsperaFesta(String esperaId) =>
       _db.collection(_colFestaEspera).doc(esperaId).delete();
 
+  // --- HOTEL: cota por apartamento (Ouro/Prata/Bronze) ---
+  // Guardado num único doc `config/hotel_cotas`, campo `cotas` = mapa
+  // { "<numero do apto>": "ouro" | "prata" | "bronze" }. Config é leitura/
+  // escrita para qualquer autenticado (inclui o perfil `transicao`).
+  static const _colConfig = 'config';
+  static const _docHotelCotas = 'hotel_cotas';
+
+  /// Lê o mapa apartamento → cota definido manualmente no módulo Hotel.
+  Future<Map<String, String>> getCotasHotel() async {
+    final snap = await _db.collection(_colConfig).doc(_docHotelCotas).get();
+    final raw = (snap.data()?['cotas'] as Map<String, dynamic>?) ?? {};
+    final m = <String, String>{};
+    raw.forEach((k, v) {
+      if (v is String && v.isNotEmpty) m[k] = v;
+    });
+    return m;
+  }
+
+  /// Define (ou limpa, com [cota] == null) a cota de um apartamento.
+  Future<void> setCotaHotel(String apto, String? cota) async {
+    final ref = _db.collection(_colConfig).doc(_docHotelCotas);
+    await ref.set({
+      'cotas': {apto: cota ?? FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Aplica uma cota (ou limpa) a vários apartamentos de uma vez.
+  Future<void> setCotasHotelEmLote(List<String> aptos, String? cota) async {
+    if (aptos.isEmpty) return;
+    final ref = _db.collection(_colConfig).doc(_docHotelCotas);
+    final cotas = <String, dynamic>{
+      for (final a in aptos) a: cota ?? FieldValue.delete(),
+    };
+    await ref.set({
+      'cotas': cotas,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  // --- HOTEL: categorias da Multipropriedade (editáveis) ---
+  // Guardado em `config/multipropriedade`, campo `categorias` = lista de
+  // { nome: String, cor: int (ARGB), aptos: [int] }. Começa como cópia do
+  // layout do Hotel; o usuário reorganiza livremente pela aba.
+  static const _docMultipropriedade = 'multipropriedade';
+
+  /// Lê as categorias da Multipropriedade; null se ainda não foram definidas
+  /// (a tela faz o seed inicial a partir do layout do Hotel).
+  Future<List<Map<String, dynamic>>?> getMultipropriedade() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docMultipropriedade).get();
+    final raw = snap.data()?['categorias'];
+    if (raw is! List) return null;
+    return raw
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  /// Salva (substitui) toda a lista de categorias da Multipropriedade.
+  Future<void> salvarMultipropriedade(
+      List<Map<String, dynamic>> categorias) async {
+    await _db.collection(_colConfig).doc(_docMultipropriedade).set({
+      'categorias': categorias,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
   // --- CLIENTES ---
 
   Stream<List<Cliente>> getTodosClientesStream({
