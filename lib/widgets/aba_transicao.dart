@@ -1521,6 +1521,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     ('Bar Rooftop', Icons.local_bar, false),
     ('Bar Templo de Afrodite', Icons.local_bar, false),
     ('Boate', Icons.nightlife, false),
+    ('Avião Boate', Icons.flight, false),
   ];
 
   Widget _tabAreas(ColorScheme cs) {
