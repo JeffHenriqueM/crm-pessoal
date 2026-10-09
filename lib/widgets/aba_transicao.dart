@@ -973,11 +973,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
     final aptos = _aptosPorPrestigio();
     final n = aptos.length;
-    // Peso em apto-equivalente: cada apto rende 1 Integral / 13 Ouro /
-    // 26 Prata / 52 Bronze cotas. Ordem: integral, ouro, prata, bronze.
-    final pesos = [d / 1.0, o / 13.0, p / 26.0, b / 52.0];
+    // Integral é FIXO = total de integrais que temos + 6. O restante dos
+    // apartamentos é repartido entre Ouro/Prata/Bronze em apto-equivalente
+    // (cada apto rende 13 Ouro / 26 Prata / 52 Bronze cotas).
+    final nIntegral = (d + 6).clamp(0, n);
+    final resto = n - nIntegral;
+    final q3 = _repartir(resto, [o / 13.0, p / 26.0, b / 52.0]);
+    final q = [nIntegral, q3[0], q3[1], q3[2]];
     final tiers = ['integral', 'ouro', 'prata', 'bronze'];
-    final q = _repartir(n, pesos); // [nInt, nOuro, nPrata, nBronze]
 
     final ok = await showDialog<bool>(
       context: context,
@@ -987,10 +990,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Com base nas vendas reais — sem Matheus Camelo/Reynaldo '
-                'Fabbri e com S & S contando como 1 integral — ($d Integral, '
-                '$o Ouro, $p Prata, $b Bronze em cotas), os $n apartamentos '
-                'ficam:'),
+            Text('Integral = $d (que temos) + 6 = $nIntegral apartamentos. '
+                'Os outros $resto são repartidos entre Ouro/Prata/Bronze '
+                'conforme as vendas ($o Ouro, $p Prata, $b Bronze em cotas; '
+                'sem Matheus/Reynaldo, S & S = 1). Total $n:'),
             const SizedBox(height: 10),
             _linhaAlvo(const Color(0xFF4A6FA5), 'Integral', q[0], n),
             _linhaAlvo(const Color(0xFFC9A227), 'Ouro', q[1], n),
