@@ -206,8 +206,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // Chave = número do apto (String); valor = 'ouro' | 'prata' | 'bronze'.
   Map<String, String> _cotasHotel = {};
 
-  // Cotas selecionáveis na aba (rótulo exibido, chave salva, cor).
+  // Cotas selecionáveis na aba (rótulo exibido, chave salva, cor), da mais
+  // premium (Integral = apto inteiro) à mais simples.
   static final List<(String, String, Color)> _cotasOpcoes = [
+    ('Integral', 'integral', Color(0xFF4A6FA5)),
     ('Ouro', 'ouro', Color(0xFFC9A227)),
     ('Prata', 'prata', Color(0xFF7A8390)),
     ('Bronze', 'bronze', Color(0xFF9E6B3F)),
@@ -894,41 +896,44 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return out;
   }
 
-  /// Reparte [n] apartamentos entre (ouro, prata, bronze) proporcionalmente aos
-  /// pesos em apto-equivalente, fechando a soma com maior-resto (Hare).
-  (int, int, int) _alvoCotas(int n, double eB, double eP, double eO) {
-    final total = eB + eP + eO;
-    if (total <= 0 || n <= 0) return (0, 0, 0);
-    final raw = [n * eO / total, n * eP / total, n * eB / total]; // O, P, B
+  /// Reparte [n] apartamentos entre os tiers na proporção de [pesos]
+  /// (apto-equivalente), fechando a soma com maior-resto (Hare). Devolve a
+  /// contagem por tier na mesma ordem dos pesos.
+  List<int> _repartir(int n, List<double> pesos) {
+    final total = pesos.fold(0.0, (s, v) => s + v);
+    if (total <= 0 || n <= 0) return List.filled(pesos.length, 0);
+    final raw = [for (final p in pesos) n * p / total];
     final base = raw.map((v) => v.floor()).toList();
-    var resto = n - base.reduce((a, b) => a + b);
+    final resto = n - base.reduce((a, b) => a + b);
     final frac = [
-      for (var i = 0; i < 3; i++) (i, raw[i] - base[i])
+      for (var i = 0; i < raw.length; i++) (i, raw[i] - base[i])
     ]..sort((a, b) => b.$2.compareTo(a.$2));
     for (var i = 0; i < resto; i++) {
-      base[frac[i % 3].$1]++;
+      base[frac[i % frac.length].$1]++;
     }
-    return (base[0], base[1], base[2]); // (ouro, prata, bronze)
+    return base;
   }
 
   /// Auto-distribui as cotas pelos apartamentos conforme as vendas reais do
   /// resort (mix em apto-equivalente), premium → simples. Pede confirmação.
+  /// Tiers, do mais premium ao mais simples: Integral, Ouro, Prata, Bronze.
   Future<void> _autoDistribuirCotas() async {
-    final (b, p, o, _) = _cotasVendidasPorTier();
-    if (b + p + o == 0) {
+    final (b, p, o, d) = _cotasVendidasPorTier(); // d = diamante + integral
+    if (b + p + o + d == 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text(
-                'Sem vendas de Bronze/Prata/Ouro para basear a distribuição.')),
+            content: Text('Sem vendas para basear a distribuição.')),
       );
       return;
     }
     final aptos = _aptosPorPrestigio();
     final n = aptos.length;
-    // Peso em apto-equivalente: cada apto rende 52 Bronze / 26 Prata / 13 Ouro.
-    final eB = b / 52.0, eP = p / 26.0, eO = o / 13.0;
-    final (nOuro, nPrata, nBronze) = _alvoCotas(n, eB, eP, eO);
+    // Peso em apto-equivalente: cada apto rende 1 Integral / 13 Ouro /
+    // 26 Prata / 52 Bronze cotas. Ordem: integral, ouro, prata, bronze.
+    final pesos = [d / 1.0, o / 13.0, p / 26.0, b / 52.0];
+    final tiers = ['integral', 'ouro', 'prata', 'bronze'];
+    final q = _repartir(n, pesos); // [nInt, nOuro, nPrata, nBronze]
 
     final ok = await showDialog<bool>(
       context: context,
@@ -938,16 +943,17 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Com base nas vendas reais ($b Bronze, $p Prata, $o Ouro '
-                'em cotas), os $n apartamentos ficam:'),
+            Text('Com base nas vendas reais ($d Integral, $o Ouro, $p Prata, '
+                '$b Bronze em cotas), os $n apartamentos ficam:'),
             const SizedBox(height: 10),
-            _linhaAlvo(const Color(0xFFC9A227), 'Ouro', nOuro, n),
-            _linhaAlvo(const Color(0xFF7A8390), 'Prata', nPrata, n),
-            _linhaAlvo(const Color(0xFF9E6B3F), 'Bronze', nBronze, n),
+            _linhaAlvo(const Color(0xFF4A6FA5), 'Integral', q[0], n),
+            _linhaAlvo(const Color(0xFFC9A227), 'Ouro', q[1], n),
+            _linhaAlvo(const Color(0xFF7A8390), 'Prata', q[2], n),
+            _linhaAlvo(const Color(0xFF9E6B3F), 'Bronze', q[3], n),
             const SizedBox(height: 10),
             const Text(
-                'Os apartamentos mais valorizados recebem Ouro; os mais '
-                'simples, Bronze. Isso substitui as cotas atuais.',
+                'Os apartamentos mais valorizados recebem Integral/Ouro; os '
+                'mais simples, Bronze. Isso substitui as cotas atuais.',
                 style: TextStyle(fontSize: 12)),
           ],
         ),
@@ -964,11 +970,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     if (ok != true) return;
 
     final mapa = <String, String>{};
-    for (var i = 0; i < n; i++) {
-      final cota = i < nOuro
-          ? 'ouro'
-          : (i < nOuro + nPrata ? 'prata' : 'bronze');
-      mapa['${aptos[i]}'] = cota;
+    var idx = 0;
+    for (var t = 0; t < tiers.length; t++) {
+      for (var k = 0; k < q[t] && idx < n; k++, idx++) {
+        mapa['${aptos[idx]}'] = tiers[t];
+      }
     }
     final backup = Map<String, String>.of(_cotasHotel);
     setState(() => _cotasHotel = mapa);
@@ -977,8 +983,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Distribuído: $nOuro Ouro, $nPrata Prata, '
-                '$nBronze Bronze.')),
+            content: Text('Distribuído: ${q[0]} Integral, ${q[1]} Ouro, '
+                '${q[2]} Prata, ${q[3]} Bronze.')),
       );
     } catch (e) {
       debugPrint('AbaTransicao._autoDistribuirCotas: $e');
@@ -1010,9 +1016,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   Widget _tabCotas(ColorScheme cs) {
     final todos = [for (final c in _categoriasHotel) ...c.$4];
-    var ouro = 0, prata = 0, bronze = 0;
+    var integral = 0, ouro = 0, prata = 0, bronze = 0;
     for (final n in todos) {
       switch (_cotasHotel['$n']) {
+        case 'integral':
+          integral++;
+          break;
         case 'ouro':
           ouro++;
           break;
@@ -1024,7 +1033,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           break;
       }
     }
-    final sem = todos.length - ouro - prata - bronze;
+    final sem = todos.length - integral - ouro - prata - bronze;
     return RefreshIndicator(
       onRefresh: _carregar,
       child: ListView(
@@ -1056,6 +1065,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              _pilulaResumo('Integral', integral, const Color(0xFF4A6FA5)),
               _pilulaResumo('Ouro', ouro, const Color(0xFFC9A227)),
               _pilulaResumo('Prata', prata, const Color(0xFF7A8390)),
               _pilulaResumo('Bronze', bronze, const Color(0xFF9E6B3F)),
