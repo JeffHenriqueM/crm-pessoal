@@ -213,6 +213,23 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     ('Bronze', 'bronze', Color(0xFF9E6B3F)),
   ];
 
+  // Ordem de prestígio das categorias (mais premium → mais simples). Usada
+  // pela auto-distribuição de cotas: os aptos mais valorizados recebem Ouro,
+  // depois Prata, e os mais simples Bronze — nas quantidades que refletem as
+  // vendas reais (em apto-equivalente).
+  static const List<String> _prestigioCategorias = [
+    'SUÍTE VILLAMOR',
+    'SUÍTE DUPLEX',
+    'MASTER',
+    'DUPLEX',
+    'LUXO',
+    'TRIPLO',
+    'COMFORT 2° ANDAR',
+    'COMFORT 1° ANDAR',
+    'COMFORT TÉRREO',
+    'STUDIO ROOM',
+  ];
+
   // Categorias da Multipropriedade (editáveis pelo usuário). Carregadas de
   // config/multipropriedade; se vazio, seed a partir do layout do Hotel.
   List<_CategoriaMP> _mp = [];
@@ -859,6 +876,138 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
+  /// Apartamentos do Hotel em ordem de prestígio (categoria premium → simples,
+  /// e dentro da categoria por número crescente). Base da auto-distribuição.
+  List<int> _aptosPorPrestigio() {
+    final out = <int>[];
+    for (final nome in _prestigioCategorias) {
+      final cat = _categoriasHotel.where((c) => c.$1 == nome);
+      if (cat.isEmpty) continue;
+      out.addAll([...cat.first.$4]..sort());
+    }
+    // Qualquer categoria fora da lista de prestígio entra ao final.
+    for (final c in _categoriasHotel) {
+      if (!_prestigioCategorias.contains(c.$1)) {
+        out.addAll([...c.$4]..sort());
+      }
+    }
+    return out;
+  }
+
+  /// Reparte [n] apartamentos entre (ouro, prata, bronze) proporcionalmente aos
+  /// pesos em apto-equivalente, fechando a soma com maior-resto (Hare).
+  (int, int, int) _alvoCotas(int n, double eB, double eP, double eO) {
+    final total = eB + eP + eO;
+    if (total <= 0 || n <= 0) return (0, 0, 0);
+    final raw = [n * eO / total, n * eP / total, n * eB / total]; // O, P, B
+    final base = raw.map((v) => v.floor()).toList();
+    var resto = n - base.reduce((a, b) => a + b);
+    final frac = [
+      for (var i = 0; i < 3; i++) (i, raw[i] - base[i])
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    for (var i = 0; i < resto; i++) {
+      base[frac[i % 3].$1]++;
+    }
+    return (base[0], base[1], base[2]); // (ouro, prata, bronze)
+  }
+
+  /// Auto-distribui as cotas pelos apartamentos conforme as vendas reais do
+  /// resort (mix em apto-equivalente), premium → simples. Pede confirmação.
+  Future<void> _autoDistribuirCotas() async {
+    final (b, p, o, _) = _cotasVendidasPorTier();
+    if (b + p + o == 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Sem vendas de Bronze/Prata/Ouro para basear a distribuição.')),
+      );
+      return;
+    }
+    final aptos = _aptosPorPrestigio();
+    final n = aptos.length;
+    // Peso em apto-equivalente: cada apto rende 52 Bronze / 26 Prata / 13 Ouro.
+    final eB = b / 52.0, eP = p / 26.0, eO = o / 13.0;
+    final (nOuro, nPrata, nBronze) = _alvoCotas(n, eB, eP, eO);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Auto-distribuir cotas'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Com base nas vendas reais ($b Bronze, $p Prata, $o Ouro '
+                'em cotas), os $n apartamentos ficam:'),
+            const SizedBox(height: 10),
+            _linhaAlvo(const Color(0xFFC9A227), 'Ouro', nOuro, n),
+            _linhaAlvo(const Color(0xFF7A8390), 'Prata', nPrata, n),
+            _linhaAlvo(const Color(0xFF9E6B3F), 'Bronze', nBronze, n),
+            const SizedBox(height: 10),
+            const Text(
+                'Os apartamentos mais valorizados recebem Ouro; os mais '
+                'simples, Bronze. Isso substitui as cotas atuais.',
+                style: TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Distribuir')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final mapa = <String, String>{};
+    for (var i = 0; i < n; i++) {
+      final cota = i < nOuro
+          ? 'ouro'
+          : (i < nOuro + nPrata ? 'prata' : 'bronze');
+      mapa['${aptos[i]}'] = cota;
+    }
+    final backup = Map<String, String>.of(_cotasHotel);
+    setState(() => _cotasHotel = mapa);
+    try {
+      await _fs.substituirCotasHotel(mapa);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Distribuído: $nOuro Ouro, $nPrata Prata, '
+                '$nBronze Bronze.')),
+      );
+    } catch (e) {
+      debugPrint('AbaTransicao._autoDistribuirCotas: $e');
+      if (!mounted) return;
+      setState(() => _cotasHotel = backup);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não consegui salvar. Tente de novo.')),
+      );
+    }
+  }
+
+  Widget _linhaAlvo(Color cor, String rotulo, int n, int total) {
+    final pct = total > 0 ? (100 * n / total).round() : 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Text('$rotulo: ',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text('$n aptos ($pct%)'),
+      ]),
+    );
+  }
+
   Widget _tabCotas(ColorScheme cs) {
     final todos = [for (final c in _categoriasHotel) ...c.$4];
     var ouro = 0, prata = 0, bronze = 0;
@@ -893,6 +1042,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           Text('Toque em um apartamento para definir a cota (Ouro, Prata ou '
               'Bronze). Use "aplicar à categoria" para definir todos de uma vez.',
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: _autoDistribuirCotas,
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Auto-distribuir conforme vendas'),
+            ),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,

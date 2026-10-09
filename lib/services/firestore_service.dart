@@ -304,6 +304,16 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
+  /// Substitui TODO o mapa de cotas por apartamento de uma vez (usado pela
+  /// auto-distribuição conforme as vendas). Zera o que havia antes.
+  Future<void> substituirCotasHotel(Map<String, String> mapa) async {
+    await _db.collection(_colConfig).doc(_docHotelCotas).set({
+      'cotas': mapa,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
   // --- HOTEL: categorias da Multipropriedade (editáveis) ---
   // Guardado em `config/multipropriedade`, campo `categorias` = lista de
   // { nome: String, cor: int (ARGB), aptos: [int] }. Começa como cópia do
