@@ -73,9 +73,10 @@ class _AbaDistratarState extends State<AbaDistratar> {
   @override
   void initState() {
     super.initState();
-    // Não busca nada ao abrir — contratos e baixas só são lidos quando o
-    // usuário clica em "Carregar" (evita leitura pesada à toa numa aba pouco
-    // usada).
+    // Carrega automaticamente ao abrir a aba. As leituras são cacheadas no
+    // serviço (contratos 10 min, baixas 12 h), então reabrir a aba reaproveita
+    // o que já está em memória — não precisa clicar em "Carregar" toda vez.
+    if (_temPermissao) _carregar();
   }
 
   Future<void> _carregar() async {
@@ -266,8 +267,8 @@ class _AbaDistratarState extends State<AbaDistratar> {
     );
   }
 
-  /// Estado inicial: a aba não busca contratos/baixas ao abrir. O usuário
-  /// dispara a leitura (pesada) clicando aqui.
+  /// Fallback: só aparece se o carregamento automático falhar (ex.: erro de
+  /// rede). O normal é a aba já abrir com a análise carregada.
   Widget _promptCarregar(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Center(
@@ -282,15 +283,14 @@ class _AbaDistratarState extends State<AbaDistratar> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(
-              'Os contratos e as baixas são buscados só quando você pede, para '
-              'evitar leituras desnecessárias.',
+              'Não consegui carregar automaticamente. Toque para tentar de novo.',
               style: TextStyle(color: cs.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _carregar,
-              icon: const Icon(Icons.download_outlined),
+              icon: const Icon(Icons.refresh),
               label: const Text('Carregar análise'),
             ),
           ],
