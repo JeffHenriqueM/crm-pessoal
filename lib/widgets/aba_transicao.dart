@@ -173,10 +173,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return s;
   }
 
-  /// Total de cotas vendidas por tier (conta principal + separados).
-  (int, int, int, int) _cotasVendidasPorTier() {
+  /// Total de cotas vendidas por tier. Por padrão inclui os clientes tratados
+  /// à parte (Matheus Camelo / Reynaldo Fabbri); com [incluirSeparados] falso
+  /// conta só a conta principal — usado na auto-distribuição de cotas, que não
+  /// deve considerar esses dois (ex.: as 12 integrais deles ficam de fora).
+  (int, int, int, int) _cotasVendidasPorTier({bool incluirSeparados = true}) {
     var b = 0, p = 0, o = 0, d = 0;
-    for (final mapa in [_stats, ..._separados.values]) {
+    final mapas = incluirSeparados
+        ? [_stats, ..._separados.values]
+        : [_stats];
+    for (final mapa in mapas) {
       for (final s in mapa.values) {
         b += s.cotasBronze;
         p += s.cotasPrata;
@@ -918,7 +924,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   /// resort (mix em apto-equivalente), premium → simples. Pede confirmação.
   /// Tiers, do mais premium ao mais simples: Integral, Ouro, Prata, Bronze.
   Future<void> _autoDistribuirCotas() async {
-    final (b, p, o, d) = _cotasVendidasPorTier(); // d = diamante + integral
+    // Exclui Matheus Camelo e Reynaldo Fabbri (tratados à parte).
+    final (b, p, o, d) = _cotasVendidasPorTier(incluirSeparados: false);
     if (b + p + o + d == 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -943,8 +950,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Com base nas vendas reais ($d Integral, $o Ouro, $p Prata, '
-                '$b Bronze em cotas), os $n apartamentos ficam:'),
+            Text('Com base nas vendas reais — excluindo Matheus Camelo e '
+                'Reynaldo Fabbri — ($d Integral, $o Ouro, $p Prata, $b Bronze '
+                'em cotas), os $n apartamentos ficam:'),
             const SizedBox(height: 10),
             _linhaAlvo(const Color(0xFF4A6FA5), 'Integral', q[0], n),
             _linhaAlvo(const Color(0xFFC9A227), 'Ouro', q[1], n),
