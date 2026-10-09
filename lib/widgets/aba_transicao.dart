@@ -1082,6 +1082,69 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
+  /// Apaga TODAS as cotas (todos os aptos voltam a "Sem cota"). Pede
+  /// confirmação e oferece "Desfazer" logo em seguida.
+  Future<void> _limparCotas() async {
+    if (_cotasHotel.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há cotas para apagar.')),
+      );
+      return;
+    }
+    final qtd = _cotasHotel.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Apagar todas as cotas?'),
+        content: Text('Os $qtd apartamentos com cota voltam a ficar '
+            '"Sem cota". Você pode desfazer logo depois.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Apagar tudo')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final backup = Map<String, String>.of(_cotasHotel);
+    setState(() => _cotasHotel = {});
+    try {
+      await _fs.substituirCotasHotel({});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Cotas apagadas.'),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Desfazer',
+            onPressed: () async {
+              setState(() => _cotasHotel = backup);
+              try {
+                await _fs.substituirCotasHotel(backup);
+              } catch (e) {
+                debugPrint('AbaTransicao._limparCotas (desfazer): $e');
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('AbaTransicao._limparCotas: $e');
+      if (!mounted) return;
+      setState(() => _cotasHotel = backup);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não consegui apagar. Tente de novo.')),
+      );
+    }
+  }
+
   Widget _linhaAlvo(Color cor, String rotulo, int n, int total) {
     final pct = total > 0 ? (100 * n / total).round() : 0;
     return Padding(
@@ -1138,13 +1201,22 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               'Bronze). Use "aplicar à categoria" para definir todos de uma vez.',
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.tonalIcon(
-              onPressed: _autoDistribuirCotas,
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('Auto-distribuir conforme vendas'),
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _autoDistribuirCotas,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Auto-distribuir conforme vendas'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _limparCotas,
+                style: OutlinedButton.styleFrom(foregroundColor: cs.error),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Limpar tudo'),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Wrap(
