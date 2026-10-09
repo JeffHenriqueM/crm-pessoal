@@ -251,6 +251,23 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // Calculado em _carregar a partir dos contratos ativos.
   (int, int, int, int) _mixDistribuicao = (0, 0, 0, 0);
 
+  // Mix de vendas por LINHA de produto do resort, usado pela auto-distribuição
+  // de CATEGORIAS na aba Multipropriedade: (villamor, luxo, bangalô).
+  // Exclui Matheus Camelo e Reynaldo Fabbri (tratados à parte). Calculado em
+  // _carregar. Regra de negócio (Jeff): Villamor→categoria VILLAMOR; Luxo→
+  // MASTER ou COMFORT (sorteado); Bangalô→1 apto vira SUÍTE PRESIDENCIAL.
+  (int, int, int) _mixLinhas = (0, 0, 0);
+
+  /// Linha de produto do resort a partir do texto do produto do contrato.
+  /// LUXO* → 'LUXO'; VILLAMOR* → 'VILLAMOR'; BANGALO* → 'BANGALÔ'; resto null.
+  static String? _linhaContrato(String produto) {
+    final t = produto.toUpperCase().trim();
+    if (t.startsWith('LUXO')) return 'LUXO';
+    if (t.startsWith('VILLAMOR')) return 'VILLAMOR';
+    if (t.startsWith('BANGAL')) return 'BANGALÔ';
+    return null;
+  }
+
   /// S & S Administradora de Bens Ltda — colapsada para 1 integral.
   static bool _ehSS(String nome) {
     final u = nome.toUpperCase();
@@ -450,6 +467,25 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       }
       if (ssInt > 0) mixI++; // S & S inteira vale 1 integral
       final mix = (mixB, mixP, mixO, mixI);
+      // Mix por LINHA de produto (aba Multipropriedade): Villamor/Luxo/Bangalô,
+      // também sem Matheus/Reynaldo.
+      var linhaV = 0, linhaL = 0, linhaB = 0;
+      for (final c in outros) {
+        switch (_linhaContrato(c.produto)) {
+          case 'VILLAMOR':
+            linhaV++;
+            break;
+          case 'LUXO':
+            linhaL++;
+            break;
+          case 'BANGALÔ':
+            linhaB++;
+            break;
+          default:
+            break;
+        }
+      }
+      final mixLin = (linhaV, linhaL, linhaB);
       final separados = <String, Map<String, _LinhaStats>>{};
       for (final rotulo in _clientesSeparados.keys) {
         final doCliente = contratos
@@ -505,6 +541,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _cotasHotel = cotas;
         _mp = mp;
         _mixDistribuicao = mix;
+        _mixLinhas = mixLin;
         _carregado = true;
         _carregando = false;
       });
@@ -1310,6 +1347,155 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
+  /// Apartamentos da Multipropriedade em ordem de prestígio (categoria
+  /// premium → simples, aptos crescentes dentro da categoria). Base da
+  /// auto-distribuição por categoria.
+  List<int> _aptosMPPorPrestigio() {
+    final usados = <int>{};
+    final out = <int>[];
+    void add(List<int> xs) {
+      final ordenados = [...xs]..sort();
+      for (final a in ordenados) {
+        if (usados.add(a)) out.add(a);
+      }
+    }
+
+    for (final nome in _prestigioCategorias) {
+      for (final c in _mp.where((c) => c.nome.toUpperCase() == nome)) {
+        add(c.aptos);
+      }
+    }
+    // Categorias fora da lista de prestígio (ex.: VILLAMOR 300-310 criada à
+    // mão) entram ao final, na ordem em que aparecem.
+    for (final c in _mp) {
+      if (!_prestigioCategorias.contains(c.nome.toUpperCase())) {
+        add(c.aptos);
+      }
+    }
+    return out;
+  }
+
+  /// Auto-distribui os apartamentos da Multipropriedade em CATEGORIAS conforme
+  /// as vendas reais do resort (proporção por linha de produto). Regra (Jeff):
+  ///  • Villamor no resort  → categoria VILLAMOR;
+  ///  • Luxo no resort      → MASTER ou COMFORT (sorteado);
+  ///  • Bangalô             → 1 apto vira SUÍTE PRESIDENCIAL (o mais premium);
+  ///    os demais contratos bangalô ficam sem mapear por ora.
+  /// Substitui o layout atual da aba. Pede confirmação.
+  Future<void> _autoDistribuirMP() async {
+    final (v, l, b) = _mixLinhas;
+    if (v + l + b == 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Sem vendas para basear a distribuição.')),
+      );
+      return;
+    }
+    final aptos = _aptosMPPorPrestigio();
+    final n = aptos.length;
+    if (n == 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Não há apartamentos na multipropriedade.')),
+      );
+      return;
+    }
+
+    // Bangalô: reserva 1 apto (o mais premium) para a SUÍTE PRESIDENCIAL.
+    final nPres = (b > 0) ? 1 : 0;
+    final resto = n - nPres;
+    // Villamor × Luxo nos aptos restantes, proporcional às vendas (Hare).
+    final vl = _repartir(resto, [v.toDouble(), l.toDouble()]);
+    final nVillamor = vl[0];
+    final nLuxo = vl[1];
+
+    const presidencial = 'SUÍTE PRESIDENCIAL';
+    const villamor = 'VILLAMOR';
+    const master = 'MASTER';
+    const comfort = 'COMFORT';
+    const cores = {
+      presidencial: 0xFF6A1B9A,
+      villamor: 0xFFC2185B,
+      master: 0xFF8A8A2B,
+      comfort: 0xFF1E7A3D,
+    };
+    final buckets = <String, List<int>>{
+      presidencial: [],
+      villamor: [],
+      master: [],
+      comfort: [],
+    };
+
+    final rng = math.Random();
+    var idx = 0;
+    for (var k = 0; k < nPres && idx < n; k++, idx++) {
+      buckets[presidencial]!.add(aptos[idx]);
+    }
+    for (var k = 0; k < nVillamor && idx < n; k++, idx++) {
+      buckets[villamor]!.add(aptos[idx]);
+    }
+    for (var k = 0; k < nLuxo && idx < n; k++, idx++) {
+      buckets[rng.nextBool() ? master : comfort]!.add(aptos[idx]);
+    }
+    for (final e in buckets.values) {
+      e.sort();
+    }
+
+    final ordem = [presidencial, villamor, master, comfort];
+    final novo = [
+      for (final c in ordem)
+        if (buckets[c]!.isNotEmpty)
+          _CategoriaMP(nome: c, cor: cores[c]!, aptos: buckets[c]!),
+    ];
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Auto-distribuir categorias'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Baseado nas vendas do resort ($v Villamor, $l Luxo, '
+                '$b Bangalô; sem Matheus/Reynaldo). Distribui os $n '
+                'apartamentos assim:'),
+            const SizedBox(height: 10),
+            for (final c in ordem)
+              if (buckets[c]!.isNotEmpty)
+                _linhaAlvo(Color(cores[c]!), c, buckets[c]!.length, n),
+            const SizedBox(height: 10),
+            Text(
+                'Luxo é sorteado entre Master e Comfort. '
+                '${b > 1 ? 'Os outros ${b - 1} contratos Bangalô ficam sem mapear por ora. ' : ''}'
+                'Isso SUBSTITUI as categorias atuais da Multipropriedade.',
+                style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Distribuir')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _mutarMP(() => _mp = novo);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text('Distribuído: '
+              '${buckets[villamor]!.length} Villamor, '
+              '${buckets[master]!.length} Master, '
+              '${buckets[comfort]!.length} Comfort'
+              '${nPres > 0 ? ', 1 Suíte Presidencial' : ''}.')),
+    );
+  }
+
   /// Caixa de texto simples (nome de categoria ou número de apto).
   Future<String?> _pedirTexto(String titulo,
       {String inicial = '', String hint = '', bool numero = false}) async {
@@ -1562,13 +1748,21 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               'aqui como quiser.',
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.tonalIcon(
-              onPressed: _novaCategoriaMP,
-              icon: const Icon(Icons.add),
-              label: const Text('Nova categoria'),
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _novaCategoriaMP,
+                icon: const Icon(Icons.add),
+                label: const Text('Nova categoria'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _autoDistribuirMP,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Auto-distribuir por vendas'),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           for (var i = 0; i < _mp.length; i++) _cardMP(cs, i),
@@ -1903,6 +2097,116 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       'Transparência total: queremos que você aproveite o que comprou o quanto '
           'antes. Em vez de esperar a obra, entregamos um ativo pronto, '
           'honrando integralmente seu contrato. É um ganha-ganha.',
+    ],
+    [
+      'Não terá a Sex Lagoon como no resort.',
+      'Com transparência: o hotel tem o próprio conjunto de lazer, que pode '
+          'não repetir atração por atração. O que você contratou — cota, valor '
+          'e direito de uso — segue 100% preservado, e passa a ser usufruído '
+          'AGORA. Convide o cliente a conhecer a estrutura pronta antes de '
+          'comparar no papel.',
+    ],
+    [
+      'Não terá a Festa na Floresta.',
+      'O hotel tem a própria agenda de experiências e eventos. O essencial do '
+          'seu contrato — fração, valor e uso — não muda. Confirme a '
+          'programação atual com a administração e foque no benefício maior: '
+          'usar já, sem esperar a obra.',
+    ],
+    [
+      'O Jardim do Éden é muito menor e não é espelhado.',
+      'Reconheça a diferença sem rodeios. O ganho da troca não é área X ou Y, '
+          'e sim poder usar AGORA, com estrutura pronta e testada, sem risco de '
+          'prazo de obra. Mostre o Jardim do Éden do hotel pessoalmente — a '
+          'experiência real costuma pesar mais que a comparação de tamanho.',
+    ],
+    [
+      'O hotel terá menos apartamentos que o resort.',
+      'Menos unidades não reduz o seu direito: sua cota/semana e a categoria '
+          'são preservadas, e já há apartamento equivalente reservado ao seu '
+          'perfil (ver abas Prioridade e Multipropriedade). Menos unidades '
+          'pode significar, inclusive, uma operação mais exclusiva.',
+    ],
+    [
+      'Como vão internacionalizar o hotel?',
+      '(Confirme a estratégia oficial com a administração.) Em linhas gerais, '
+          'destaque posicionamento, canais de reserva e parcerias. Evite '
+          'prometer o que ainda não está definido; foque no que já está pronto '
+          'e operando hoje.',
+    ],
+    [
+      'O hotel terá ambulatório?',
+      '(Fato a confirmar com a administração.) Reforce que a segurança e o '
+          'bem-estar do hóspede são prioridade e que o hotel já opera '
+          'atendendo hóspedes. Não prometa estrutura médica sem confirmação.',
+    ],
+    [
+      'Terá centro de convenções?',
+      '(A confirmar com a administração.) Se houver espaço para eventos, '
+          'apresente-o como diferencial; caso contrário, foque nos atrativos já '
+          'existentes. Não prometa o que não estiver definido.',
+    ],
+    [
+      'As lojas serão em parceria com os sócios?',
+      '(Política a confirmar com a administração.) Havendo previsão de parceria '
+          'ou preferência para sócios, apresente como vantagem; sem definição, '
+          'não crie expectativa.',
+    ],
+    [
+      'Haverá restaurante com piano bar?',
+      '(A confirmar com a administração.) Destaque a gastronomia e o ambiente '
+          'do hotel. Confirme a existência do piano bar antes de prometer.',
+    ],
+    [
+      'O rooftop será exclusivo para sócios?',
+      '(Política de acesso a confirmar com a administração.) Quando confirmada, '
+          'posicione a exclusividade como benefício de ser sócio; não garanta '
+          'exclusividade sem definição oficial.',
+    ],
+    [
+      'Qual a vantagem de ser sócio?',
+      'Uso garantido do seu período todo ano sem pagar diária, com o valor '
+          'investido preservado e proteção contra o reajuste de hospedagem. '
+          'Além do uso: possíveis descontos em consumo e em noites extras e '
+          'acessos exclusivos (itens a confirmar com a administração).',
+    ],
+    [
+      'O sócio terá desconto em consumo (bar, restaurante)?',
+      '(Benefício a confirmar com a administração.) Havendo, apresente como '
+          'vantagem concreta do sócio; não prometa percentual sem definição.',
+    ],
+    [
+      'O sócio terá desconto em hospedagem em outras datas?',
+      '(A confirmar com a administração.) Em geral o sócio tem condição '
+          'diferenciada para noites extras ou fora da sua semana; confirme a '
+          'regra antes de oferecer.',
+    ],
+    [
+      'Como será a escolha dos apartamentos?',
+      'Por equivalência de categoria e por prioridade — maior valor pago '
+          'primeiro (ver abas Prioridade e Multipropriedade). Critério '
+          'transparente, definido antes de negociar, que evita disputa.',
+    ],
+    [
+      'Como será a escolha das datas?',
+      'Pelo mesmo direito de semana/cota que você já possui, com um sistema de '
+          'reserva/rodízio transparente. (Confirme o calendário e as regras de '
+          'rodízio com a administração.)',
+    ],
+    [
+      'O hotel tem toda a documentação regularizada?',
+      '(Fato jurídico a confirmar com a administração/jurídico.) Transmita '
+          'segurança: a troca é formalizada por aditivo que preserva seus '
+          'direitos, com a documentação apresentada antes da assinatura. Não '
+          'afirme regularização sem checar.',
+    ],
+    [
+      'Há algum plano de economia de custo, como energia solar?',
+      '(A confirmar com a administração.) Eficiência e sustentabilidade '
+          '(energia solar, reuso de água, etc.) reduzem o custo de operação e, '
+          'com isso, a taxa de condomínio do sócio. Havendo projeto definido, '
+          'apresente como ganho direto no bolso; não prometa o que ainda não '
+          'estiver confirmado.',
     ],
   ];
 
