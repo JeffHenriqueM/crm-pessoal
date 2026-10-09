@@ -173,16 +173,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return s;
   }
 
-  /// Total de cotas vendidas por tier. Por padrão inclui os clientes tratados
-  /// à parte (Matheus Camelo / Reynaldo Fabbri); com [incluirSeparados] falso
-  /// conta só a conta principal — usado na auto-distribuição de cotas, que não
-  /// deve considerar esses dois (ex.: as 12 integrais deles ficam de fora).
-  (int, int, int, int) _cotasVendidasPorTier({bool incluirSeparados = true}) {
+  /// Total de cotas vendidas por tier (conta principal + separados).
+  (int, int, int, int) _cotasVendidasPorTier() {
     var b = 0, p = 0, o = 0, d = 0;
-    final mapas = incluirSeparados
-        ? [_stats, ..._separados.values]
-        : [_stats];
-    for (final mapa in mapas) {
+    for (final mapa in [_stats, ..._separados.values]) {
       for (final s in mapa.values) {
         b += s.cotasBronze;
         p += s.cotasPrata;
@@ -249,6 +243,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     0xFF00897B, 0xFFD84315, 0xFF5D4037, 0xFF455A64, 0xFF6A1B9A,
     0xFF0277BD,
   ];
+
+  // Mix de vendas usado pela AUTO-DISTRIBUIÇÃO de cotas (aba Cotas), por tier:
+  // (bronze, prata, ouro, integral). Regras de negócio aplicadas ao contar:
+  //  • exclui Matheus Camelo e Reynaldo Fabbri (tratados à parte);
+  //  • S & S Administradora de Bens conta como 1 integral (tem vários).
+  // Calculado em _carregar a partir dos contratos ativos.
+  (int, int, int, int) _mixDistribuicao = (0, 0, 0, 0);
+
+  /// S & S Administradora de Bens Ltda — colapsada para 1 integral.
+  static bool _ehSS(String nome) {
+    final u = nome.toUpperCase();
+    return u.contains('S & S') && u.contains('ADMINISTRADORA');
+  }
 
   // Dados reais dos contratos ativos (carregados em _carregar).
   double _exposicaoDevolucao = 0; // soma do valorIntegralizado dos ativos
@@ -415,6 +422,34 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       final outros = contratos
           .where((c) => _clienteSeparado(c.nomeComprador) == null)
           .toList();
+      // Mix de vendas por tier para a auto-distribuição de cotas: exclui
+      // Matheus/Reynaldo e conta S & S como 1 integral só.
+      var mixB = 0, mixP = 0, mixO = 0, mixI = 0, ssInt = 0;
+      for (final c in outros) {
+        switch (tierDoProduto(c.produto, c.cota)) {
+          case TierCota.bronze:
+            mixB++;
+            break;
+          case TierCota.prata:
+            mixP++;
+            break;
+          case TierCota.ouro:
+            mixO++;
+            break;
+          case TierCota.integral:
+          case TierCota.diamante:
+            if (_ehSS(c.nomeComprador)) {
+              ssInt++;
+            } else {
+              mixI++;
+            }
+            break;
+          case null:
+            break;
+        }
+      }
+      if (ssInt > 0) mixI++; // S & S inteira vale 1 integral
+      final mix = (mixB, mixP, mixO, mixI);
       final separados = <String, Map<String, _LinhaStats>>{};
       for (final rotulo in _clientesSeparados.keys) {
         final doCliente = contratos
@@ -469,6 +504,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _pctPagos = pctPagos;
         _cotasHotel = cotas;
         _mp = mp;
+        _mixDistribuicao = mix;
         _carregado = true;
         _carregando = false;
       });
@@ -924,8 +960,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   /// resort (mix em apto-equivalente), premium → simples. Pede confirmação.
   /// Tiers, do mais premium ao mais simples: Integral, Ouro, Prata, Bronze.
   Future<void> _autoDistribuirCotas() async {
-    // Exclui Matheus Camelo e Reynaldo Fabbri (tratados à parte).
-    final (b, p, o, d) = _cotasVendidasPorTier(incluirSeparados: false);
+    // Mix já calculado em _carregar: exclui Matheus/Reynaldo e conta S & S
+    // como 1 integral.
+    final (b, p, o, d) = _mixDistribuicao;
     if (b + p + o + d == 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -950,9 +987,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Com base nas vendas reais — excluindo Matheus Camelo e '
-                'Reynaldo Fabbri — ($d Integral, $o Ouro, $p Prata, $b Bronze '
-                'em cotas), os $n apartamentos ficam:'),
+            Text('Com base nas vendas reais — sem Matheus Camelo/Reynaldo '
+                'Fabbri e com S & S contando como 1 integral — ($d Integral, '
+                '$o Ouro, $p Prata, $b Bronze em cotas), os $n apartamentos '
+                'ficam:'),
             const SizedBox(height: 10),
             _linhaAlvo(const Color(0xFF4A6FA5), 'Integral', q[0], n),
             _linhaAlvo(const Color(0xFFC9A227), 'Ouro', q[1], n),
