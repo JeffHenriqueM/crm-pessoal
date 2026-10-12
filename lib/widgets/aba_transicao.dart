@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../models/contrato_model.dart';
@@ -206,6 +207,29 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // Chave = número do apto (String); valor = 'ouro' | 'prata' | 'bronze'.
   Map<String, String> _cotasHotel = {};
 
+  // Tabela de preços do Hotel (aba Tabela de preços). Preço de venda por
+  // combinação categoria × cota. Chave = "<categoria>|<cotaKey>".
+  Map<String, double> _precosHotel = {};
+  final Map<String, TextEditingController> _precoCtrls = {};
+  bool _salvandoPrecos = false;
+
+  /// Chave da tabela de preços para uma combinação categoria × cota.
+  String _chavePreco(String categoria, String cotaKey) =>
+      '$categoria|$cotaKey';
+
+  /// Garante um controlador por célula (categoria × cota) e sincroniza o texto
+  /// com os preços carregados. Preço 0/ausente vira campo vazio.
+  void _sincronizarPrecoCtrls() {
+    for (final cat in _categoriasHotel) {
+      for (final cota in _cotasOpcoes) {
+        final k = _chavePreco(cat.$1, cota.$2);
+        final v = _precosHotel[k];
+        final txt = (v != null && v > 0) ? v.toStringAsFixed(0) : '';
+        _precoCtrls.putIfAbsent(k, () => TextEditingController()).text = txt;
+      }
+    }
+  }
+
   // Cotas selecionáveis na aba (rótulo exibido, chave salva, cor), da mais
   // premium (Integral = apto inteiro) à mais simples.
   static final List<(String, String, Color)> _cotasOpcoes = [
@@ -362,6 +386,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     _reyAluguelAteCtrl.dispose();
     _reyMesIniCtrl.dispose();
     _reyAnoIniCtrl.dispose();
+    for (final c in _precoCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -513,6 +540,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       final cotas = widget.modo == ModoAba.hotel
           ? await _fs.getCotasHotel()
           : <String, String>{};
+      // Tabela de preços categoria × cota (só modo Hotel).
+      final precos = widget.modo == ModoAba.hotel
+          ? await _fs.getPrecosHotel()
+          : <String, double>{};
       // Categorias da Multipropriedade (modo Hotel): carrega ou faz o seed.
       var mp = <_CategoriaMP>[];
       if (widget.modo == ModoAba.hotel) {
@@ -539,6 +570,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _ativosCount = contratos.length;
         _pctPagos = pctPagos;
         _cotasHotel = cotas;
+        _precosHotel = precos;
+        _sincronizarPrecoCtrls();
         _mp = mp;
         _mixDistribuicao = mix;
         _mixLinhas = mixLin;
@@ -604,6 +637,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             (
               const Tab(text: 'Ganhos', icon: Icon(Icons.savings_outlined)),
               _tabGanhos(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Tabela de preços',
+                  icon: Icon(Icons.sell_outlined)),
+              _tabPrecos(cs)
             ),
           ]
         : <(Tab, Widget)>[
@@ -876,6 +915,214 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Aba: Tabela de preços (preço de venda por categoria × cota) ───────────
+  /// True se algum campo de preço difere do que está salvo.
+  bool get _precosAlterados {
+    for (final cat in _categoriasHotel) {
+      for (final cota in _cotasOpcoes) {
+        final k = _chavePreco(cat.$1, cota.$2);
+        final atual = _precosHotel[k] ?? 0;
+        final digitado =
+            double.tryParse((_precoCtrls[k]?.text ?? '').trim()) ?? 0;
+        if (digitado != atual) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Persiste toda a tabela de preços de uma vez (substitui a anterior).
+  Future<void> _salvarPrecos() async {
+    final novo = <String, double>{};
+    for (final cat in _categoriasHotel) {
+      for (final cota in _cotasOpcoes) {
+        final k = _chavePreco(cat.$1, cota.$2);
+        final v = double.tryParse((_precoCtrls[k]?.text ?? '').trim()) ?? 0;
+        if (v > 0) novo[k] = v;
+      }
+    }
+    final backup = Map<String, double>.of(_precosHotel);
+    setState(() => _salvandoPrecos = true);
+    try {
+      await _fs.salvarPrecosHotel(novo);
+      if (!mounted) return;
+      setState(() {
+        _precosHotel = novo;
+        _salvandoPrecos = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tabela de preços salva.')),
+      );
+    } catch (e) {
+      debugPrint('_salvarPrecos: $e');
+      if (!mounted) return;
+      setState(() {
+        _precosHotel = backup;
+        _salvandoPrecos = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Não consegui salvar a tabela. Tente de novo.')),
+      );
+    }
+  }
+
+  Widget _tabPrecos(ColorScheme cs) {
+    const larguraCat = 150.0;
+    const larguraCel = 120.0;
+    final alterados = _precosAlterados;
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Row(children: [
+                Icon(Icons.sell_outlined, color: cs.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Tabela de preços',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              Text(
+                'Preço de venda por categoria de apartamento e cota. '
+                'Deixe em branco o que ainda não tem preço.',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Cabeçalho: uma coluna por cota.
+                    Row(children: [
+                      const SizedBox(width: larguraCat),
+                      for (final cota in _cotasOpcoes)
+                        SizedBox(
+                          width: larguraCel,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                      color: cota.$3,
+                                      shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(cota.$1,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ]),
+                    const Divider(height: 8),
+                    for (final cat in _categoriasHotel) ...[
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: larguraCat,
+                            child: Row(children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                    color: cat.$2, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(cat.$1,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500)),
+                              ),
+                            ]),
+                          ),
+                          for (final cota in _cotasOpcoes)
+                            SizedBox(
+                              width: larguraCel,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 4),
+                                child: TextField(
+                                  controller: _precoCtrls[
+                                      _chavePreco(cat.$1, cota.$2)],
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly
+                                  ],
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(fontSize: 13),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    prefixText: 'R\$ ',
+                                    hintText: '—',
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 10),
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const Divider(height: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Barra inferior: estado + salvar.
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              border: Border(top: BorderSide(color: cs.outlineVariant)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    alterados ? 'Alterações não salvas' : 'Tudo salvo',
+                    style: TextStyle(
+                        color: alterados ? cs.error : cs.onSurfaceVariant,
+                        fontSize: 13),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed:
+                      (alterados && !_salvandoPrecos) ? _salvarPrecos : null,
+                  icon: _salvandoPrecos
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.save_outlined),
+                  label: const Text('Salvar tabela'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -343,6 +343,33 @@ class FirestoreService {
     });
   }
 
+  // --- HOTEL: tabela de preços (categoria × cota) ---
+  // Guardado em `config/hotel_precos`, campo `precos` = mapa
+  // { "<categoria>|<cota>": número (reais) }. Preço de venda de tabela por
+  // combinação de categoria de apartamento e cota (Integral/Ouro/Prata/Bronze).
+  static const _docHotelPrecos = 'hotel_precos';
+
+  /// Lê a tabela de preços do Hotel (categoria × cota). Chave = "categoria|cota".
+  Future<Map<String, double>> getPrecosHotel() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docHotelPrecos).get();
+    final raw = (snap.data()?['precos'] as Map<String, dynamic>?) ?? {};
+    final m = <String, double>{};
+    raw.forEach((k, v) {
+      if (v is num && v > 0) m[k] = v.toDouble();
+    });
+    return m;
+  }
+
+  /// Substitui TODA a tabela de preços do Hotel de uma vez.
+  Future<void> salvarPrecosHotel(Map<String, double> precos) async {
+    await _db.collection(_colConfig).doc(_docHotelPrecos).set({
+      'precos': precos,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
   // --- CLIENTES ---
 
   Stream<List<Cliente>> getTodosClientesStream({
