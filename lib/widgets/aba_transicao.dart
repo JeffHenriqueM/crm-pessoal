@@ -252,6 +252,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // premium (Integral = apto inteiro) à mais simples.
   static final List<(String, String, Color)> _cotasOpcoes = [
     ('Integral', 'integral', Color(0xFF4A6FA5)),
+    ('Platina', 'platina', Color(0xFF546E7A)),
     ('Ouro', 'ouro', Color(0xFFC9A227)),
     ('Prata', 'prata', Color(0xFF7A8390)),
     ('Bronze', 'bronze', Color(0xFF9E6B3F)),
@@ -1429,24 +1430,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   Widget _tabCotas(ColorScheme cs) {
     final todos = [for (final c in _categoriasHotel) ...c.$4];
-    var integral = 0, ouro = 0, prata = 0, bronze = 0;
+    // Conta por cota de forma genérica (inclui novas cotas como Platina).
+    final contagem = {for (final o in _cotasOpcoes) o.$2: 0};
     for (final n in todos) {
-      switch (_cotasHotel['$n']) {
-        case 'integral':
-          integral++;
-          break;
-        case 'ouro':
-          ouro++;
-          break;
-        case 'prata':
-          prata++;
-          break;
-        case 'bronze':
-          bronze++;
-          break;
+      final k = _cotasHotel['$n'];
+      if (k != null && contagem.containsKey(k)) {
+        contagem[k] = contagem[k]! + 1;
       }
     }
-    final sem = todos.length - integral - ouro - prata - bronze;
+    final atribuidos = contagem.values.fold<int>(0, (s, v) => s + v);
+    final sem = todos.length - atribuidos;
     return RefreshIndicator(
       onRefresh: _carregar,
       child: ListView(
@@ -1461,8 +1454,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
           ]),
           const SizedBox(height: 4),
-          Text('Toque em um apartamento para definir a cota (Ouro, Prata ou '
-              'Bronze). Use "aplicar à categoria" para definir todos de uma vez.',
+          Text('Toque em um apartamento para definir a cota (Integral, '
+              'Platina, Ouro, Prata ou Bronze). Use "aplicar à categoria" para '
+              'definir todos de uma vez.',
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
           Wrap(
@@ -1487,10 +1481,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _pilulaResumo('Integral', integral, const Color(0xFF4A6FA5)),
-              _pilulaResumo('Ouro', ouro, const Color(0xFFC9A227)),
-              _pilulaResumo('Prata', prata, const Color(0xFF7A8390)),
-              _pilulaResumo('Bronze', bronze, const Color(0xFF9E6B3F)),
+              for (final o in _cotasOpcoes)
+                _pilulaResumo(o.$1, contagem[o.$2] ?? 0, o.$3),
               _pilulaResumo('Sem cota', sem, cs.onSurfaceVariant),
             ],
           ),
