@@ -252,8 +252,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // premium (Integral = apto inteiro) à mais simples.
   static final List<(String, String, Color)> _cotasOpcoes = [
     ('Integral', 'integral', Color(0xFF4A6FA5)),
-    ('Platina', 'platina', Color(0xFF546E7A)),
     ('Ouro', 'ouro', Color(0xFFC9A227)),
+    ('Titânio', 'titanio', Color(0xFF546E7A)),
     ('Prata', 'prata', Color(0xFF7A8390)),
     ('Bronze', 'bronze', Color(0xFF9E6B3F)),
   ];
@@ -1430,7 +1430,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   Widget _tabCotas(ColorScheme cs) {
     final todos = [for (final c in _categoriasHotel) ...c.$4];
-    // Conta por cota de forma genérica (inclui novas cotas como Platina).
+    // Conta por cota de forma genérica (inclui novas cotas como Titânio).
     final contagem = {for (final o in _cotasOpcoes) o.$2: 0};
     for (final n in todos) {
       final k = _cotasHotel['$n'];
@@ -1455,7 +1455,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           ]),
           const SizedBox(height: 4),
           Text('Toque em um apartamento para definir a cota (Integral, '
-              'Platina, Ouro, Prata ou Bronze). Use "aplicar à categoria" para '
+              'Ouro, Titânio, Prata ou Bronze). Use "aplicar à categoria" para '
               'definir todos de uma vez.',
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
