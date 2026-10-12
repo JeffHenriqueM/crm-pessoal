@@ -217,10 +217,28 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   String _chavePreco(String categoria, String cotaKey) =>
       '$categoria|$cotaKey';
 
+  /// Categorias (nome + cor) usadas na tabela de preços. Fonte = categorias da
+  /// Multipropriedade (`_mp`), que já incluem as extras como SUÍTE PRESIDENCIAL
+  /// e VILLAMOR 300. Cai para o layout do Hotel se a Multipropriedade ainda não
+  /// foi carregada.
+  List<(String, Color)> get _categoriasPreco => _mp.isNotEmpty
+      ? [for (final c in _mp) (c.nome, Color(c.cor))]
+      : [for (final c in _categoriasHotel) (c.$1, c.$2)];
+
+  /// Controlador de uma célula, criado sob demanda (seed = preço salvo). Garante
+  /// que categorias criadas na Multipropriedade em runtime tenham um campo,
+  /// sem apagar edições já em andamento das demais.
+  TextEditingController _precoCtrl(String key) =>
+      _precoCtrls.putIfAbsent(key, () {
+        final v = _precosHotel[key];
+        return TextEditingController(
+            text: (v != null && v > 0) ? v.toStringAsFixed(0) : '');
+      });
+
   /// Garante um controlador por célula (categoria × cota) e sincroniza o texto
   /// com os preços carregados. Preço 0/ausente vira campo vazio.
   void _sincronizarPrecoCtrls() {
-    for (final cat in _categoriasHotel) {
+    for (final cat in _categoriasPreco) {
       for (final cota in _cotasOpcoes) {
         final k = _chavePreco(cat.$1, cota.$2);
         final v = _precosHotel[k];
@@ -571,8 +589,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _pctPagos = pctPagos;
         _cotasHotel = cotas;
         _precosHotel = precos;
-        _sincronizarPrecoCtrls();
         _mp = mp;
+        _sincronizarPrecoCtrls();
         _mixDistribuicao = mix;
         _mixLinhas = mixLin;
         _carregado = true;
@@ -921,12 +939,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // ── Aba: Tabela de preços (preço de venda por categoria × cota) ───────────
   /// True se algum campo de preço difere do que está salvo.
   bool get _precosAlterados {
-    for (final cat in _categoriasHotel) {
+    for (final cat in _categoriasPreco) {
       for (final cota in _cotasOpcoes) {
         final k = _chavePreco(cat.$1, cota.$2);
         final atual = _precosHotel[k] ?? 0;
-        final digitado =
-            double.tryParse((_precoCtrls[k]?.text ?? '').trim()) ?? 0;
+        final digitado = double.tryParse(_precoCtrl(k).text.trim()) ?? 0;
         if (digitado != atual) return true;
       }
     }
@@ -936,10 +953,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   /// Persiste toda a tabela de preços de uma vez (substitui a anterior).
   Future<void> _salvarPrecos() async {
     final novo = <String, double>{};
-    for (final cat in _categoriasHotel) {
+    for (final cat in _categoriasPreco) {
       for (final cota in _cotasOpcoes) {
         final k = _chavePreco(cat.$1, cota.$2);
-        final v = double.tryParse((_precoCtrls[k]?.text ?? '').trim()) ?? 0;
+        final v = double.tryParse(_precoCtrl(k).text.trim()) ?? 0;
         if (v > 0) novo[k] = v;
       }
     }
@@ -1029,7 +1046,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                         ),
                     ]),
                     const Divider(height: 8),
-                    for (final cat in _categoriasHotel) ...[
+                    for (final cat in _categoriasPreco) ...[
                       Row(
                         children: [
                           SizedBox(
@@ -1057,8 +1074,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 4, vertical: 4),
                                 child: TextField(
-                                  controller: _precoCtrls[
-                                      _chavePreco(cat.$1, cota.$2)],
+                                  controller:
+                                      _precoCtrl(_chavePreco(cat.$1, cota.$2)),
                                   keyboardType: TextInputType.number,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.digitsOnly
