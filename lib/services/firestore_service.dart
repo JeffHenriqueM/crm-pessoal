@@ -370,6 +370,70 @@ class FirestoreService {
     });
   }
 
+  // --- HOTEL: argumentos de transição por sócio ---
+  // Guardado em `config/hotel_argumentos_socios`, campo `socios` = mapa
+  // { "<nome_socio>": { "nome": String, "argumentos": String, "atualizadoEm": Timestamp, "atualizadoPorNome": String } }.
+  static const _docHotelArgumentosSocios = 'hotel_argumentos_socios';
+
+  /// Lê os argumentos de transição por sócio do módulo Hotel.
+  /// Retorna um mapa indexado pelo nome do sócio.
+  Future<Map<String, Map<String, dynamic>>> getArgumentosSociosHotel() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docHotelArgumentosSocios).get();
+    final raw = (snap.data()?['socios'] as Map<String, dynamic>?) ?? {};
+    final m = <String, Map<String, dynamic>>{};
+    raw.forEach((k, v) {
+      if (v is Map) {
+        final entry = Map<String, dynamic>.from(v);
+        final arg = (entry['argumentos'] as String?)?.trim() ?? '';
+        if (arg.isNotEmpty) {
+          m[k] = entry;
+        }
+      } else if (v is String && v.trim().isNotEmpty) {
+        m[k] = {
+          'nome': k,
+          'argumentos': v.trim(),
+        };
+      }
+    });
+    return m;
+  }
+
+  /// Salva ou atualiza os argumentos de um sócio no módulo Hotel.
+  Future<void> salvarArgumentoSocioHotel(
+      String nomeSocio, String argumentos) async {
+    final nomeTrim = nomeSocio.trim();
+    final argTrim = argumentos.trim();
+    if (argTrim.isEmpty) {
+      await removerArgumentoSocioHotel(nomeTrim);
+      return;
+    }
+    final ref = _db.collection(_colConfig).doc(_docHotelArgumentosSocios);
+    await ref.set({
+      'socios': {
+        nomeTrim: {
+          'nome': nomeTrim,
+          'argumentos': argTrim,
+          'atualizadoEm': FieldValue.serverTimestamp(),
+          'atualizadoPorNome': _currentUserName,
+        }
+      },
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Remove os argumentos de um sócio no módulo Hotel.
+  Future<void> removerArgumentoSocioHotel(String nomeSocio) async {
+    final nomeTrim = nomeSocio.trim();
+    final ref = _db.collection(_colConfig).doc(_docHotelArgumentosSocios);
+    await ref.set({
+      'socios': {nomeTrim: FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
   // --- CLIENTES ---
 
   Stream<List<Cliente>> getTodosClientesStream({

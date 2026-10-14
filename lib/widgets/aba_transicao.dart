@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -80,6 +81,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   Map<String, Map<String, _LinhaStats>> _separados = {};
   // Top 30 contratos ativos por valor pago (integralizado).
   List<Contrato> _top30 = [];
+  // Todos os contratos ativos carregados.
+  List<Contrato> _contratos = [];
+  // Argumentos de transição por sócio (aba Sócios do Hotel).
+  Map<String, Map<String, dynamic>> _argumentosSociosHotel = {};
+  String _buscaSocios = '';
 
   static final _moeda =
       NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$ ', decimalDigits: 0);
@@ -563,6 +569,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       final precos = widget.modo == ModoAba.hotel
           ? await _fs.getPrecosHotel()
           : <String, double>{};
+      // Argumentos por sócio (só modo Hotel).
+      final argumentosSocios = widget.modo == ModoAba.hotel
+          ? await _fs.getArgumentosSociosHotel()
+          : <String, Map<String, dynamic>>{};
       // Categorias da Multipropriedade (modo Hotel): carrega ou faz o seed.
       var mp = <_CategoriaMP>[];
       if (widget.modo == ModoAba.hotel) {
@@ -584,6 +594,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _stats = _montarStats(imoveis, outros);
         _separados = separados;
         _top30 = top.take(30).toList();
+        _contratos = contratos;
+        _argumentosSociosHotel = argumentosSocios;
         _exposicaoDevolucao = exposicao;
         _baseDistrato = baseDist;
         _ativosCount = contratos.length;
@@ -662,6 +674,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   text: 'Tabela de preços',
                   icon: Icon(Icons.sell_outlined)),
               _tabPrecos(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Sócios',
+                  icon: Icon(Icons.people_alt_outlined)),
+              _tabSocios(cs)
             ),
           ]
         : <(Tab, Widget)>[
@@ -1142,6 +1160,817 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         ),
       ],
     );
+  }
+
+  // ── Aba: Sócios (argumentos de transição por sócio) ────────────────────────
+  /// Agrupa os contratos ativos por comprador / sócio.
+  Map<String, List<Contrato>> get _sociosAgrupados {
+    final mapa = <String, List<Contrato>>{};
+    for (final c in _contratos) {
+      final n = c.nomeComprador.trim();
+      if (n.isNotEmpty) {
+        mapa.putIfAbsent(n, () => []).add(c);
+      }
+    }
+    return mapa;
+  }
+
+  /// Retorna a lista de nomes dos sócios que possuem argumentos cadastrados,
+  /// com filtro de busca se houver.
+  List<String> get _sociosComArgumentos {
+    final socios = _argumentosSociosHotel.entries
+        .where((e) {
+          final arg = (e.value['argumentos'] as String?)?.trim() ?? '';
+          return arg.isNotEmpty;
+        })
+        .map((e) => e.key)
+        .toList();
+    socios.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    if (_buscaSocios.trim().isEmpty) return socios;
+    final termo = _buscaSocios.trim().toLowerCase();
+    return socios.where((s) => s.toLowerCase().contains(termo)).toList();
+  }
+
+  Widget _tabSocios(ColorScheme cs) {
+    final lista = _sociosComArgumentos;
+    final agrupados = _sociosAgrupados;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Cabeçalho da aba com ação de adicionar
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.primaryContainer.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.people_alt_outlined, color: cs.primary, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Sócios — Argumentos de Transição',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Registre e consulte argumentos personalizados de transição para cada sócio. '
+                      'Apenas sócios que possuem argumentos cadastrados aparecem nesta lista.',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: () => _abrirDialogSelecionarSocio(cs),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Adicionar sócio'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        if (lista.isEmpty && _buscaSocios.isEmpty) ...[
+          // Começa zerado: empty state amigável
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.person_search_outlined,
+                  size: 56,
+                  color: cs.primary.withValues(alpha: 0.6),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Nenhum sócio com argumentos cadastrados',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Text(
+                    'Clique no botão abaixo para escolher um sócio existente dos contratos e definir seus argumentos de transição para o hotel.',
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.tonalIcon(
+                  onPressed: () => _abrirDialogSelecionarSocio(cs),
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  label: const Text('Selecionar sócio dos contratos'),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          // Barra de pesquisa e total
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Buscar sócio na lista...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border:
+                        OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onChanged: (v) => setState(() => _buscaSocios = v),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${lista.length} sócio(s)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (lista.isEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'Nenhum sócio encontrado para "$_buscaSocios".',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+            ),
+          ] else ...[
+            for (final nome in lista)
+              _cardSocioArgumento(cs, nome, agrupados[nome] ?? const []),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _cardSocioArgumento(
+      ColorScheme cs, String nome, List<Contrato> contratosDoSocio) {
+    final dados = _argumentosSociosHotel[nome] ?? const {};
+    final textoArg = (dados['argumentos'] as String?)?.trim() ?? '';
+    final atualizadoEm = (dados['atualizadoEm'] as Timestamp?)?.toDate();
+    final autorNome = dados['atualizadoPorNome'] as String?;
+
+    final totalPago = contratosDoSocio.fold<double>(
+        0, (s, c) => s + c.valorIntegralizado);
+    final totalCotas = contratosDoSocio.length;
+
+    // Resumo dos produtos/imóveis
+    final produtosSet = contratosDoSocio
+        .map((c) => c.produto.trim())
+        .where((p) => p.isNotEmpty)
+        .toSet()
+        .toList();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _abrirDialogArgumentosSocio(cs, nome),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: cs.primaryContainer,
+                child: Text(
+                  nome.isNotEmpty ? nome[0].toUpperCase() : '?',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: cs.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            nome,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (totalCotas > 0) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '$totalCotas cota(s)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              _moeda.format(totalPago),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.teal.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (produtosSet.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        produtosSet.join(' · '),
+                        style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.format_quote_rounded, size: 16, color: cs.primary),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              textoArg,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurface,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (atualizadoEm != null || autorNome != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Atualizado${atualizadoEm != null ? ' em ${DateFormat('dd/MM/yyyy HH:mm').format(atualizadoEm)}' : ''}${autorNome != null ? ' por $autorNome' : ''}',
+                        style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_note_rounded),
+                    tooltip: 'Editar argumentos',
+                    color: cs.primary,
+                    onPressed: () => _abrirDialogArgumentosSocio(cs, nome),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Remover argumentos',
+                    color: cs.error,
+                    onPressed: () => _confirmarRemoverArgumentosSocio(cs, nome),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _abrirDialogSelecionarSocio(ColorScheme cs) {
+    final agrupados = _sociosAgrupados;
+    final todosSocios = agrupados.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        String filtro = '';
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            final filtrados = todosSocios.where((nome) {
+              if (filtro.isEmpty) return true;
+              if (nome.toLowerCase().contains(filtro)) return true;
+              final cts = agrupados[nome] ?? const [];
+              for (final c in cts) {
+                if (c.cpfComprador.contains(filtro)) return true;
+                if (c.imovel.toLowerCase().contains(filtro)) return true;
+                if (c.bloco.toLowerCase().contains(filtro)) return true;
+                if (c.produto.toLowerCase().contains(filtro)) return true;
+              }
+              return false;
+            }).toList();
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600, maxHeight: 650),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.person_search_rounded, color: cs.primary),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Selecionar sócio dos contratos',
+                              style: TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Escolha o sócio para cadastrar ou editar argumentos de transição.',
+                        style: TextStyle(
+                            fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar por nome, CPF ou cota...',
+                          prefixIcon: const Icon(Icons.search),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onChanged: (v) =>
+                            setDialogState(() => filtro = v.trim().toLowerCase()),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '${filtrados.length} sócio(s) encontrado(s)',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: filtrados.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Nenhum sócio encontrado.',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: filtrados.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (itemCtx, i) {
+                                  final nome = filtrados[i];
+                                  final cts = agrupados[nome] ?? const [];
+                                  final totalPago = cts.fold<double>(
+                                      0, (s, c) => s + c.valorIntegralizado);
+                                  final jaTem = _argumentosSociosHotel
+                                      .containsKey(nome) &&
+                                      ((_argumentosSociosHotel[nome]?['argumentos']
+                                                  as String?)
+                                              ?.trim()
+                                              .isNotEmpty ??
+                                          false);
+
+                                  return ListTile(
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 2),
+                                    leading: CircleAvatar(
+                                      radius: 18,
+                                      backgroundColor: jaTem
+                                          ? Colors.teal.withValues(alpha: 0.2)
+                                          : cs.surfaceContainerHighest,
+                                      child: Icon(
+                                        jaTem
+                                            ? Icons.check
+                                            : Icons.person_outline,
+                                        size: 18,
+                                        color: jaTem ? Colors.teal : cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      nome,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                        color: cs.onSurface,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '${cts.length} cota(s) · ${_moeda.format(totalPago)} pago',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: cs.onSurfaceVariant),
+                                    ),
+                                    trailing: jaTem
+                                        ? Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.teal.withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: const Text(
+                                              'Já cadastrado',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.teal,
+                                              ),
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.chevron_right_rounded,
+                                            size: 20),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      _abrirDialogArgumentosSocio(cs, nome);
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _abrirDialogArgumentosSocio(ColorScheme cs, String nomeSocio) {
+    final agrupados = _sociosAgrupados;
+    final cts = agrupados[nomeSocio] ?? const [];
+    final totalPago =
+        cts.fold<double>(0, (s, c) => s + c.valorIntegralizado);
+    final dados = _argumentosSociosHotel[nomeSocio] ?? const {};
+    final argAtual = (dados['argumentos'] as String?)?.trim() ?? '';
+    final atualizadoEm = (dados['atualizadoEm'] as Timestamp?)?.toDate();
+    final autorNome = dados['atualizadoPorNome'] as String?;
+
+    final ctrl = TextEditingController(text: argAtual);
+    final messenger = ScaffoldMessenger.of(context);
+    bool salvando = false;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 700),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Cabeçalho
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundColor: cs.primaryContainer,
+                            child: Icon(Icons.handshake_outlined,
+                                color: cs.onPrimaryContainer),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  nomeSocio,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Argumentos de transição para o hotel',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(dialogCtx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Card resumo dos contratos do sócio
+                      if (cts.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: cs.outlineVariant.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.inventory_2_outlined,
+                                  size: 18, color: cs.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${cts.length} cota(s) · ${_moeda.format(totalPago)} pago · ${cts.map((c) => '${c.bloco} ${c.imovel}'.trim()).where((s) => s.isNotEmpty).toSet().join(', ')}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
+                      // Campo de texto grande
+                      Text(
+                        'Argumentos de Venda / Abordagem:',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: ctrl,
+                        minLines: 8,
+                        maxLines: 15,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Escreva aqui os argumentos personalizados para este sócio: '
+                              'perfil, histórico, dores, expectativas, objeções previstas, '
+                              'contraproposta ideal, categoria equivalente no hotel...',
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          filled: true,
+                          fillColor: cs.surface,
+                        ),
+                      ),
+                      if (atualizadoEm != null || autorNome != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Última alteração${atualizadoEm != null ? ' em ${DateFormat('dd/MM/yyyy HH:mm').format(atualizadoEm)}' : ''}${autorNome != null ? ' por $autorNome' : ''}',
+                          style: TextStyle(
+                              fontSize: 11, color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+
+                      // Botões de ação
+                      Row(
+                        children: [
+                          if (argAtual.isNotEmpty)
+                            OutlinedButton.icon(
+                              onPressed: salvando
+                                  ? null
+                                  : () async {
+                                      Navigator.pop(dialogCtx);
+                                      await _confirmarRemoverArgumentosSocio(
+                                          cs, nomeSocio);
+                                    },
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              label: const Text('Excluir'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: cs.error,
+                                side: BorderSide(color: cs.error),
+                              ),
+                            ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed:
+                                salvando ? null : () => Navigator.pop(dialogCtx),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: salvando
+                                ? null
+                                : () async {
+                                    final texto = ctrl.text.trim();
+                                    setDialogState(() => salvando = true);
+                                    try {
+                                      if (texto.isEmpty) {
+                                        await _fs.removerArgumentoSocioHotel(
+                                            nomeSocio);
+                                        setState(() {
+                                          _argumentosSociosHotel
+                                              .remove(nomeSocio);
+                                        });
+                                      } else {
+                                        await _fs.salvarArgumentoSocioHotel(
+                                            nomeSocio, texto);
+                                        setState(() {
+                                          _argumentosSociosHotel[nomeSocio] = {
+                                            'nome': nomeSocio,
+                                            'argumentos': texto,
+                                            'atualizadoEm': Timestamp.now(),
+                                          };
+                                        });
+                                      }
+                                      if (dialogCtx.mounted) {
+                                        Navigator.pop(dialogCtx);
+                                      }
+                                      if (mounted) {
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              texto.isEmpty
+                                                  ? 'Argumentos de $nomeSocio removidos.'
+                                                  : 'Argumentos de $nomeSocio salvos com sucesso!',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => salvando = false);
+                                      if (mounted) {
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Erro ao salvar argumentos: $e'),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            icon: salvando
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined, size: 18),
+                            label: const Text('Salvar argumentos'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmarRemoverArgumentosSocio(
+      ColorScheme cs, String nomeSocio) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirma = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remover argumentos?'),
+        content: Text(
+          'Deseja remover os argumentos de transição de "$nomeSocio"? '
+          'Ele deixará de aparecer na aba Sócios.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: cs.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirma == true) {
+      try {
+        await _fs.removerArgumentoSocioHotel(nomeSocio);
+        setState(() {
+          _argumentosSociosHotel.remove(nomeSocio);
+        });
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('Argumentos de $nomeSocio removidos.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('Erro ao remover argumentos: $e')),
+          );
+        }
+      }
+    }
   }
 
   // ── Aba: Cotas (define a cota de cada apartamento do Hotel) ───────────────
