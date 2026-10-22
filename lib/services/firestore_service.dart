@@ -434,6 +434,64 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
+  // --- TRANSIÇÃO: atualização de sócios (status de aceite, fases, distrato) ---
+  // Guardado em `config/transicao_atualizacoes_socios`, campo `socios` = mapa
+  // { "<nome_socio>": { "nome": String, "status": String, "fases": List<String>, "negociacaoDistrato": String, "observacoes": String, "atualizadoEm": Timestamp, "atualizadoPorNome": String } }.
+  static const _docTransicaoAtualizacoesSocios = 'transicao_atualizacoes_socios';
+
+  /// Lê as atualizações de transição por sócio (aceite, fases e distrato).
+  /// Retorna um mapa indexado pelo nome do sócio.
+  Future<Map<String, Map<String, dynamic>>> getAtualizacoesSociosTransicao() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios).get();
+    final raw = (snap.data()?['socios'] as Map<String, dynamic>?) ?? {};
+    final m = <String, Map<String, dynamic>>{};
+    raw.forEach((k, v) {
+      if (v is Map) {
+        m[k] = Map<String, dynamic>.from(v);
+      }
+    });
+    return m;
+  }
+
+  /// Salva ou atualiza a situação de transição de um sócio.
+  Future<void> salvarAtualizacaoSocioTransicao({
+    required String nomeSocio,
+    required String status,
+    required List<String> fases,
+    String? negociacaoDistrato,
+    String? observacoes,
+  }) async {
+    final nomeTrim = nomeSocio.trim();
+    final ref = _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios);
+    await ref.set({
+      'socios': {
+        nomeTrim: {
+          'nome': nomeTrim,
+          'status': status.trim(),
+          'fases': fases,
+          'negociacaoDistrato': (negociacaoDistrato ?? '').trim(),
+          'observacoes': (observacoes ?? '').trim(),
+          'atualizadoEm': FieldValue.serverTimestamp(),
+          'atualizadoPorNome': _currentUserName,
+        }
+      },
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Remove ou reseta o registro de atualização de um sócio na transição.
+  Future<void> removerAtualizacaoSocioTransicao(String nomeSocio) async {
+    final nomeTrim = nomeSocio.trim();
+    final ref = _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios);
+    await ref.set({
+      'socios': {nomeTrim: FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
   // --- CLIENTES ---
 
   Stream<List<Cliente>> getTodosClientesStream({

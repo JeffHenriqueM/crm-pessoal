@@ -72,6 +72,37 @@ class _CategoriaMP {
       );
 }
 
+/// Representa o estado consolidado de um sócio na aba Atualização da Transição.
+class _SocioAtualizacaoItem {
+  final String nome;
+  final List<Contrato> contratos;
+  final double totalPago;
+  final int totalCotas;
+  final List<String> produtos;
+  final String status;
+  final List<String> fases;
+  final String negociacaoDistrato;
+  final String observacoes;
+  final DateTime? atualizadoEm;
+  final String? atualizadoPorNome;
+  final bool personalizado;
+
+  const _SocioAtualizacaoItem({
+    required this.nome,
+    required this.contratos,
+    required this.totalPago,
+    required this.totalCotas,
+    required this.produtos,
+    required this.status,
+    required this.fases,
+    required this.negociacaoDistrato,
+    required this.observacoes,
+    required this.atualizadoEm,
+    required this.atualizadoPorNome,
+    required this.personalizado,
+  });
+}
+
 class _AbaTransicaoState extends State<AbaTransicao> {
   final _fs = FirestoreService();
   bool _carregando = true; // carrega automaticamente ao abrir
@@ -86,6 +117,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // Argumentos de transição por sócio (aba Sócios do Hotel).
   Map<String, Map<String, dynamic>> _argumentosSociosHotel = {};
   String _buscaSocios = '';
+
+  // Atualizações de transição por sócio (aba Atualização da Transição).
+  Map<String, Map<String, dynamic>> _atualizacoesSocios = {};
+  String _buscaAtualizacoes = '';
+  String _filtroStatusAtualizacao = 'Todos';
+  String _filtroFaseAtualizacao = 'Todas';
+  String _ordenacaoAtualizacoes = 'valorDesc';
 
   static final _moeda =
       NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$ ', decimalDigits: 0);
@@ -573,6 +611,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       final argumentosSocios = widget.modo == ModoAba.hotel
           ? await _fs.getArgumentosSociosHotel()
           : <String, Map<String, dynamic>>{};
+      // Atualizações de transição por sócio (status de aceite, fases e distrato).
+      final atualizacoesSocios = await _fs.getAtualizacoesSociosTransicao();
       // Categorias da Multipropriedade (modo Hotel): carrega ou faz o seed.
       var mp = <_CategoriaMP>[];
       if (widget.modo == ModoAba.hotel) {
@@ -596,6 +636,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _top30 = top.take(30).toList();
         _contratos = contratos;
         _argumentosSociosHotel = argumentosSocios;
+        _atualizacoesSocios = atualizacoesSocios;
         _exposicaoDevolucao = exposicao;
         _baseDistrato = baseDist;
         _ativosCount = contratos.length;
@@ -693,6 +734,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   text: 'Prioridade',
                   icon: Icon(Icons.priority_high_rounded)),
               _tabPrioridade(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Atualização',
+                  icon: Icon(Icons.sync_alt_rounded)),
+              _tabAtualizacao(cs)
             ),
             (
               const Tab(text: 'Argumentos', icon: Icon(Icons.forum_outlined)),
@@ -1967,6 +2014,1459 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         if (mounted) {
           messenger.showSnackBar(
             SnackBar(content: Text('Erro ao remover argumentos: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  // ── Aba: Atualização (status de transição, fases e distrato dos sócios) ────
+
+  static const List<String> _fasesTransicao = [
+    'Não informado',
+    'Informado',
+    'Aguardando aceite do cliente',
+    'Aguardando contrato',
+    'Pagamento congelado',
+    'Solicitou distrato',
+    'Contrato Hotel Villamor assinado',
+  ];
+
+  static const List<String> _statusTransicao = [
+    'Aguardando Resposta',
+    'Aceitar',
+    'Recusar',
+  ];
+
+  Map<String, dynamic> _getDadosAtualizacaoSocio(String nomeSocio) {
+    final dados = _atualizacoesSocios[nomeSocio];
+    if (dados != null) {
+      final fasesRaw =
+          (dados['fases'] as List?)?.whereType<String>().toList() ?? [];
+      return {
+        'status': (dados['status'] as String?)?.trim().isNotEmpty == true
+            ? dados['status'] as String
+            : 'Aguardando Resposta',
+        'fases': fasesRaw.isNotEmpty ? fasesRaw : const ['Não informado'],
+        'negociacaoDistrato': (dados['negociacaoDistrato'] as String?) ?? '',
+        'observacoes': (dados['observacoes'] as String?) ?? '',
+        'atualizadoEm': (dados['atualizadoEm'] as Timestamp?)?.toDate(),
+        'atualizadoPorNome': dados['atualizadoPorNome'] as String?,
+        'personalizado': true,
+      };
+    }
+    return {
+      'status': 'Aguardando Resposta',
+      'fases': const ['Não informado'],
+      'negociacaoDistrato': '',
+      'observacoes': '',
+      'atualizadoEm': null,
+      'atualizadoPorNome': null,
+      'personalizado': false,
+    };
+  }
+
+  List<_SocioAtualizacaoItem> get _listaTodosSociosAtualizacao {
+    final agrupados = _sociosAgrupados;
+    final itens = <_SocioAtualizacaoItem>[];
+
+    agrupados.forEach((nome, cts) {
+      final totalPago =
+          cts.fold<double>(0, (s, c) => s + c.valorIntegralizado);
+      final produtosSet = cts
+          .map((c) => c.produto.trim())
+          .where((p) => p.isNotEmpty)
+          .toSet()
+          .toList();
+      final dados = _getDadosAtualizacaoSocio(nome);
+
+      itens.add(_SocioAtualizacaoItem(
+        nome: nome,
+        contratos: cts,
+        totalPago: totalPago,
+        totalCotas: cts.length,
+        produtos: produtosSet,
+        status: dados['status'] as String,
+        fases: (dados['fases'] as List).cast<String>(),
+        negociacaoDistrato: dados['negociacaoDistrato'] as String,
+        observacoes: dados['observacoes'] as String,
+        atualizadoEm: dados['atualizadoEm'] as DateTime?,
+        atualizadoPorNome: dados['atualizadoPorNome'] as String?,
+        personalizado: dados['personalizado'] as bool,
+      ));
+    });
+
+    return itens;
+  }
+
+  List<_SocioAtualizacaoItem> get _sociosAtualizacaoFiltrados {
+    var itens = _listaTodosSociosAtualizacao;
+
+    // Busca textual
+    final busca = _buscaAtualizacoes.trim().toLowerCase();
+    if (busca.isNotEmpty) {
+      itens = itens.where((s) {
+        if (s.nome.toLowerCase().contains(busca)) return true;
+        for (final c in s.contratos) {
+          if (c.cpfComprador.contains(busca)) return true;
+          if (c.imovel.toLowerCase().contains(busca)) return true;
+          if (c.bloco.toLowerCase().contains(busca)) return true;
+          if (c.produto.toLowerCase().contains(busca)) return true;
+        }
+        return false;
+      }).toList();
+    }
+
+    // Filtro por status
+    if (_filtroStatusAtualizacao != 'Todos') {
+      itens = itens.where((s) => s.status == _filtroStatusAtualizacao).toList();
+    }
+
+    // Filtro por fase
+    if (_filtroFaseAtualizacao != 'Todas') {
+      itens =
+          itens.where((s) => s.fases.contains(_filtroFaseAtualizacao)).toList();
+    }
+
+    // Ordenação
+    switch (_ordenacaoAtualizacoes) {
+      case 'valorDesc':
+        itens.sort((a, b) => b.totalPago.compareTo(a.totalPago));
+        break;
+      case 'valorAsc':
+        itens.sort((a, b) => a.totalPago.compareTo(b.totalPago));
+        break;
+      case 'nomeAsc':
+        itens.sort(
+            (a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
+        break;
+      case 'cotasDesc':
+        itens.sort((a, b) => b.totalCotas.compareTo(a.totalCotas));
+        break;
+      case 'status':
+        const ordem = {'Aceitar': 0, 'Aguardando Resposta': 1, 'Recusar': 2};
+        itens.sort((a, b) =>
+            (ordem[a.status] ?? 3).compareTo(ordem[b.status] ?? 3));
+        break;
+    }
+
+    return itens;
+  }
+
+  Widget _tabAtualizacao(ColorScheme cs) {
+    final todos = _listaTodosSociosAtualizacao;
+    final filtrados = _sociosAtualizacaoFiltrados;
+
+    final totalSocios = todos.length;
+    final totalValorPago = todos.fold<double>(0, (s, i) => s + i.totalPago);
+
+    final aceitaram = todos.where((s) => s.status == 'Aceitar').toList();
+    final recusaram = todos.where((s) => s.status == 'Recusar').toList();
+    final aguardando =
+        todos.where((s) => s.status == 'Aguardando Resposta').toList();
+    final distratos =
+        todos.where((s) => s.fases.contains('Solicitou distrato')).toList();
+    final assinados = todos
+        .where((s) => s.fases.contains('Contrato Hotel Villamor assinado'))
+        .toList();
+
+    return RefreshIndicator(
+      onRefresh: _carregar,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ── Cabeçalho explicativo ──
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.sync_alt_rounded,
+                      color: cs.primary, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Atualização de Sócios — Transição Hotel Villamor',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Acompanhe e registre a decisão de transição de cada sócio (Aceitar, Recusar ou Aguardando Resposta) '
+                        'e as fases em que ele se encontra. Todos os sócios iniciam em "Não informado".',
+                        style:
+                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Cards de Indicadores / Resumo Executivo ──
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _cardKpiAtualizacao(
+                cs: cs,
+                titulo: 'Total de Sócios',
+                valor: '$totalSocios',
+                subtitulo: _moeda.format(totalValorPago),
+                icone: Icons.people_outline,
+                cor: cs.primary,
+                ativo: _filtroStatusAtualizacao == 'Todos' &&
+                    _filtroFaseAtualizacao == 'Todas',
+                onTap: () {
+                  setState(() {
+                    _filtroStatusAtualizacao = 'Todos';
+                    _filtroFaseAtualizacao = 'Todas';
+                  });
+                },
+              ),
+              _cardKpiAtualizacao(
+                cs: cs,
+                titulo: 'Aceitaram',
+                valor: '${aceitaram.length}',
+                subtitulo: totalSocios > 0
+                    ? '${(aceitaram.length / totalSocios * 100).toStringAsFixed(1)}% do total'
+                    : '0%',
+                icone: Icons.check_circle_rounded,
+                cor: Colors.green.shade700,
+                ativo: _filtroStatusAtualizacao == 'Aceitar',
+                onTap: () {
+                  setState(() {
+                    _filtroStatusAtualizacao =
+                        _filtroStatusAtualizacao == 'Aceitar'
+                            ? 'Todos'
+                            : 'Aceitar';
+                  });
+                },
+              ),
+              _cardKpiAtualizacao(
+                cs: cs,
+                titulo: 'Aguardando Resposta',
+                valor: '${aguardando.length}',
+                subtitulo: totalSocios > 0
+                    ? '${(aguardando.length / totalSocios * 100).toStringAsFixed(1)}% do total'
+                    : '0%',
+                icone: Icons.hourglass_top_rounded,
+                cor: Colors.orange.shade800,
+                ativo: _filtroStatusAtualizacao == 'Aguardando Resposta',
+                onTap: () {
+                  setState(() {
+                    _filtroStatusAtualizacao =
+                        _filtroStatusAtualizacao == 'Aguardando Resposta'
+                            ? 'Todos'
+                            : 'Aguardando Resposta';
+                  });
+                },
+              ),
+              _cardKpiAtualizacao(
+                cs: cs,
+                titulo: 'Recusaram',
+                valor: '${recusaram.length}',
+                subtitulo: totalSocios > 0
+                    ? '${(recusaram.length / totalSocios * 100).toStringAsFixed(1)}% do total'
+                    : '0%',
+                icone: Icons.cancel_rounded,
+                cor: Colors.red.shade700,
+                ativo: _filtroStatusAtualizacao == 'Recusar',
+                onTap: () {
+                  setState(() {
+                    _filtroStatusAtualizacao =
+                        _filtroStatusAtualizacao == 'Recusar'
+                            ? 'Todos'
+                            : 'Recusar';
+                  });
+                },
+              ),
+              _cardKpiAtualizacao(
+                cs: cs,
+                titulo: 'Solicitou Distrato',
+                valor: '${distratos.length}',
+                subtitulo: 'Negociação requerida',
+                icone: Icons.assignment_return_outlined,
+                cor: Colors.deepOrange.shade800,
+                ativo: _filtroFaseAtualizacao == 'Solicitou distrato',
+                onTap: () {
+                  setState(() {
+                    _filtroFaseAtualizacao =
+                        _filtroFaseAtualizacao == 'Solicitou distrato'
+                            ? 'Todas'
+                            : 'Solicitou distrato';
+                  });
+                },
+              ),
+              _cardKpiAtualizacao(
+                cs: cs,
+                titulo: 'Contrato Assinado',
+                valor: '${assinados.length}',
+                subtitulo: 'Hotel Villamor',
+                icone: Icons.verified_rounded,
+                cor: Colors.teal.shade800,
+                ativo:
+                    _filtroFaseAtualizacao == 'Contrato Hotel Villamor assinado',
+                onTap: () {
+                  setState(() {
+                    _filtroFaseAtualizacao = _filtroFaseAtualizacao ==
+                            'Contrato Hotel Villamor assinado'
+                        ? 'Todas'
+                        : 'Contrato Hotel Villamor assinado';
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // ── Barra de Busca e Filtros ──
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    decoration: InputDecoration(
+                      hintText:
+                          'Buscar sócio por nome, CPF, imóvel, bloco ou cota...',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      suffixIcon: _buscaAtualizacoes.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () =>
+                                  setState(() => _buscaAtualizacoes = ''),
+                            )
+                          : null,
+                    ),
+                    onChanged: (v) => setState(() => _buscaAtualizacoes = v),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      // Filtro por Status
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Decisão:',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurfaceVariant)),
+                          const SizedBox(width: 6),
+                          DropdownButton<String>(
+                            value: _filtroStatusAtualizacao,
+                            isDense: true,
+                            underline: const SizedBox(),
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600),
+                            items: [
+                              DropdownMenuItem(
+                                value: 'Todos',
+                                child: Text('Todos os status ($totalSocios)'),
+                              ),
+                              for (final st in _statusTransicao)
+                                DropdownMenuItem(
+                                  value: st,
+                                  child: Text(
+                                    '$st (${todos.where((s) => s.status == st).length})',
+                                  ),
+                                ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _filtroStatusAtualizacao = val);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Filtro por Fase
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Fase:',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurfaceVariant)),
+                          const SizedBox(width: 6),
+                          DropdownButton<String>(
+                            value: _filtroFaseAtualizacao,
+                            isDense: true,
+                            underline: const SizedBox(),
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600),
+                            items: [
+                              const DropdownMenuItem(
+                                value: 'Todas',
+                                child: Text('Todas as fases'),
+                              ),
+                              for (final f in _fasesTransicao)
+                                DropdownMenuItem(
+                                  value: f,
+                                  child: Text(f),
+                                ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _filtroFaseAtualizacao = val);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Ordenação
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Ordenar por:',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurfaceVariant)),
+                          const SizedBox(width: 6),
+                          DropdownButton<String>(
+                            value: _ordenacaoAtualizacoes,
+                            isDense: true,
+                            underline: const SizedBox(),
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'valorDesc',
+                                child: Text('Maior valor pago'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'valorAsc',
+                                child: Text('Menor valor pago'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'nomeAsc',
+                                child: Text('Nome (A-Z)'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'cotasDesc',
+                                child: Text('Mais cotas'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'status',
+                                child: Text('Status de aceite'),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _ordenacaoAtualizacoes = val);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+
+                      const Spacer(),
+
+                      // Indicador de contagem
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${filtrados.length} de $totalSocios sócio(s)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Lista de Sócios ──
+          if (filtrados.isEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.all(40),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.search_off_rounded,
+                        size: 48, color: cs.onSurfaceVariant),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Nenhum sócio encontrado com os filtros aplicados.',
+                      style:
+                          TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _buscaAtualizacoes = '';
+                          _filtroStatusAtualizacao = 'Todos';
+                          _filtroFaseAtualizacao = 'Todas';
+                        });
+                      },
+                      child: const Text('Limpar filtros'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            for (final socio in filtrados) _cardSocioAtualizacao(cs, socio),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _cardKpiAtualizacao({
+    required ColorScheme cs,
+    required String titulo,
+    required String valor,
+    required String subtitulo,
+    required IconData icone,
+    required Color cor,
+    required bool ativo,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 170,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: ativo
+              ? cor.withValues(alpha: 0.12)
+              : cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: ativo ? cor : cs.outlineVariant.withValues(alpha: 0.5),
+            width: ativo ? 1.8 : 1.0,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icone, size: 18, color: cor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    titulo,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              valor,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: cor,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitulo,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cardSocioAtualizacao(ColorScheme cs, _SocioAtualizacaoItem s) {
+    final statusCor = _corStatusTransicao(s.status);
+    final statusFundo = _fundoStatusTransicao(s.status);
+    final statusIcone = _iconeStatusTransicao(s.status);
+    final statusRotulo = _rotuloStatusTransicao(s.status);
+
+    final temDistrato = s.fases.contains('Solicitou distrato');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: temDistrato
+              ? Colors.deepOrange.withValues(alpha: 0.4)
+              : cs.outlineVariant.withValues(alpha: 0.6),
+          width: temDistrato ? 1.4 : 1.0,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _abrirDialogAtualizacaoSocio(cs, s),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Linha Superior: Avatar, Nome, Cotas, Valor e Botão Atualizar
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: statusCor.withValues(alpha: 0.15),
+                    child: Text(
+                      s.nome.isNotEmpty ? s.nome[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: statusCor,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                s.nome,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color:
+                                    cs.secondaryContainer.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${s.totalCotas} cota(s)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSecondaryContainer,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.teal.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                _moeda.format(s.totalPago),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.teal.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (s.produtos.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            s.produtos.join(' · '),
+                            style: TextStyle(
+                                fontSize: 11, color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _abrirDialogAtualizacaoSocio(cs, s),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Atualizar'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Linha de Status de Aceite e Fases
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Badge de Decisão / Status
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusFundo,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: statusCor.withValues(alpha: 0.4), width: 1.0),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcone, size: 14, color: statusCor),
+                        const SizedBox(width: 5),
+                        Text(
+                          statusRotulo,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: statusCor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Chips das Fases de Transição
+                  for (final fase in s.fases) _chipFaseTransicao(fase),
+                ],
+              ),
+
+              // Alerta de Negociação de Distrato se solicitou distrato
+              if (temDistrato) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.deepOrange.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Colors.deepOrange.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.assignment_return_outlined,
+                          size: 18, color: Colors.deepOrange.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Negociação de Distrato Realizada:',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepOrange.shade900,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              s.negociacaoDistrato.isNotEmpty
+                                  ? s.negociacaoDistrato
+                                  : '(Nenhum detalhe da negociação foi informado ainda)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: s.negociacaoDistrato.isNotEmpty
+                                    ? Colors.black87
+                                    : Colors.deepOrange.shade700,
+                                fontStyle: s.negociacaoDistrato.isNotEmpty
+                                    ? FontStyle.normal
+                                    : FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Observações adicionais se houver
+              if (s.observacoes.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.notes_rounded,
+                        size: 15, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        s.observacoes,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Rodapé do card: Metadata de atualização
+              const SizedBox(height: 8),
+              Text(
+                s.personalizado
+                    ? 'Atualizado${s.atualizadoEm != null ? ' em ${DateFormat('dd/MM/yyyy HH:mm').format(s.atualizadoEm!)}' : ''}${s.atualizadoPorNome != null ? ' por ${s.atualizadoPorNome}' : ''}'
+                    : 'Pendente de atualização (padrão inicial "Não informado")',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: s.personalizado
+                      ? cs.onSurfaceVariant
+                      : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                  fontStyle:
+                      s.personalizado ? FontStyle.normal : FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chipFaseTransicao(String fase) {
+    Color cor;
+    Color fundo;
+    IconData icone;
+
+    switch (fase) {
+      case 'Informado':
+        cor = Colors.blue.shade800;
+        fundo = Colors.blue.withValues(alpha: 0.12);
+        icone = Icons.campaign_outlined;
+        break;
+      case 'Aguardando aceite do cliente':
+        cor = Colors.amber.shade900;
+        fundo = Colors.amber.withValues(alpha: 0.12);
+        icone = Icons.hourglass_top_rounded;
+        break;
+      case 'Aguardando contrato':
+        cor = Colors.purple.shade800;
+        fundo = Colors.purple.withValues(alpha: 0.12);
+        icone = Icons.description_outlined;
+        break;
+      case 'Pagamento congelado':
+        cor = Colors.cyan.shade900;
+        fundo = Colors.cyan.withValues(alpha: 0.12);
+        icone = Icons.pause_circle_outline_rounded;
+        break;
+      case 'Solicitou distrato':
+        cor = Colors.deepOrange.shade800;
+        fundo = Colors.deepOrange.withValues(alpha: 0.15);
+        icone = Icons.assignment_return_outlined;
+        break;
+      case 'Contrato Hotel Villamor assinado':
+        cor = Colors.teal.shade800;
+        fundo = Colors.teal.withValues(alpha: 0.15);
+        icone = Icons.verified_rounded;
+        break;
+      case 'Não informado':
+      default:
+        cor = Colors.grey.shade700;
+        fundo = Colors.grey.withValues(alpha: 0.15);
+        icone = Icons.help_outline_rounded;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: fundo,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icone, size: 12, color: cor),
+          const SizedBox(width: 4),
+          Text(
+            fase,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: cor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _corStatusTransicao(String status) {
+    switch (status) {
+      case 'Aceitar':
+        return Colors.green.shade800;
+      case 'Recusar':
+        return Colors.red.shade800;
+      case 'Aguardando Resposta':
+      default:
+        return Colors.orange.shade800;
+    }
+  }
+
+  Color _fundoStatusTransicao(String status) {
+    switch (status) {
+      case 'Aceitar':
+        return Colors.green.withValues(alpha: 0.12);
+      case 'Recusar':
+        return Colors.red.withValues(alpha: 0.12);
+      case 'Aguardando Resposta':
+      default:
+        return Colors.orange.withValues(alpha: 0.12);
+    }
+  }
+
+  IconData _iconeStatusTransicao(String status) {
+    switch (status) {
+      case 'Aceitar':
+        return Icons.check_circle_rounded;
+      case 'Recusar':
+        return Icons.cancel_rounded;
+      case 'Aguardando Resposta':
+      default:
+        return Icons.hourglass_top_rounded;
+    }
+  }
+
+  String _rotuloStatusTransicao(String status) {
+    switch (status) {
+      case 'Aceitar':
+        return 'Aceitou a transição';
+      case 'Recusar':
+        return 'Recusou a transição';
+      case 'Aguardando Resposta':
+      default:
+        return 'Aguardando Resposta';
+    }
+  }
+
+  void _abrirDialogAtualizacaoSocio(ColorScheme cs, _SocioAtualizacaoItem s) {
+    String statusTemp = s.status;
+    List<String> fasesTemp = List<String>.from(s.fases);
+    if (fasesTemp.isEmpty) fasesTemp.add('Não informado');
+
+    final distratoCtrl = TextEditingController(text: s.negociacaoDistrato);
+    final obsCtrl = TextEditingController(text: s.observacoes);
+    final messenger = ScaffoldMessenger.of(context);
+    bool salvando = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final temDistrato = fasesTemp.contains('Solicitou distrato');
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: 680, maxHeight: 750),
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Cabeçalho do Dialog
+                      Row(
+                        children: [
+                          Icon(Icons.sync_alt_rounded, color: cs.primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.nome,
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${s.totalCotas} cota(s) • Total pago: ${_moeda.format(s.totalPago)}${s.produtos.isNotEmpty ? ' • ${s.produtos.join(', ')}' : ''}',
+                                  style: TextStyle(
+                                      fontSize: 12, color: cs.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: salvando
+                                ? null
+                                : () => Navigator.pop(dialogCtx),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 24),
+
+                      // Conteúdo rolável
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 1. Decisão do Cliente (Status de Aceite)
+                              Text(
+                                'Decisão do Sócio (Aceite da Transição):',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SegmentedButton<String>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'Aguardando Resposta',
+                                    label: Text('Aguardando'),
+                                    icon: Icon(Icons.hourglass_top_rounded,
+                                        size: 16),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'Aceitar',
+                                    label: Text('Aceitar'),
+                                    icon: Icon(Icons.check_circle_rounded,
+                                        size: 16),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'Recusar',
+                                    label: Text('Recusar'),
+                                    icon: Icon(Icons.cancel_rounded, size: 16),
+                                  ),
+                                ],
+                                selected: {statusTemp},
+                                onSelectionChanged: (val) {
+                                  setDialogState(
+                                      () => statusTemp = val.first);
+                                },
+                              ),
+                              const SizedBox(height: 20),
+
+                              // 2. Fases de Transição (Multi-seleção)
+                              Row(
+                                children: [
+                                  Text(
+                                    'Fases de Transição:',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: cs.onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '(Pode marcar uma ou mais fases)',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 0.6)),
+                                ),
+                                child: Column(
+                                  children: [
+                                    for (final fase in _fasesTransicao)
+                                      CheckboxListTile(
+                                        dense: true,
+                                        visualDensity: VisualDensity.compact,
+                                        title: Text(
+                                          fase,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight:
+                                                fasesTemp.contains(fase)
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                            color: fase == 'Solicitou distrato'
+                                                ? Colors.deepOrange.shade900
+                                                : null,
+                                          ),
+                                        ),
+                                        subtitle: fase == 'Não informado'
+                                            ? const Text(
+                                                'Fase inicial padrão (desmarca as demais se selecionada)',
+                                                style: TextStyle(fontSize: 10.5))
+                                            : fase == 'Solicitou distrato'
+                                                ? const Text(
+                                                    'Obrigatório detalhar a negociação de distrato realizada',
+                                                    style: TextStyle(
+                                                        fontSize: 10.5,
+                                                        color: Colors.deepOrange))
+                                                : null,
+                                        value: fasesTemp.contains(fase),
+                                        onChanged: salvando
+                                            ? null
+                                            : (bool? val) {
+                                                setDialogState(() {
+                                                  if (val == true) {
+                                                    if (fase ==
+                                                        'Não informado') {
+                                                      fasesTemp = [
+                                                        'Não informado'
+                                                      ];
+                                                    } else {
+                                                      fasesTemp.remove(
+                                                          'Não informado');
+                                                      if (!fasesTemp
+                                                          .contains(fase)) {
+                                                        fasesTemp.add(fase);
+                                                      }
+                                                    }
+                                                  } else {
+                                                    fasesTemp.remove(fase);
+                                                    if (fasesTemp.isEmpty) {
+                                                      fasesTemp
+                                                          .add('Não informado');
+                                                    }
+                                                  }
+                                                });
+                                              },
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // 3. Campo Obrigatório de Negociação de Distrato
+                              if (temDistrato) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.deepOrange
+                                        .withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.deepOrange
+                                          .withValues(alpha: 0.4),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                              Icons.assignment_return_outlined,
+                                              size: 18,
+                                              color:
+                                                  Colors.deepOrange.shade800),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Negociação de distrato feita *',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.deepOrange.shade900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Como o sócio solicitou distrato, informe detalhadamente qual negociação foi feita (valores, parcelas, retenções, prazos e condições):',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: Colors.deepOrange.shade900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: distratoCtrl,
+                                        minLines: 3,
+                                        maxLines: 6,
+                                        decoration: InputDecoration(
+                                          hintText:
+                                              'Ex: Acordada devolução de R\$ 50.000 em 10 parcelas de R\$ 5.000 com retenção de 20% conforme contrato...',
+                                          filled: true,
+                                          fillColor: cs.surface,
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+
+                              // 4. Observações gerais
+                              Text(
+                                'Observações do Consultor (Opcional):',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: obsCtrl,
+                                minLines: 2,
+                                maxLines: 4,
+                                decoration: InputDecoration(
+                                  hintText:
+                                      'Anotações de conversas, próximos passos, histórico de contato...',
+                                  filled: true,
+                                  fillColor: cs.surface,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Rodapé com Ações
+                      Row(
+                        children: [
+                          if (s.personalizado)
+                            OutlinedButton.icon(
+                              onPressed: salvando
+                                  ? null
+                                  : () async {
+                                      Navigator.pop(dialogCtx);
+                                      await _confirmarResetarAtualizacaoSocio(
+                                          cs, s.nome);
+                                    },
+                              icon: const Icon(Icons.restore, size: 16),
+                              label: const Text('Redefinir padrão'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: cs.error,
+                                side: BorderSide(color: cs.error),
+                              ),
+                            ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: salvando
+                                ? null
+                                : () => Navigator.pop(dialogCtx),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: salvando
+                                ? null
+                                : () async {
+                                    final distratoTexto =
+                                        distratoCtrl.text.trim();
+                                    if (temDistrato && distratoTexto.isEmpty) {
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          backgroundColor: Colors.deepOrange,
+                                          content: Text(
+                                              'Atenção: Ao marcar "Solicitou distrato", é obrigatório detalhar a negociação de distrato feita.'),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    setDialogState(() => salvando = true);
+                                    try {
+                                      await _fs.salvarAtualizacaoSocioTransicao(
+                                        nomeSocio: s.nome,
+                                        status: statusTemp,
+                                        fases: fasesTemp,
+                                        negociacaoDistrato: distratoTexto,
+                                        observacoes: obsCtrl.text.trim(),
+                                      );
+
+                                      setState(() {
+                                        _atualizacoesSocios[s.nome] = {
+                                          'nome': s.nome,
+                                          'status': statusTemp,
+                                          'fases': fasesTemp,
+                                          'negociacaoDistrato': distratoTexto,
+                                          'observacoes': obsCtrl.text.trim(),
+                                          'atualizadoEm': Timestamp.now(),
+                                        };
+                                      });
+
+                                      if (dialogCtx.mounted) {
+                                        Navigator.pop(dialogCtx);
+                                      }
+                                      if (mounted) {
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Atualização de ${s.nome} salva com sucesso!'),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => salvando = false);
+                                      if (mounted) {
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Erro ao salvar atualização: $e'),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            icon: salvando
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined, size: 18),
+                            label: const Text('Salvar atualização'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmarResetarAtualizacaoSocio(
+      ColorScheme cs, String nomeSocio) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirma = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Redefinir para o padrão?'),
+        content: Text(
+          'Deseja redefinir os dados de transição de "$nomeSocio"? '
+          'Ele voltará para o status "Aguardando Resposta" e fase "Não informado".',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: cs.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Redefinir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirma == true) {
+      try {
+        await _fs.removerAtualizacaoSocioTransicao(nomeSocio);
+        setState(() {
+          _atualizacoesSocios.remove(nomeSocio);
+        });
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('Dados de $nomeSocio redefinidos.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('Erro ao redefinir dados: $e')),
           );
         }
       }
