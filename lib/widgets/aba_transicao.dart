@@ -1848,12 +1848,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   }
 
   // ── Aba: Sócios (argumentos de transição por sócio) ────────────────────────
-  /// Agrupa os contratos ativos por comprador / sócio.
+  /// Agrupa os contratos ativos por comprador / sócio, excluindo clientes tratados à parte (Matheus/Reynaldo).
   Map<String, List<Contrato>> get _sociosAgrupados {
     final mapa = <String, List<Contrato>>{};
     for (final c in _contratos) {
       final n = c.nomeComprador.trim();
-      if (n.isNotEmpty) {
+      if (n.isNotEmpty && _clienteSeparado(n) == null) {
         mapa.putIfAbsent(n, () => []).add(c);
       }
     }
@@ -2725,6 +2725,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final itens = <_SocioAtualizacaoItem>[];
 
     agrupados.forEach((nome, cts) {
+      if (_clienteSeparado(nome) != null) return;
       final totalPago =
           cts.fold<double>(0, (s, c) => s + c.valorIntegralizado);
       final produtosSet = cts

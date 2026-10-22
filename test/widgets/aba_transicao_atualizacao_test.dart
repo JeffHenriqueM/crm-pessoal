@@ -55,6 +55,31 @@ void main() {
       status: 'Ativo',
     ));
 
+    // Contratos de Matheus Camelo e Reynaldo Fabbri (devem ser excluídos da transição geral)
+    await fs.salvarContrato(const Contrato(
+      localizador: 'LOC_MATHEUS',
+      localizadorAtendimento: 'ATD_M',
+      nomeComprador: 'MATHEUS ANTONIUS VELOSO CAMELO',
+      cpfComprador: '99988877766',
+      imovel: 'Apto 501',
+      bloco: 'Luxo',
+      cota: 'Cota 01',
+      valorIntegralizado: 4500000,
+      status: 'Ativo',
+    ));
+
+    await fs.salvarContrato(const Contrato(
+      localizador: 'LOC_REYNALDO',
+      localizadorAtendimento: 'ATD_R',
+      nomeComprador: 'REYNALDO FABBRI',
+      cpfComprador: '88877766655',
+      imovel: 'Apto 502',
+      bloco: 'Villamor',
+      cota: 'Cota 01',
+      valorIntegralizado: 3564000,
+      status: 'Ativo',
+    ));
+
     // Simula dados salvos de atualização no Firestore com distrato e diferentes datas
     await fs.salvarAtualizacaoSocioTransicao(
       nomeSocio: 'João da Silva',
@@ -111,6 +136,10 @@ void main() {
     expect(find.text('Aceitou a transição'), findsOneWidget);
     expect(find.text('Recusou a transição'), findsOneWidget);
     expect(find.text('Solicitou distrato'), findsWidgets);
+
+    // Valida que Matheus e Reynaldo foram removidos da listagem de transição
+    expect(find.text('MATHEUS ANTONIUS VELOSO CAMELO'), findsNothing);
+    expect(find.text('REYNALDO FABBRI'), findsNothing);
 
     // Sem nenhum erro na árvore de renderização
     expect(find.byType(ErrorWidget), findsNothing);
