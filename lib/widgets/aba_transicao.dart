@@ -22,7 +22,12 @@ enum ModoAba { transicao, hotel }
 /// (contratos, temporadas, custos, preços) e escolhe as abas pelo [modo].
 class AbaTransicao extends StatefulWidget {
   final ModoAba modo;
-  const AbaTransicao({super.key, this.modo = ModoAba.transicao});
+  final FirestoreService? firestoreService;
+  const AbaTransicao({
+    super.key,
+    this.modo = ModoAba.transicao,
+    this.firestoreService,
+  });
 
   @override
   State<AbaTransicao> createState() => _AbaTransicaoState();
@@ -105,7 +110,8 @@ class _SocioAtualizacaoItem {
 }
 
 class _AbaTransicaoState extends State<AbaTransicao> {
-  final _fs = FirestoreService();
+  late final FirestoreService _fs =
+      widget.firestoreService ?? FirestoreService();
   bool _carregando = true; // carrega automaticamente ao abrir
   bool _carregado = false;
   Map<String, _LinhaStats> _stats = {}; // conta principal (sem os separados)
@@ -823,8 +829,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ),
             (
               const Tab(
-                  text: 'Multipropriedade',
-                  icon: Icon(Icons.holiday_village_outlined)),
+                  text: 'Categorias',
+                  icon: Icon(Icons.category_outlined)),
               _tabMultipropriedade(cs)
             ),
             (
@@ -2670,6 +2676,22 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     'Recusar',
   ];
 
+  DateTime? _parseDataAtualizacao(dynamic val) {
+    if (val == null) return null;
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String) return DateTime.tryParse(val);
+    return null;
+  }
+
+  String _formatarDataHora(DateTime dt) {
+    try {
+      return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+    } catch (_) {
+      return '';
+    }
+  }
+
   Map<String, dynamic> _getDadosAtualizacaoSocio(String nomeSocio) {
     final dados = _atualizacoesSocios[nomeSocio];
     if (dados != null) {
@@ -2682,7 +2704,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         'fases': fasesRaw.isNotEmpty ? fasesRaw : const ['Não informado'],
         'negociacaoDistrato': (dados['negociacaoDistrato'] as String?) ?? '',
         'observacoes': (dados['observacoes'] as String?) ?? '',
-        'atualizadoEm': (dados['atualizadoEm'] as Timestamp?)?.toDate(),
+        'atualizadoEm': _parseDataAtualizacao(dados['atualizadoEm']),
         'atualizadoPorNome': dados['atualizadoPorNome'] as String?,
         'personalizado': true,
       };
@@ -2718,13 +2740,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         totalPago: totalPago,
         totalCotas: cts.length,
         produtos: produtosSet,
-        status: dados['status'] as String,
-        fases: (dados['fases'] as List).cast<String>(),
-        negociacaoDistrato: dados['negociacaoDistrato'] as String,
-        observacoes: dados['observacoes'] as String,
+        status: (dados['status'] as String?) ?? 'Aguardando Resposta',
+        fases: ((dados['fases'] as List?)?.whereType<String>().toList() ??
+            const ['Não informado']),
+        negociacaoDistrato: (dados['negociacaoDistrato'] as String?) ?? '',
+        observacoes: (dados['observacoes'] as String?) ?? '',
         atualizadoEm: dados['atualizadoEm'] as DateTime?,
         atualizadoPorNome: dados['atualizadoPorNome'] as String?,
-        personalizado: dados['personalizado'] as bool,
+        personalizado: (dados['personalizado'] as bool?) ?? false,
       ));
     });
 
@@ -3193,7 +3216,18 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               ),
             ),
           ] else ...[
-            for (final socio in filtrados) _cardSocioAtualizacao(cs, socio),
+            for (final socio in filtrados)
+              Builder(
+                key: ValueKey('socio_${socio.nome}'),
+                builder: (context) {
+                  try {
+                    return _cardSocioAtualizacao(cs, socio);
+                  } catch (e, stack) {
+                    debugPrint('Erro ao renderizar sócio ${socio.nome}: $e\n$stack');
+                    return const SizedBox.shrink();
+                  }
+                },
+              ),
           ],
         ],
       ),
@@ -3309,7 +3343,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                     radius: 20,
                     backgroundColor: statusCor.withValues(alpha: 0.15),
                     child: Text(
-                      s.nome.isNotEmpty ? s.nome[0].toUpperCase() : '?',
+                      s.nome.trim().isNotEmpty
+                          ? s.nome.trim()[0].toUpperCase()
+                          : '?',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: statusCor,
@@ -3512,7 +3548,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               const SizedBox(height: 8),
               Text(
                 s.personalizado
-                    ? 'Atualizado${s.atualizadoEm != null ? ' em ${DateFormat('dd/MM/yyyy HH:mm').format(s.atualizadoEm!)}' : ''}${s.atualizadoPorNome != null ? ' por ${s.atualizadoPorNome}' : ''}'
+                    ? 'Atualizado${s.atualizadoEm != null ? ' em ${_formatarDataHora(s.atualizadoEm!)}' : ''}${s.atualizadoPorNome != null && s.atualizadoPorNome!.isNotEmpty ? ' por ${s.atualizadoPorNome}' : ''}'
                     : 'Pendente de atualização (padrão inicial "Não informado")',
                 style: TextStyle(
                   fontSize: 10,
@@ -5414,7 +5450,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             Icon(Icons.holiday_village_outlined, color: cs.primary),
             const SizedBox(width: 8),
             const Expanded(
-              child: Text('Multipropriedade',
+              child: Text('Categorias',
                   style:
                       TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),

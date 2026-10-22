@@ -28,10 +28,10 @@ class AtualizacaoService {
   void iniciar() {
     if (_iniciado || !kIsWeb || kAppBuild.isEmpty) return;
     _iniciado = true;
-    // Primeira checagem após 1 min (evita corrida com o carregamento inicial),
-    // depois a cada 5 min.
-    Future.delayed(const Duration(minutes: 1), _checar);
-    _timer = Timer.periodic(const Duration(minutes: 5), (_) => _checar());
+    // Primeira checagem após 3s para detectar versões novas logo na inicialização,
+    // depois a cada 1 min.
+    Future.delayed(const Duration(seconds: 3), _checar);
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) => _checar());
   }
 
   Future<void> _checar() async {
