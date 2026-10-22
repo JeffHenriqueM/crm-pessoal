@@ -37,6 +37,12 @@ class _NavItem {
   });
 }
 
+class _NavEntry {
+  final _NavItem item;
+  final int pageIndex;
+  const _NavEntry(this.item, this.pageIndex);
+}
+
 // ── Shell principal ───────────────────────────────────────────────────────────
 class MainShell extends StatefulWidget {
   final String userProfile;
@@ -57,6 +63,12 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   bool _sidebarExpanded = true;
+  Set<String> _favoritos = {};
+  static const _prefsKeyFavoritos = 'sidebar_favoritos';
+
+  List<_NavEntry> get _navEntries => [
+    for (var i = 0; i < _navItems.length; i++) _NavEntry(_navItems[i], i),
+  ];
 
   static const _listaProfiles = {
     'admin',
@@ -327,6 +339,7 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _carregarPreferenciaSidebar();
+    _carregarFavoritos();
     // Recepção/captador abrem direto na aba Recepção.
     if (_recepcaoComoPadrao.contains(widget.userProfile)) {
       final idx = _navItems.indexWhere((it) => it.label == _recepcaoItem.label);
@@ -341,6 +354,39 @@ class _MainShellState extends State<MainShell> {
     if (mounted) {
       setState(
         () => _sidebarExpanded = prefs.getBool('sidebar_expanded') ?? true,
+      );
+    }
+  }
+
+  Future<void> _carregarFavoritos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_prefsKeyFavoritos) ?? [];
+    if (mounted) {
+      setState(() => _favoritos = list.toSet());
+    }
+  }
+
+  Future<void> _toggleFavorito(String label) async {
+    final novo = Set<String>.of(_favoritos);
+    final adicionou = !novo.contains(label);
+    if (adicionou) {
+      novo.add(label);
+    } else {
+      novo.remove(label);
+    }
+    setState(() => _favoritos = novo);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_prefsKeyFavoritos, novo.toList());
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(adicionou
+              ? '⭐ "$label" adicionado aos favoritos'
+              : '"$label" removido dos favoritos'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -567,7 +613,6 @@ class _MainShellState extends State<MainShell> {
   // ── Drawer de navegação para mobile ───────────────────────────────────────
   Widget _buildMobileDrawer(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final items = _navItems;
 
     return Drawer(
       child: SafeArea(
@@ -601,49 +646,9 @@ class _MainShellState extends State<MainShell> {
 
             // Itens de navegação
             Expanded(
-              child: ListView.builder(
+              child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                itemCount: items.length,
-                itemBuilder: (_, i) {
-                  final item = items[i];
-                  final selected = _selectedIndex == i;
-                  return ListTile(
-                    leading: Icon(
-                      selected ? item.activeIcon : item.icon,
-                      color: selected
-                          ? cs.onPrimaryContainer
-                          : cs.onSurfaceVariant,
-                      size: 22,
-                    ),
-                    title: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: selected ? cs.onPrimaryContainer : cs.onSurface,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                    selected: selected,
-                    selectedTileColor: cs.primaryContainer.withValues(
-                      alpha: 0.5,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    horizontalTitleGap: 8,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 2,
-                    ),
-                    dense: true,
-                    onTap: () {
-                      setState(() => _selectedIndex = i);
-                      Navigator.pop(context);
-                    },
-                  );
-                },
+                children: _buildMobileDrawerNavWidgets(context, cs),
               ),
             ),
 
@@ -821,10 +826,120 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  List<Widget> _buildMobileDrawerNavWidgets(
+      BuildContext context, ColorScheme cs) {
+    final entries = _navEntries;
+    final favEntries =
+        entries.where((e) => _favoritos.contains(e.item.label)).toList();
+    final outrosEntries =
+        entries.where((e) => !_favoritos.contains(e.item.label)).toList();
+
+    final widgets = <Widget>[];
+
+    if (favEntries.isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+          child: Row(
+            children: [
+              Icon(Icons.star_rounded, size: 16, color: Colors.amber.shade700),
+              const SizedBox(width: 6),
+              Text(
+                'FAVORITOS',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  color: Colors.amber.shade800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      for (final entry in favEntries) {
+        widgets.add(_buildMobileDrawerItem(context, cs, entry, isFav: true));
+      }
+      if (outrosEntries.isNotEmpty) {
+        widgets.add(const SizedBox(height: 8));
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+            child: Text(
+              'TODAS AS ABAS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    for (final entry in outrosEntries) {
+      widgets.add(_buildMobileDrawerItem(context, cs, entry, isFav: false));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildMobileDrawerItem(
+      BuildContext context, ColorScheme cs, _NavEntry entry,
+      {required bool isFav}) {
+    final item = entry.item;
+    final selected = _selectedIndex == entry.pageIndex;
+    return ListTile(
+      leading: Icon(
+        selected ? item.activeIcon : item.icon,
+        color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+        size: 22,
+      ),
+      title: Text(
+        item.label,
+        style: TextStyle(
+          fontSize: 15,
+          color: selected ? cs.onPrimaryContainer : cs.onSurface,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: IconButton(
+        icon: Icon(
+          isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+          size: 20,
+          color: isFav
+              ? Colors.amber.shade700
+              : cs.onSurfaceVariant.withValues(alpha: 0.4),
+        ),
+        tooltip: isFav ? 'Remover dos favoritos' : 'Favoritar',
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        onPressed: () => _toggleFavorito(item.label),
+      ),
+      selected: selected,
+      selectedTileColor: cs.primaryContainer.withValues(
+        alpha: 0.5,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      horizontalTitleGap: 8,
+      contentPadding: const EdgeInsets.only(left: 12, right: 6),
+      dense: true,
+      onTap: () {
+        setState(() => _selectedIndex = entry.pageIndex);
+        Navigator.pop(context);
+      },
+    );
+  }
+
   // ── Painel lateral colapsável ──────────────────────────────────────────────
   Widget _buildSidebarPanel(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final sidebarWidth = _sidebarExpanded ? 220.0 : 64.0;
+    final sidebarWidth = _sidebarExpanded ? 236.0 : 64.0;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -894,87 +1009,7 @@ class _MainShellState extends State<MainShell> {
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
-              children: List.generate(_navItems.length, (i) {
-                final item = _navItems[i];
-                final selected = _selectedIndex == i;
-
-                if (!_sidebarExpanded) {
-                  // Modo compacto: apenas ícone centralizado com tooltip
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    child: Tooltip(
-                      message: item.label,
-                      preferBelow: false,
-                      child: InkWell(
-                        onTap: () => setState(() => _selectedIndex = i),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? cs.primaryContainer.withValues(alpha: 0.5)
-                                : null,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              selected ? item.activeIcon : item.icon,
-                              color: selected
-                                  ? cs.onPrimaryContainer
-                                  : cs.onSurfaceVariant,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                // Modo expandido: ícone + label
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 1,
-                  ),
-                  child: ListTile(
-                    leading: Icon(
-                      selected ? item.activeIcon : item.icon,
-                      color: selected
-                          ? cs.onPrimaryContainer
-                          : cs.onSurfaceVariant,
-                      size: 20,
-                    ),
-                    title: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: selected ? cs.onPrimaryContainer : cs.onSurface,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                    selected: selected,
-                    selectedTileColor: cs.primaryContainer.withValues(
-                      alpha: 0.5,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    horizontalTitleGap: 8,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 0,
-                    ),
-                    dense: true,
-                    onTap: () => setState(() => _selectedIndex = i),
-                  ),
-                );
-              }),
+              children: _buildSidebarNavWidgets(cs),
             ),
           ),
 
@@ -1229,6 +1264,194 @@ class _MainShellState extends State<MainShell> {
 
           const SizedBox(height: 12),
         ],
+      ),
+    );
+  }
+
+  List<Widget> _buildSidebarNavWidgets(ColorScheme cs) {
+    final entries = _navEntries;
+    final favEntries =
+        entries.where((e) => _favoritos.contains(e.item.label)).toList();
+    final outrosEntries =
+        entries.where((e) => !_favoritos.contains(e.item.label)).toList();
+
+    final widgets = <Widget>[];
+
+    if (!_sidebarExpanded) {
+      // Modo compacto: favoritos primeiro, divisor se ambos tiverem itens, depois outros
+      for (final entry in favEntries) {
+        widgets.add(_buildCompactNavItem(cs, entry, isFav: true));
+      }
+      if (favEntries.isNotEmpty && outrosEntries.isNotEmpty) {
+        widgets.add(
+          Divider(
+            height: 12,
+            thickness: 1,
+            indent: 14,
+            endIndent: 14,
+            color: cs.outlineVariant.withValues(alpha: 0.6),
+          ),
+        );
+      }
+      for (final entry in outrosEntries) {
+        widgets.add(_buildCompactNavItem(cs, entry, isFav: false));
+      }
+      return widgets;
+    }
+
+    // Modo expandido:
+    if (favEntries.isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+          child: Row(
+            children: [
+              Icon(Icons.star_rounded, size: 14, color: Colors.amber.shade700),
+              const SizedBox(width: 6),
+              Text(
+                'FAVORITOS',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  color: Colors.amber.shade800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      for (final entry in favEntries) {
+        widgets.add(_buildExpandedNavItem(cs, entry, isFav: true));
+      }
+      if (outrosEntries.isNotEmpty) {
+        widgets.add(const SizedBox(height: 6));
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+            child: Text(
+              'TODAS AS ABAS',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    for (final entry in outrosEntries) {
+      widgets.add(_buildExpandedNavItem(cs, entry, isFav: false));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildCompactNavItem(ColorScheme cs, _NavEntry entry,
+      {required bool isFav}) {
+    final item = entry.item;
+    final selected = _selectedIndex == entry.pageIndex;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      child: Tooltip(
+        message: isFav
+            ? '${item.label} ★ (Favorito — toque longo p/ remover)'
+            : '${item.label} (toque longo p/ favoritar)',
+        preferBelow: false,
+        child: InkWell(
+          onTap: () => setState(() => _selectedIndex = entry.pageIndex),
+          onLongPress: () => _toggleFavorito(item.label),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: selected
+                  ? cs.primaryContainer.withValues(alpha: 0.5)
+                  : null,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  selected ? item.activeIcon : item.icon,
+                  color: selected
+                      ? cs.onPrimaryContainer
+                      : cs.onSurfaceVariant,
+                  size: 20,
+                ),
+                if (isFav)
+                  Positioned(
+                    top: 6,
+                    right: 8,
+                    child: Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade700,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedNavItem(ColorScheme cs, _NavEntry entry,
+      {required bool isFav}) {
+    final item = entry.item;
+    final selected = _selectedIndex == entry.pageIndex;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: ListTile(
+        leading: Icon(
+          selected ? item.activeIcon : item.icon,
+          color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+          size: 20,
+        ),
+        title: Text(
+          item.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13.5,
+            color: selected ? cs.onPrimaryContainer : cs.onSurface,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        trailing: IconButton(
+          icon: Icon(
+            isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+            size: 18,
+            color: isFav
+                ? Colors.amber.shade700
+                : cs.onSurfaceVariant.withValues(alpha: 0.35),
+          ),
+          tooltip: isFav ? 'Remover dos favoritos' : 'Favoritar',
+          visualDensity: VisualDensity.compact,
+          splashRadius: 16,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+          onPressed: () => _toggleFavorito(item.label),
+        ),
+        selected: selected,
+        selectedTileColor: cs.primaryContainer.withValues(
+          alpha: 0.5,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        horizontalTitleGap: 8,
+        contentPadding: const EdgeInsets.only(left: 12, right: 4),
+        dense: true,
+        onTap: () => setState(() => _selectedIndex = entry.pageIndex),
       ),
     );
   }

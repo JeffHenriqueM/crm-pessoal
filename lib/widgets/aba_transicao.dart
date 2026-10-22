@@ -302,6 +302,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     ('Bronze', 'bronze', Color(0xFF9E6B3F)),
   ];
 
+  // Apartamentos com cota bloqueada para alteração manual, em lote ou auto-distribuição.
+  static const Set<int> _aptosBloqueadosCota = {141};
+
   // Ordem de prestígio das categorias (mais premium → mais simples). Usada
   // pela auto-distribuição de cotas: os aptos mais valorizados recebem Ouro,
   // depois Prata, e os mais simples Bronze — nas quantidades que refletem as
@@ -697,7 +700,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               _tabAreas(cs)
             ),
             (
-              const Tab(text: 'Pool', icon: Icon(Icons.pool_outlined)),
+              const Tab(text: 'Pool', icon: Icon(Icons.attach_money_rounded)),
               _tabPool(cs)
             ),
             (
@@ -3493,6 +3496,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   /// Define (ou limpa, com [cota] == null) a cota de um apartamento, salvando
   /// no Firestore. Atualização otimista: reverte se a gravação falhar.
   Future<void> _setCota(String apto, String? cota) async {
+    final numApto = int.tryParse(apto);
+    if (numApto != null && _aptosBloqueadosCota.contains(numApto)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'O apartamento $apto está com a cota bloqueada para alteração.'),
+            backgroundColor: Colors.amber.shade900,
+          ),
+        );
+      }
+      return;
+    }
     final anterior = _cotasHotel[apto];
     setState(() {
       if (cota == null) {
@@ -3521,9 +3537,21 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   /// Aplica (ou limpa) uma cota a todos os apartamentos de uma categoria.
   Future<void> _setCotaLote(List<int> aptos, String? cota) async {
-    final anterior = {for (final n in aptos) '$n': _cotasHotel['$n']};
+    final permitidos =
+        aptos.where((n) => !_aptosBloqueadosCota.contains(n)).toList();
+    if (permitidos.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Todos os apartamentos selecionados estão com a cota bloqueada.'),
+        ),
+      );
+      return;
+    }
+    final anterior = {for (final n in permitidos) '$n': _cotasHotel['$n']};
     setState(() {
-      for (final n in aptos) {
+      for (final n in permitidos) {
         if (cota == null) {
           _cotasHotel.remove('$n');
         } else {
@@ -3532,7 +3560,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       }
     });
     try {
-      await _fs.setCotasHotelEmLote([for (final n in aptos) '$n'], cota);
+      await _fs.setCotasHotelEmLote([for (final n in permitidos) '$n'], cota);
     } catch (e) {
       debugPrint('AbaTransicao._setCotaLote: $e');
       if (!mounted) return;
@@ -3602,7 +3630,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       );
       return;
     }
-    final aptos = _aptosPorPrestigio();
+    final todosAptos = _aptosPorPrestigio();
+    // Exclui apartamentos com cota bloqueada da auto-distribuição
+    final aptos =
+        todosAptos.where((n) => !_aptosBloqueadosCota.contains(n)).toList();
     final n = aptos.length;
     // Integral é FIXO = total de integrais que temos + 6. O restante dos
     // apartamentos é repartido entre Ouro/Prata/Bronze em apto-equivalente
@@ -3624,7 +3655,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             Text('Integral = $d (que temos) + 6 = $nIntegral apartamentos. '
                 'Os outros $resto são repartidos entre Ouro/Prata/Bronze '
                 'conforme as vendas ($o Ouro, $p Prata, $b Bronze em cotas; '
-                'sem Matheus/Reynaldo, S & S = 1). Total $n:'),
+                'sem Matheus/Reynaldo, S & S = 1). Total desbloqueados $n '
+                '(${_aptosBloqueadosCota.length} bloqueado mantido):'),
             const SizedBox(height: 10),
             _linhaAlvo(const Color(0xFF4A6FA5), 'Integral', q[0], n),
             _linhaAlvo(const Color(0xFFC9A227), 'Ouro', q[1], n),
@@ -3633,7 +3665,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             const SizedBox(height: 10),
             const Text(
                 'Os apartamentos mais valorizados recebem Integral/Ouro; os '
-                'mais simples, Bronze. Isso substitui as cotas atuais.',
+                'mais simples, Bronze. Apartamentos bloqueados não são alterados.',
                 style: TextStyle(fontSize: 12)),
           ],
         ),
@@ -3649,7 +3681,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
     if (ok != true) return;
 
-    final mapa = <String, String>{};
+    // Inicia preservando apartamentos bloqueados
+    final mapa = Map<String, String>.fromEntries(
+      _cotasHotel.entries
+          .where((e) => _aptosBloqueadosCota.contains(int.tryParse(e.key))),
+    );
     var idx = 0;
     for (var t = 0; t < tiers.length; t++) {
       for (var k = 0; k < q[t] && idx < n; k++, idx++) {
@@ -3676,23 +3712,26 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
-  /// Apaga TODAS as cotas (todos os aptos voltam a "Sem cota"). Pede
+  /// Apaga TODAS as cotas desbloqueadas (voltando a "Sem cota"). Pede
   /// confirmação e oferece "Desfazer" logo em seguida.
   Future<void> _limparCotas() async {
-    if (_cotasHotel.isEmpty) {
+    final cotasModificaveis = _cotasHotel.entries
+        .where((e) => !_aptosBloqueadosCota.contains(int.tryParse(e.key)))
+        .toList();
+    if (cotasModificaveis.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não há cotas para apagar.')),
+        const SnackBar(content: Text('Não há cotas desbloqueadas para apagar.')),
       );
       return;
     }
-    final qtd = _cotasHotel.length;
+    final qtd = cotasModificaveis.length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Apagar todas as cotas?'),
-        content: Text('Os $qtd apartamentos com cota voltam a ficar '
-            '"Sem cota". Você pode desfazer logo depois.'),
+        title: const Text('Apagar cotas desbloqueadas?'),
+        content: Text('Os $qtd apartamentos desbloqueados voltam a ficar '
+            '"Sem cota". Apartamentos bloqueados (${_aptosBloqueadosCota.join(', ')}) serão preservados.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -3701,20 +3740,24 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               style: FilledButton.styleFrom(
                   backgroundColor: Theme.of(ctx).colorScheme.error),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Apagar tudo')),
+              child: const Text('Apagar')),
         ],
       ),
     );
     if (ok != true) return;
 
     final backup = Map<String, String>.of(_cotasHotel);
-    setState(() => _cotasHotel = {});
+    final preservados = Map<String, String>.fromEntries(
+      _cotasHotel.entries
+          .where((e) => _aptosBloqueadosCota.contains(int.tryParse(e.key))),
+    );
+    setState(() => _cotasHotel = preservados);
     try {
-      await _fs.substituirCotasHotel({});
+      await _fs.substituirCotasHotel(preservados);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Cotas apagadas.'),
+          content: const Text('Cotas desbloqueadas apagadas.'),
           duration: const Duration(seconds: 6),
           action: SnackBarAction(
             label: 'Desfazer',
@@ -3813,6 +3856,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               for (final o in _cotasOpcoes)
                 _pilulaResumo(o.$1, contagem[o.$2] ?? 0, o.$3),
               _pilulaResumo('Sem cota', sem, cs.onSurfaceVariant),
+              _pilulaResumo(
+                'Bloqueado (${_aptosBloqueadosCota.join(', ')})',
+                _aptosBloqueadosCota.length,
+                Colors.amber.shade800,
+                icon: Icons.lock_rounded,
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -3825,7 +3874,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  Widget _pilulaResumo(String rotulo, int n, Color cor) {
+  Widget _pilulaResumo(String rotulo, int n, Color cor, {IconData? icon}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -3834,11 +3883,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         border: Border.all(color: cor.withValues(alpha: 0.4)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
-        ),
+        if (icon != null) ...[
+          Icon(icon, size: 12, color: cor),
+        ] else ...[
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
+          ),
+        ],
         const SizedBox(width: 6),
         Text('$n $rotulo',
             style: TextStyle(
@@ -3925,6 +3978,83 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     final cota = _cotasHotel['$n'];
     final cor = _corCota(cota);
     final definida = cor != null;
+    final bloqueado = _aptosBloqueadosCota.contains(n);
+
+    final chipContent = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: definida ? cor : (bloqueado ? Colors.amber.shade50 : cs.surface),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: bloqueado
+              ? Colors.amber.shade700
+              : (definida
+                  ? cor
+                  : cs.outlineVariant.withValues(alpha: 0.8)),
+          width: bloqueado ? 2 : 1,
+        ),
+        boxShadow: bloqueado
+            ? [
+                BoxShadow(
+                  color: Colors.amber.shade700.withValues(alpha: 0.3),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                )
+              ]
+            : null,
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (bloqueado) ...[
+          Icon(Icons.lock_rounded,
+              size: 13,
+              color: definida ? Colors.white : Colors.amber.shade900),
+          const SizedBox(width: 4),
+        ],
+        Text('$n',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: definida
+                    ? Colors.white
+                    : (bloqueado ? Colors.amber.shade900 : cs.onSurface))),
+        if (definida) ...[
+          const SizedBox(width: 5),
+          Text(_rotuloCota(cota)![0],
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white)),
+        ],
+      ]),
+    );
+
+    if (bloqueado) {
+      return Tooltip(
+        message: 'Apto $n — Cota bloqueada para alteração'
+            '${definida ? ' (${_rotuloCota(cota)})' : ''}',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(children: [
+                  const Icon(Icons.lock_outline, color: Colors.amber, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'O apartamento $n está com a cota bloqueada para alteração.',
+                    ),
+                  ),
+                ]),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          },
+          child: chipContent,
+        ),
+      );
+    }
+
     return PopupMenuButton<String>(
       tooltip: 'Cota do apto $n'
           '${definida ? ' — ${_rotuloCota(cota)}' : ''}',
@@ -3953,32 +4083,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           const PopupMenuItem(value: 'limpar', child: Text('Limpar')),
         ],
       ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: definida ? cor : cs.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-              color: definida
-                  ? cor
-                  : cs.outlineVariant.withValues(alpha: 0.8)),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text('$n',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: definida ? Colors.white : cs.onSurface)),
-          if (definida) ...[
-            const SizedBox(width: 5),
-            Text(_rotuloCota(cota)![0],
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white)),
-          ],
-        ]),
-      ),
+      child: chipContent,
     );
   }
 
