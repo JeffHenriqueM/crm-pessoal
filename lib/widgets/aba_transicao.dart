@@ -3136,8 +3136,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                         ],
                       ),
 
-                      const Spacer(),
-
                       // Indicador de contagem
                       Container(
                         padding: const EdgeInsets.symmetric(
