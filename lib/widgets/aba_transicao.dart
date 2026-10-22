@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../models/contrato_model.dart';
 import '../models/imovel_model.dart';
+import '../models/versao_preco_hotel.dart';
 import '../services/analise_imoveis.dart';
 import '../services/firestore_service.dart';
 import '../services/reynaldo_pdf.dart';
@@ -250,6 +251,35 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // Cota definida manualmente por apartamento no Hotel (aba Cotas).
   // Chave = número do apto (String); valor = 'ouro' | 'prata' | 'bronze'.
   Map<String, String> _cotasHotel = {};
+
+  // Dia de check-in definido por apartamento no Hotel (aba Cotas).
+  // Chave = número do apto (String); valor = 'quinta' | 'sexta' | 'sabado' | 'domingo' | 'segunda'.
+  Map<String, String> _checkinHotel = {};
+
+  // Versões da tabela de preços do Hotel (aba Tabela de preços).
+  List<VersaoPrecoHotel> _versoesPreco = [];
+  String? _versaoSelecionadaId;
+
+  VersaoPrecoHotel? get _versaoAtual {
+    if (_versoesPreco.isEmpty) return null;
+    return _versoesPreco.where((v) => v.id == _versaoSelecionadaId).firstOrNull ??
+        _versoesPreco.where((v) => v.isPadrao).firstOrNull ??
+        _versoesPreco.first;
+  }
+
+  bool get _podeEditarVersaoAtual {
+    final v = _versaoAtual;
+    if (v == null) return true;
+    final userId = _fs.currentUserId;
+    final userName = _fs.currentUserName.toLowerCase();
+    // O criador pode alterar, ou se o usuário for Jeff / admin
+    if (v.criadoPorId.isNotEmpty && v.criadoPorId == userId) return true;
+    if (v.criadoPorNome.toLowerCase() == userName) return true;
+    if (userName.contains('jeff') || userId.isEmpty || userId == 'sistema') return true;
+    return false;
+  }
+
+  bool _recontando = false;
 
   // Tabela de preços do Hotel (aba Tabela de preços). Preço de venda por
   // combinação categoria × cota. Chave = "<categoria>|<cotaKey>".
@@ -523,12 +553,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return map;
   }
 
-  Future<void> _carregar() async {
+  Future<void> _carregar({bool forcarContratos = false}) async {
     setState(() => _carregando = true);
     try {
       final imoveis = await _fs.getImoveis();
       // contratosEfetivos já mantém SOMENTE contratos com status Ativo.
-      final contratos = contratosEfetivos(await _fs.getContratos());
+      final todosContratos =
+          await _fs.getContratos(forcarRecarga: forcarContratos);
+      final contratos = contratosEfetivos(todosContratos);
       final outros = contratos
           .where((c) => _clienteSeparado(c.nomeComprador) == null)
           .toList();
@@ -606,6 +638,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       final cotas = widget.modo == ModoAba.hotel
           ? await _fs.getCotasHotel()
           : <String, String>{};
+      // Dia de check-in por apartamento (só modo Hotel).
+      final checkin = widget.modo == ModoAba.hotel
+          ? await _fs.getCheckinHotel()
+          : <String, String>{};
+      // Versões da tabela de preços (só modo Hotel).
+      final versoes = widget.modo == ModoAba.hotel
+          ? await _fs.getVersoesPrecosHotel()
+          : <VersaoPrecoHotel>[];
       // Tabela de preços categoria × cota (só modo Hotel).
       final precos = widget.modo == ModoAba.hotel
           ? await _fs.getPrecosHotel()
@@ -645,7 +685,18 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _ativosCount = contratos.length;
         _pctPagos = pctPagos;
         _cotasHotel = cotas;
-        _precosHotel = precos;
+        _checkinHotel = checkin;
+        _versoesPreco = versoes;
+        if (_versaoSelecionadaId == null && versoes.isNotEmpty) {
+          _versaoSelecionadaId =
+              versoes.where((v) => v.isPadrao).firstOrNull?.id ??
+                  versoes.first.id;
+        }
+        if (_versaoAtual != null && _versaoAtual!.precos.isNotEmpty) {
+          _precosHotel = Map<String, double>.of(_versaoAtual!.precos);
+        } else {
+          _precosHotel = precos;
+        }
         _mp = mp;
         _sincronizarPrecoCtrls();
         _mixDistribuicao = mix;
@@ -659,6 +710,87 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       setState(() => _carregando = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Erro ao carregar a transição.')),
+      );
+    }
+  }
+
+  /// Força a recontagem de todos os contratos a partir do Firestore (sem cache),
+  /// atualizando as projeções, mix de cotas e métricas do sistema.
+  Future<void> _recontarContratos({bool feedbackVisual = true}) async {
+    if (_recontando) return;
+    setState(() => _recontando = true);
+    try {
+      _fs.invalidarCacheContratos();
+      final todos = await _fs.getContratos(forcarRecarga: true);
+      final ativos = contratosEfetivos(todos);
+      final cancelados = todos.length - ativos.length;
+
+      await _carregar(forcarContratos: true);
+
+      if (!mounted) return;
+      setState(() => _recontando = false);
+
+      if (feedbackVisual) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.check_circle_outline,
+                color: Colors.green, size: 44),
+            title: const Text('Contratos Sincronizados!'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Total de contratos na base: ${todos.length}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.check_circle, size: 16, color: Colors.green),
+                  const SizedBox(width: 6),
+                  Text('Contratos Ativos (vigentes): ${ativos.length}'),
+                ]),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.cancel_outlined,
+                      size: 16, color: Colors.orange),
+                  const SizedBox(width: 6),
+                  Text('Cancelados / Distratados desconsiderados: $cancelados'),
+                ]),
+                const Divider(height: 20),
+                const Text('Mix de vendas recalculado:',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text('• ${_mixDistribuicao.$1} cotas Bronze'),
+                Text('• ${_mixDistribuicao.$2} cotas Prata'),
+                Text('• ${_mixDistribuicao.$3} cotas Ouro'),
+                Text('• ${_mixDistribuicao.$4} aptos Integral'),
+                const SizedBox(height: 10),
+                Text(
+                  'Todos os cálculos, projeções, apartamentos e cotas foram sincronizados com sucesso.',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Entendido'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('_recontarContratos: $e');
+      if (!mounted) return;
+      setState(() => _recontando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao sincronizar contratos: $e')),
       );
     }
   }
@@ -774,13 +906,37 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       length: abas.length,
       child: Column(
         children: [
-          TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: cs.primary,
-            unselectedLabelColor: cs.onSurfaceVariant,
-            indicatorColor: cs.primary,
-            tabs: [for (final a in abas) a.$1],
+          Row(
+            children: [
+              Expanded(
+                child: TabBar(
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  labelColor: cs.primary,
+                  unselectedLabelColor: cs.onSurfaceVariant,
+                  indicatorColor: cs.primary,
+                  tabs: [for (final a in abas) a.$1],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Tooltip(
+                  message: 'Recontar contratos e sincronizar projeções',
+                  child: FilledButton.tonalIcon(
+                    onPressed: _recontando ? null : () => _recontarContratos(),
+                    icon: _recontando
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync_rounded, size: 16),
+                    label: const Text('Recontar contratos',
+                        style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ),
+            ],
           ),
           Expanded(
             child: TabBarView(children: [for (final a in abas) a.$2]),
@@ -1006,6 +1162,275 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   }
 
   // ── Aba: Tabela de preços (preço de venda por categoria × cota) ───────────
+  void _selecionarVersaoPreco(String id) {
+    final v = _versoesPreco.where((ver) => ver.id == id).firstOrNull;
+    if (v == null) return;
+    setState(() {
+      _versaoSelecionadaId = id;
+      _precosHotel = Map<String, double>.of(v.precos);
+      _sincronizarPrecoCtrls();
+    });
+  }
+
+  Future<void> _dialogNovaVersao() async {
+    final ctrl = TextEditingController();
+    var copiarDaAtual = true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) => AlertDialog(
+          title: const Text('Nova versão da tabela de preços'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Crie uma nova versão para simular valores de venda sem alterar a tabela de outros usuários.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nome da versão',
+                  hintText: 'Ex: Tabela Verão 2026, Minha versão...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Copiar preços da versão atual',
+                    style: TextStyle(fontSize: 13)),
+                value: copiarDaAtual,
+                onChanged: (v) => setDState(() => copiarDaAtual = v ?? true),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (ctrl.text.trim().isEmpty) return;
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Criar versão'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      final nome = ctrl.text.trim();
+      final precosBase = copiarDaAtual
+          ? Map<String, double>.of(_precosHotel)
+          : <String, double>{};
+      final nova = VersaoPrecoHotel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        nome: nome,
+        criadoPorId: _fs.currentUserId,
+        criadoPorNome: _fs.currentUserName,
+        criadoEm: DateTime.now(),
+        atualizadoEm: DateTime.now(),
+        precos: precosBase,
+        isPadrao: _versoesPreco.isEmpty,
+      );
+      try {
+        await _fs.salvarVersaoPrecoHotel(nova);
+        if (!mounted) return;
+        setState(() {
+          _versoesPreco.add(nova);
+          _versaoSelecionadaId = nova.id;
+          _precosHotel = Map<String, double>.of(nova.precos);
+          _sincronizarPrecoCtrls();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Versão "$nome" criada com sucesso.')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao criar versão: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _dialogDuplicarVersao() async {
+    final atual = _versaoAtual;
+    if (atual == null) return;
+    final ctrl = TextEditingController(
+        text: '${atual.nome} (Cópia de ${_fs.currentUserName})');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Duplicar versão da tabela'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Você criará uma cópia editável de "${atual.nome}". Você será o proprietário desta nova versão e poderá editar todos os valores.',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Nome da sua cópia',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Duplicar'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      final nome = ctrl.text.trim();
+      final nova = VersaoPrecoHotel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        nome: nome,
+        criadoPorId: _fs.currentUserId,
+        criadoPorNome: _fs.currentUserName,
+        criadoEm: DateTime.now(),
+        atualizadoEm: DateTime.now(),
+        precos: Map<String, double>.of(_precosHotel),
+        isPadrao: false,
+      );
+      try {
+        await _fs.salvarVersaoPrecoHotel(nova);
+        if (!mounted) return;
+        setState(() {
+          _versoesPreco.add(nova);
+          _versaoSelecionadaId = nova.id;
+          _precosHotel = Map<String, double>.of(nova.precos);
+          _sincronizarPrecoCtrls();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('Versão "$nome" criada. Você já pode editá-la!')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao duplicar versão: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _tornarVersaoPadrao() async {
+    final v = _versaoAtual;
+    if (v == null || v.isPadrao) return;
+    try {
+      for (var i = 0; i < _versoesPreco.length; i++) {
+        final item = _versoesPreco[i];
+        final deveSerPadrao = (item.id == v.id);
+        if (item.isPadrao != deveSerPadrao) {
+          final atualizada = item.copyWith(isPadrao: deveSerPadrao);
+          _versoesPreco[i] = atualizada;
+          await _fs.salvarVersaoPrecoHotel(atualizada);
+        }
+      }
+      await _fs.salvarPrecosHotel(v.precos);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('"${v.nome}" definida como versão padrão do sistema.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao definir versão padrão: $e')),
+      );
+    }
+  }
+
+  Future<void> _confirmarExcluirVersao() async {
+    final v = _versaoAtual;
+    if (v == null) return;
+    if (_versoesPreco.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Não é possível excluir a única versão da tabela.')),
+      );
+      return;
+    }
+    if (!_podeEditarVersaoAtual) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('Você não tem permissão para excluir esta versão.')),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir versão?'),
+        content: Text(
+            'Deseja excluir a versão "${v.nome}" criada por ${v.criadoPorNome}? Esta ação não pode ser desfeita.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      try {
+        await _fs.deletarVersaoPrecoHotel(v.id);
+        if (!mounted) return;
+        setState(() {
+          _versoesPreco.removeWhere((item) => item.id == v.id);
+          final proxima = _versoesPreco.first;
+          _versaoSelecionadaId = proxima.id;
+          _precosHotel = Map<String, double>.of(proxima.precos);
+          _sincronizarPrecoCtrls();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Versão "${v.nome}" excluída.')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao excluir versão: $e')),
+        );
+      }
+    }
+  }
+
   /// True se algum campo de preço difere do que está salvo.
   bool get _precosAlterados {
     for (final cat in _categoriasPreco) {
@@ -1019,27 +1444,52 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return false;
   }
 
-  /// Persiste toda a tabela de preços de uma vez (substitui a anterior).
+  /// Persiste a tabela de preços na versão selecionada.
   Future<void> _salvarPrecos() async {
+    final v = _versaoAtual;
+    if (v == null) return;
+    if (!_podeEditarVersaoAtual) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Você não pode alterar a versão de ${v.criadoPorNome}. '
+            'Duplique esta versão para fazer suas alterações.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final novo = <String, double>{};
     for (final cat in _categoriasPreco) {
       for (final cota in _cotasOpcoes) {
         final k = _chavePreco(cat.$1, cota.$2);
-        final v = double.tryParse(_precoCtrl(k).text.trim()) ?? 0;
-        if (v > 0) novo[k] = v;
+        final val = double.tryParse(_precoCtrl(k).text.trim()) ?? 0;
+        if (val > 0) novo[k] = val;
       }
     }
     final backup = Map<String, double>.of(_precosHotel);
     setState(() => _salvandoPrecos = true);
     try {
-      await _fs.salvarPrecosHotel(novo);
+      final versaoAtualizada = v.copyWith(
+        precos: novo,
+        atualizadoEm: DateTime.now(),
+      );
+      await _fs.salvarVersaoPrecoHotel(versaoAtualizada);
+
       if (!mounted) return;
       setState(() {
         _precosHotel = novo;
+        final idx = _versoesPreco.indexWhere((item) => item.id == v.id);
+        if (idx >= 0) {
+          _versoesPreco[idx] = versaoAtualizada;
+        }
         _salvandoPrecos = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tabela de preços salva.')),
+        SnackBar(
+            content:
+                Text('Versão "${versaoAtualizada.nome}" salva com sucesso.')),
       );
     } catch (e) {
       debugPrint('_salvarPrecos: $e');
@@ -1059,6 +1509,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     const larguraCat = 150.0;
     const larguraCel = 120.0;
     final alterados = _precosAlterados;
+    final podeEditar = _podeEditarVersaoAtual;
+    final versao = _versaoAtual;
+
     return Column(
       children: [
         Expanded(
@@ -1077,9 +1530,164 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               const SizedBox(height: 4),
               Text(
                 'Preço de venda por categoria de apartamento e cota. '
-                'Deixe em branco o que ainda não tem preço.',
+                'Salve versões personalizadas ou consulte versões da equipe.',
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
               ),
+              const SizedBox(height: 12),
+
+              // ── Seletor de versões e permissões ──
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.history_edu_outlined,
+                            size: 20, color: cs.primary),
+                        const SizedBox(width: 8),
+                        const Text('Versão:',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isDense: true,
+                              isExpanded: true,
+                              value: versao?.id,
+                              items: [
+                                for (final v in _versoesPreco)
+                                  DropdownMenuItem(
+                                    value: v.id,
+                                    child: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            v.nome,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '(${v.criadoPorNome})',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: cs.onSurfaceVariant),
+                                        ),
+                                        if (v.isPadrao) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 6, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: cs.primary
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Text(
+                                              'Padrão',
+                                              style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: cs.primary),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (id) {
+                                if (id != null) _selecionarVersaoPreco(id);
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _dialogNovaVersao,
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Nova versão',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: _dialogDuplicarVersao,
+                          icon: const Icon(Icons.copy_rounded, size: 16),
+                          label: const Text('Duplicar versão',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        if (versao != null &&
+                            !versao.isPadrao &&
+                            podeEditar)
+                          OutlinedButton.icon(
+                            onPressed: _tornarVersaoPadrao,
+                            icon: const Icon(Icons.star_outline_rounded,
+                                size: 16),
+                            label: const Text('Tornar padrão',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                        if (versao != null &&
+                            _versoesPreco.length > 1 &&
+                            podeEditar)
+                          IconButton(
+                            tooltip: 'Excluir versão atual',
+                            onPressed: _confirmarExcluirVersao,
+                            icon: Icon(Icons.delete_outline,
+                                size: 18, color: cs.error),
+                          ),
+                      ],
+                    ),
+                    if (!podeEditar && versao != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.lock_outline,
+                                size: 18, color: Colors.amber.shade900),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Você está visualizando a versão de ${versao.criadoPorNome}. '
+                                'Não é permitido alterar versões de outros usuários. '
+                                'Clique em "Duplicar versão" para criar a sua cópia editável.',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.amber.shade900,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 16),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -1145,19 +1753,26 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                 child: TextField(
                                   controller:
                                       _precoCtrl(_chavePreco(cat.$1, cota.$2)),
+                                  readOnly: !podeEditar,
                                   keyboardType: TextInputType.number,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.digitsOnly
                                   ],
                                   textAlign: TextAlign.end,
                                   style: const TextStyle(fontSize: 13),
-                                  decoration: const InputDecoration(
+                                  decoration: InputDecoration(
                                     isDense: true,
+                                    filled: !podeEditar,
+                                    fillColor: podeEditar
+                                        ? null
+                                        : cs.surfaceContainerHighest
+                                            .withValues(alpha: 0.35),
                                     prefixText: 'R\$ ',
                                     hintText: '—',
-                                    border: OutlineInputBorder(),
-                                    contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 10),
+                                    border: const OutlineInputBorder(),
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 10),
                                   ),
                                   onChanged: (_) => setState(() {}),
                                 ),
@@ -1173,7 +1788,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ],
           ),
         ),
-        // Barra inferior: estado + salvar.
+        // Barra inferior: estado + salvar ou duplicar.
         SafeArea(
           top: false,
           child: Container(
@@ -1186,24 +1801,38 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               children: [
                 Expanded(
                   child: Text(
-                    alterados ? 'Alterações não salvas' : 'Tudo salvo',
+                    !podeEditar
+                        ? 'Modo somente leitura (${versao?.criadoPorNome ?? ''})'
+                        : (alterados
+                            ? 'Alterações não salvas'
+                            : 'Tudo salvo'),
                     style: TextStyle(
-                        color: alterados ? cs.error : cs.onSurfaceVariant,
+                        color: !podeEditar
+                            ? cs.onSurfaceVariant
+                            : (alterados ? cs.error : cs.onSurfaceVariant),
+                        fontStyle: !podeEditar ? FontStyle.italic : null,
                         fontSize: 13),
                   ),
                 ),
-                FilledButton.icon(
-                  onPressed:
-                      (alterados && !_salvandoPrecos) ? _salvarPrecos : null,
-                  icon: _salvandoPrecos
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.save_outlined),
-                  label: const Text('Salvar tabela'),
-                ),
+                if (podeEditar)
+                  FilledButton.icon(
+                    onPressed: (alterados && !_salvandoPrecos)
+                        ? _salvarPrecos
+                        : null,
+                    icon: _salvandoPrecos
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.save_outlined),
+                    label: const Text('Salvar tabela'),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    onPressed: _dialogDuplicarVersao,
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: const Text('Duplicar para editar'),
+                  ),
               ],
             ),
           ),
@@ -3579,6 +4208,96 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
+  // ── Dias de Check-in (Quinta, Sexta, Sábado, Domingo, Segunda) ───────────
+  static const List<(String, String, Color, String)> _checkinOpcoes = [
+    ('Quinta', 'quinta', Color(0xFF8E24AA), 'Qui'),
+    ('Sexta', 'sexta', Color(0xFF1E88E5), 'Sex'),
+    ('Sábado', 'sabado', Color(0xFF00897B), 'Sáb'),
+    ('Domingo', 'domingo', Color(0xFFE53935), 'Dom'),
+    ('Segunda', 'segunda', Color(0xFFFB8C00), 'Seg'),
+  ];
+
+  String? _rotuloCheckin(String? dia) {
+    for (final o in _checkinOpcoes) {
+      if (o.$2 == dia) return o.$1;
+    }
+    return null;
+  }
+
+  String? _abrevCheckin(String? dia) {
+    for (final o in _checkinOpcoes) {
+      if (o.$2 == dia) return o.$4;
+    }
+    return null;
+  }
+
+  Color? _corCheckin(String? dia) {
+    for (final o in _checkinOpcoes) {
+      if (o.$2 == dia) return o.$3;
+    }
+    return null;
+  }
+
+  Future<void> _setCheckin(String apto, String? dia) async {
+    final anterior = _checkinHotel[apto];
+    setState(() {
+      if (dia == null) {
+        _checkinHotel.remove(apto);
+      } else {
+        _checkinHotel[apto] = dia;
+      }
+    });
+    try {
+      await _fs.setCheckinHotel(apto, dia);
+    } catch (e) {
+      debugPrint('AbaTransicao._setCheckin: $e');
+      if (!mounted) return;
+      setState(() {
+        if (anterior == null) {
+          _checkinHotel.remove(apto);
+        } else {
+          _checkinHotel[apto] = anterior;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Não consegui salvar o dia de check-in. Tente de novo.')),
+      );
+    }
+  }
+
+  Future<void> _setCheckinLote(List<int> aptos, String? dia) async {
+    final anterior = {for (final n in aptos) '$n': _checkinHotel['$n']};
+    setState(() {
+      for (final n in aptos) {
+        if (dia == null) {
+          _checkinHotel.remove('$n');
+        } else {
+          _checkinHotel['$n'] = dia;
+        }
+      }
+    });
+    try {
+      await _fs.setCheckinHotelEmLote([for (final n in aptos) '$n'], dia);
+    } catch (e) {
+      debugPrint('AbaTransicao._setCheckinLote: $e');
+      if (!mounted) return;
+      setState(() {
+        anterior.forEach((k, v) {
+          if (v == null) {
+            _checkinHotel.remove(k);
+          } else {
+            _checkinHotel[k] = v;
+          }
+        });
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Não consegui salvar os check-ins. Tente de novo.')),
+      );
+    }
+  }
+
   /// Apartamentos do Hotel em ordem de prestígio (categoria premium → simples,
   /// e dentro da categoria por número crescente). Base da auto-distribuição.
   List<int> _aptosPorPrestigio() {
@@ -3812,6 +4531,19 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
     final atribuidos = contagem.values.fold<int>(0, (s, v) => s + v);
     final sem = todos.length - atribuidos;
+
+    // Contagem por dia de check-in (Quinta, Sexta, Sábado, Domingo, Segunda)
+    final contagemCheckin = {for (final o in _checkinOpcoes) o.$2: 0};
+    for (final n in todos) {
+      final d = _checkinHotel['$n'] ?? (n == 141 ? 'sexta' : null);
+      if (d != null && contagemCheckin.containsKey(d)) {
+        contagemCheckin[d] = contagemCheckin[d]! + 1;
+      }
+    }
+    final comCheckin =
+        contagemCheckin.values.fold<int>(0, (s, v) => s + v);
+    final semCheckin = todos.length - comCheckin;
+
     return RefreshIndicator(
       onRefresh: _carregar,
       child: ListView(
@@ -3821,15 +4553,17 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             Icon(Icons.workspace_premium_outlined, color: cs.primary),
             const SizedBox(width: 8),
             const Expanded(
-              child: Text('Cotas por apartamento',
+              child: Text('Cotas e check-in por apartamento',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
           ]),
           const SizedBox(height: 4),
-          Text('Toque em um apartamento para definir a cota (Integral, '
-              'Ouro, Titânio, Prata ou Bronze). Use "aplicar à categoria" para '
-              'definir todos de uma vez.',
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          Text(
+            'Toque em um apartamento para definir a cota (Integral, '
+            'Ouro, Titânio, Prata ou Bronze) e o dia de check-in (Quinta a Segunda). '
+            'Use os menus na categoria para definir em lote.',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -3844,7 +4578,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 onPressed: _limparCotas,
                 style: OutlinedButton.styleFrom(foregroundColor: cs.error),
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('Limpar tudo'),
+                label: const Text('Limpar cotas'),
               ),
             ],
           ),
@@ -3862,6 +4596,43 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 Colors.amber.shade800,
                 icon: Icons.lock_rounded,
               ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.calendar_month_outlined,
+                  size: 16, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Dias de check-in:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final o in _checkinOpcoes)
+                _pilulaResumo(
+                  o.$1,
+                  contagemCheckin[o.$2] ?? 0,
+                  o.$3,
+                  icon: Icons.calendar_today_rounded,
+                ),
+              if (semCheckin > 0)
+                _pilulaResumo(
+                  'Sem check-in',
+                  semCheckin,
+                  cs.outlineVariant,
+                  icon: Icons.event_busy_rounded,
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -3930,6 +4701,47 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                       letterSpacing: 0.3)),
             ),
             PopupMenuButton<String>(
+              tooltip: 'Definir dia de check-in para todos os ${unidades.length} aptos',
+              onSelected: (v) =>
+                  _setCheckinLote(unidades, v == 'limpar' ? null : v),
+              itemBuilder: (_) => [
+                for (final o in _checkinOpcoes)
+                  PopupMenuItem(
+                    value: o.$2,
+                    child: Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: o.$3.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(o.$4,
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: o.$3)),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('Todos → ${o.$1}'),
+                    ]),
+                  ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                    value: 'limpar', child: Text('Limpar check-in')),
+              ],
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.calendar_today_outlined,
+                    size: 15, color: cs.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Text('check-in',
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                Icon(Icons.arrow_drop_down, color: cs.onSurfaceVariant),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
               tooltip: 'Aplicar uma cota a todos os ${unidades.length} aptos',
               onSelected: (v) =>
                   _setCotaLote(unidades, v == 'limpar' ? null : v),
@@ -3956,7 +4768,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 Icon(Icons.layers_outlined,
                     size: 16, color: cs.onSurfaceVariant),
                 const SizedBox(width: 4),
-                Text('aplicar à categoria',
+                Text('cota',
                     style:
                         TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                 Icon(Icons.arrow_drop_down, color: cs.onSurfaceVariant),
@@ -3976,24 +4788,29 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
   Widget _chipCotaApto(ColorScheme cs, int n) {
     final cota = _cotasHotel['$n'];
-    final cor = _corCota(cota);
-    final definida = cor != null;
-    final bloqueado = _aptosBloqueadosCota.contains(n);
+    final corCota = _corCota(cota);
+    final cotaDefinida = corCota != null;
+    final checkin = _checkinHotel['$n'] ?? (n == 141 ? 'sexta' : null);
+    final corCheckin = _corCheckin(checkin);
+    final abrevCheckin = _abrevCheckin(checkin);
+    final bloqueadoCota = _aptosBloqueadosCota.contains(n);
 
     final chipContent = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: definida ? cor : (bloqueado ? Colors.amber.shade50 : cs.surface),
+        color: cotaDefinida
+            ? corCota
+            : (bloqueadoCota ? Colors.amber.shade50 : cs.surface),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: bloqueado
+          color: bloqueadoCota
               ? Colors.amber.shade700
-              : (definida
-                  ? cor
+              : (cotaDefinida
+                  ? corCota
                   : cs.outlineVariant.withValues(alpha: 0.8)),
-          width: bloqueado ? 2 : 1,
+          width: bloqueadoCota ? 2 : 1,
         ),
-        boxShadow: bloqueado
+        boxShadow: bloqueadoCota
             ? [
                 BoxShadow(
                   color: Colors.amber.shade700.withValues(alpha: 0.3),
@@ -4003,84 +4820,189 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               ]
             : null,
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (bloqueado) ...[
-          Icon(Icons.lock_rounded,
-              size: 13,
-              color: definida ? Colors.white : Colors.amber.shade900),
-          const SizedBox(width: 4),
-        ],
-        Text('$n',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (bloqueadoCota) ...[
+            Icon(Icons.lock_rounded,
+                size: 13,
+                color: cotaDefinida ? Colors.white : Colors.amber.shade900),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            '$n',
             style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: definida
-                    ? Colors.white
-                    : (bloqueado ? Colors.amber.shade900 : cs.onSurface))),
-        if (definida) ...[
-          const SizedBox(width: 5),
-          Text(_rotuloCota(cota)![0],
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: cotaDefinida
+                  ? Colors.white
+                  : (bloqueadoCota ? Colors.amber.shade900 : cs.onSurface),
+            ),
+          ),
+          if (cotaDefinida) ...[
+            const SizedBox(width: 4),
+            Text(
+              _rotuloCota(cota)![0],
               style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white)),
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ],
+          if (checkin != null &&
+              corCheckin != null &&
+              abrevCheckin != null) ...[
+            const SizedBox(width: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: cotaDefinida
+                    ? Colors.black.withValues(alpha: 0.28)
+                    : corCheckin.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: cotaDefinida
+                      ? Colors.white.withValues(alpha: 0.6)
+                      : corCheckin,
+                  width: 0.8,
+                ),
+              ),
+              child: Text(
+                abrevCheckin,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                  color: cotaDefinida ? Colors.white : corCheckin,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
 
-    if (bloqueado) {
-      return Tooltip(
-        message: 'Apto $n — Cota bloqueada para alteração'
-            '${definida ? ' (${_rotuloCota(cota)})' : ''}',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(children: [
-                  const Icon(Icons.lock_outline, color: Colors.amber, size: 20),
+    return PopupMenuButton<String>(
+      tooltip: 'Apto $n'
+          '${cotaDefinida ? ' — ${_rotuloCota(cota)}' : ''}'
+          '${checkin != null ? ' (Check-in: ${_rotuloCheckin(checkin)})' : ''}',
+      onSelected: (v) {
+        if (v.startsWith('cota:')) {
+          final val = v.substring(5);
+          _setCota('$n', val == 'limpar' ? null : val);
+        } else if (v.startsWith('checkin:')) {
+          final val = v.substring(8);
+          _setCheckin('$n', val == 'limpar' ? null : val);
+        }
+      },
+      itemBuilder: (_) => [
+        // Seção Cota
+        const PopupMenuItem<String>(
+          enabled: false,
+          height: 28,
+          child: Text(
+            'COTA DO APARTAMENTO',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+        if (bloqueadoCota)
+          PopupMenuItem<String>(
+            enabled: false,
+            child: Row(
+              children: [
+                const Icon(Icons.lock_rounded, size: 16, color: Colors.amber),
+                const SizedBox(width: 8),
+                Text(
+                  'Cota bloqueada (${_rotuloCota(cota) ?? 'Integral'})',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          for (final o in _cotasOpcoes)
+            PopupMenuItem<String>(
+              value: 'cota:${o.$2}',
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration:
+                        BoxDecoration(color: o.$3, shape: BoxShape.circle),
+                  ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'O apartamento $n está com a cota bloqueada para alteração.',
+                  Text(o.$1),
+                  if (o.$2 == cota) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.check, size: 16),
+                  ],
+                ],
+              ),
+            ),
+          if (cotaDefinida) ...[
+            const PopupMenuItem<String>(
+              value: 'cota:limpar',
+              child: Text('Sem cota (limpar)'),
+            ),
+          ],
+        ],
+        const PopupMenuDivider(),
+        // Seção Check-in
+        const PopupMenuItem<String>(
+          enabled: false,
+          height: 28,
+          child: Text(
+            'DIA DE CHECK-IN',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+        for (final o in _checkinOpcoes)
+          PopupMenuItem<String>(
+            value: 'checkin:${o.$2}',
+            child: Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: o.$3.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    o.$4,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: o.$3,
                     ),
                   ),
-                ]),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          },
-          child: chipContent,
-        ),
-      );
-    }
-
-    return PopupMenuButton<String>(
-      tooltip: 'Cota do apto $n'
-          '${definida ? ' — ${_rotuloCota(cota)}' : ''}',
-      onSelected: (v) => _setCota('$n', v == 'limpar' ? null : v),
-      itemBuilder: (_) => [
-        for (final o in _cotasOpcoes)
-          PopupMenuItem(
-            value: o.$2,
-            child: Row(children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration:
-                    BoxDecoration(color: o.$3, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Text(o.$1),
-              if (o.$2 == cota) ...[
-                const SizedBox(width: 6),
-                const Icon(Icons.check, size: 16),
+                ),
+                const SizedBox(width: 8),
+                Text(o.$1),
+                if (o.$2 == checkin) ...[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.check, size: 16),
+                ],
               ],
-            ]),
+            ),
           ),
-        if (definida) ...[
-          const PopupMenuDivider(),
-          const PopupMenuItem(value: 'limpar', child: Text('Limpar')),
+        if (checkin != null) ...[
+          const PopupMenuItem<String>(
+            value: 'checkin:limpar',
+            child: Text('Limpar check-in'),
+          ),
         ],
       ],
       child: chipContent,
@@ -7291,14 +8213,28 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           children: [
             Icon(Icons.swap_horiz_rounded, color: cs.primary),
             const SizedBox(width: 8),
-            const Text('Transição para o Hotel Villamor',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Expanded(
+              child: Text('Transição para o Hotel Villamor',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: _recontando ? null : () => _recontarContratos(),
+              icon: _recontando
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync_rounded, size: 16),
+              label: const Text('Recontar contratos',
+                  style: TextStyle(fontSize: 12)),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
           'Projeção da migração dos contratos do resort para o novo hotel. '
-          'Comece pelos apartamentos vendidos em cada linha de produto.',
+          'Base atual: $_ativosCount contratos ativos considerados (cancelados e distratados desconsiderados).',
           style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
         ),
       ],

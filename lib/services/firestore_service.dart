@@ -23,6 +23,7 @@ import '../models/produto_model.dart';
 import '../models/baixa_financeira_model.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
+import '../models/versao_preco_hotel.dart';
 import 'analise_imoveis.dart';
 
 class FirestoreService {
@@ -49,6 +50,9 @@ class FirestoreService {
 
   String get _currentUserId => _auth.currentUser?.uid ?? 'sistema';
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário';
+
+  String get currentUserId => _currentUserId;
+  String get currentUserName => _currentUserName;
 
   // ── Modo teste (staging) ──────────────────────────────────────────────────
   /// Quando true, todos os documentos criados recebem isTeste:true + expireAt:amanhã.
@@ -314,6 +318,50 @@ class FirestoreService {
     });
   }
 
+  // --- HOTEL: dia de check-in por apartamento (quinta/sexta/sabado/domingo/segunda) ---
+  // Guardado em `config/hotel_checkin`, campo `checkin` = mapa
+  // { "<numero do apto>": "quinta" | "sexta" | "sabado" | "domingo" | "segunda" }.
+  static const _docHotelCheckin = 'hotel_checkin';
+
+  /// Lê o mapa apartamento → dia de check-in definido no módulo Hotel.
+  /// Regra: o apto 141 é sexta-feira por padrão.
+  Future<Map<String, String>> getCheckinHotel() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docHotelCheckin).get();
+    final raw = (snap.data()?['checkin'] as Map<String, dynamic>?) ?? {};
+    final m = <String, String>{};
+    raw.forEach((k, v) {
+      if (v is String && v.isNotEmpty) m[k] = v;
+    });
+    // Regra explícita do negócio: 141 é sexta-feira por padrão
+    m.putIfAbsent('141', () => 'sexta');
+    return m;
+  }
+
+  /// Define (ou limpa, com [dia] == null) o dia de check-in de um apartamento.
+  Future<void> setCheckinHotel(String apto, String? dia) async {
+    final ref = _db.collection(_colConfig).doc(_docHotelCheckin);
+    await ref.set({
+      'checkin': {apto: dia ?? FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Aplica o dia de check-in (ou limpa) a vários apartamentos de uma vez.
+  Future<void> setCheckinHotelEmLote(List<String> aptos, String? dia) async {
+    if (aptos.isEmpty) return;
+    final ref = _db.collection(_colConfig).doc(_docHotelCheckin);
+    final checkin = <String, dynamic>{
+      for (final a in aptos) a: dia ?? FieldValue.delete(),
+    };
+    await ref.set({
+      'checkin': checkin,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
   // --- HOTEL: categorias da Multipropriedade (editáveis) ---
   // Guardado em `config/multipropriedade`, campo `categorias` = lista de
   // { nome: String, cor: int (ARGB), aptos: [int] }. Começa como cópia do
@@ -368,6 +416,59 @@ class FirestoreService {
       'atualizadoEm': FieldValue.serverTimestamp(),
       'atualizadoPorNome': _currentUserName,
     });
+  }
+
+  // --- HOTEL: versões da tabela de preços ---
+  // Coleção `hotel_precos_versoes`. Cada documento representa uma versão.
+  static const _colHotelPrecosVersoes = 'hotel_precos_versoes';
+
+  /// Busca todas as versões da tabela de preços salvas, ordenadas pela data de criação.
+  Future<List<VersaoPrecoHotel>> getVersoesPrecosHotel() async {
+    final snap = await _db
+        .collection(_colHotelPrecosVersoes)
+        .orderBy('criadoEm', descending: false)
+        .get();
+    final versoes = snap.docs.map(VersaoPrecoHotel.fromFirestore).toList();
+    if (versoes.isEmpty) {
+      // Seed inicial a partir da tabela atual em config/hotel_precos
+      final precosAtuais = await getPrecosHotel();
+      final versaoInicial = VersaoPrecoHotel(
+        id: 'versao_jeff',
+        nome: 'Versão Jeff',
+        criadoPorId: _currentUserId,
+        criadoPorNome: _currentUserName.contains('Usuário') ? 'Jeff' : _currentUserName,
+        criadoEm: DateTime.now(),
+        atualizadoEm: DateTime.now(),
+        precos: precosAtuais,
+        isPadrao: true,
+      );
+      await salvarVersaoPrecoHotel(versaoInicial);
+      return [versaoInicial];
+    }
+    return versoes;
+  }
+
+  /// Salva ou atualiza uma versão da tabela de preços.
+  Future<void> salvarVersaoPrecoHotel(VersaoPrecoHotel versao) async {
+    final ref = versao.id.isEmpty
+        ? _db.collection(_colHotelPrecosVersoes).doc()
+        : _db.collection(_colHotelPrecosVersoes).doc(versao.id);
+
+    final dados = _flagTeste({
+      ...versao.toFirestore(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+    await ref.set(dados, SetOptions(merge: true));
+
+    // Se a versão for a padrão ou única, sincroniza com config/hotel_precos para retrocompatibilidade
+    if (versao.isPadrao || versao.id == 'versao_jeff') {
+      await salvarPrecosHotel(versao.precos);
+    }
+  }
+
+  /// Deleta uma versão da tabela de preços.
+  Future<void> deletarVersaoPrecoHotel(String versaoId) async {
+    await _db.collection(_colHotelPrecosVersoes).doc(versaoId).delete();
   }
 
   // --- HOTEL: argumentos de transição por sócio ---
@@ -1990,7 +2091,9 @@ class FirestoreService {
     }
   }
 
-  /// Invalida o cache de contratos (usar após writes que alteram a lista).
+  /// Invalida o cache de contratos (usar após writes que alteram a lista ou para forçar recontagem).
+  void invalidarCacheContratos() => _invalidarCacheContratos();
+
   void _invalidarCacheContratos() {
     _cacheContratos = null;
     _cacheContratosEm = null;
