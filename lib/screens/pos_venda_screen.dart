@@ -590,48 +590,56 @@ class _ContratoCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Flexible(
-                    child: Text(
-                      c.nomeComprador,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            c.nomeComprador,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (c.dataContrato != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            'compra ${fmtData.format(c.dataContrato!)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (c.temAtrasos) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Em atraso',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.red.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (c.dataContrato != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      'compra ${fmtData.format(c.dataContrato!)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  if (c.temAtrasos)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Em atraso',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.red.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   BotoesContatoContrato(contrato: c, iconSize: 18),
                 ],
               ),
