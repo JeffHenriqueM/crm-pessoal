@@ -9,6 +9,7 @@ import '../models/contrato_model.dart';
 import '../models/imovel_model.dart';
 import '../models/versao_preco_hotel.dart';
 import '../services/analise_imoveis.dart';
+import '../services/argumentos_pdf.dart';
 import '../services/firestore_service.dart';
 import '../services/reynaldo_pdf.dart';
 
@@ -124,6 +125,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   // Argumentos de transição por sócio (aba Sócios do Hotel).
   Map<String, Map<String, dynamic>> _argumentosSociosHotel = {};
   String _buscaSocios = '';
+
+  // Objeções personalizadas cadastradas pelo usuário (aba Argumentos).
+  List<Map<String, dynamic>> _objecoesPersonalizadas = [];
+  String _buscaObjecoes = '';
 
   // Atualizações de transição por sócio (aba Atualização da Transição).
   Map<String, Map<String, dynamic>> _atualizacoesSocios = {};
@@ -662,6 +667,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           : <String, Map<String, dynamic>>{};
       // Atualizações de transição por sócio (status de aceite, fases e distrato).
       final atualizacoesSocios = await _fs.getAtualizacoesSociosTransicao();
+      // Objeções personalizadas cadastradas pela equipe (aba Argumentos).
+      final objecoesPersonalizadas = await _fs.getObjecoesTransicao();
       // Categorias da Multipropriedade (modo Hotel): carrega ou faz o seed.
       var mp = <_CategoriaMP>[];
       if (widget.modo == ModoAba.hotel) {
@@ -686,6 +693,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _contratos = contratos;
         _argumentosSociosHotel = argumentosSocios;
         _atualizacoesSocios = atualizacoesSocios;
+        _objecoesPersonalizadas = objecoesPersonalizadas;
         _exposicaoDevolucao = exposicao;
         _baseDistrato = baseDist;
         _ativosCount = contratos.length;
@@ -5929,27 +5937,393 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     ],
   ];
 
+  /// Retorna a lista unificada de objeções (personalizadas da equipe + padrão),
+  /// aplicando o filtro de busca `_buscaObjecoes`.
+  List<Map<String, dynamic>> get _todasObjecoes {
+    final List<Map<String, dynamic>> lista = [];
+
+    // Objeções personalizadas cadastradas pela equipe (aparecem no topo)
+    for (final op in _objecoesPersonalizadas) {
+      lista.add({
+        'id': op['id'] as String?,
+        'pergunta': (op['pergunta'] as String?) ?? '',
+        'resposta': (op['resposta'] as String?) ?? '',
+        'criadoPorNome': op['criadoPorNome'] as String?,
+        'personalizada': true,
+      });
+    }
+
+    // Objeções padrão pré-definidas
+    for (final qr in _objeoesRespostas) {
+      lista.add({
+        'id': null,
+        'pergunta': qr[0],
+        'resposta': qr[1],
+        'criadoPorNome': null,
+        'personalizada': false,
+      });
+    }
+
+    final termo = _buscaObjecoes.trim().toLowerCase();
+    if (termo.isEmpty) return lista;
+
+    return lista.where((item) {
+      final p = (item['pergunta'] as String).toLowerCase();
+      final r = (item['resposta'] as String).toLowerCase();
+      return p.contains(termo) || r.contains(termo);
+    }).toList();
+  }
+
+  /// Gera e abre o visualizador de impressão/PDF com todos os argumentos e objeções.
+  Future<void> _imprimirArgumentos() async {
+    final List<(String, String)> listaPdf = [];
+
+    // Objeções personalizadas primeiro
+    for (final op in _objecoesPersonalizadas) {
+      final p = (op['pergunta'] as String?)?.trim() ?? '';
+      final r = (op['resposta'] as String?)?.trim() ?? '';
+      if (p.isNotEmpty) listaPdf.add((p, r));
+    }
+
+    // Objeções padrão
+    for (final qr in _objeoesRespostas) {
+      listaPdf.add((qr[0], qr[1]));
+    }
+
+    try {
+      await ArgumentosPdf.gerar(
+        porqueTrocar: _porqueTrocar,
+        porqueMesmoValor: _porqueMesmoValor,
+        objecoes: listaPdf,
+      );
+    } catch (e) {
+      debugPrint('Erro ao imprimir argumentos: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao gerar PDF: $e')),
+      );
+    }
+  }
+
+  /// Abre diálogo para cadastrar nova objeção ou editar uma personalizada existente.
+  void _abrirDialogObjecao(ColorScheme cs, {Map<String, dynamic>? item}) {
+    final bool editando = item != null;
+    final perguntaCtrl = TextEditingController(text: item?['pergunta'] ?? '');
+    final respostaCtrl = TextEditingController(text: item?['resposta'] ?? '');
+    final messenger = ScaffoldMessenger.of(context);
+    bool salvando = false;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Cabeçalho
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.orange.shade100,
+                            child: Icon(Icons.question_answer_outlined,
+                                color: Colors.orange.shade900),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  editando
+                                      ? 'Editar Objeção / Pergunta'
+                                      : 'Nova Objeção / Pergunta',
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Ficará disponível para toda a equipe na aba Argumentos e incluída na impressão do PDF.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(dialogCtx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Campo: Pergunta / Objeção
+                      Text(
+                        'Pergunta / Objeção do cliente *',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: perguntaCtrl,
+                        maxLines: 2,
+                        decoration: InputDecoration(
+                          hintText: 'Ex.: E se as obras do resort atrasarem ainda mais?',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          filled: true,
+                          fillColor: cs.surface,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Campo: Resposta sugerida
+                      Text(
+                        'Resposta sugerida / Argumento da equipe *',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: respostaCtrl,
+                        minLines: 4,
+                        maxLines: 8,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Explique a resposta recomendada, pontos práticos e orientações para o vendedor...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          filled: true,
+                          fillColor: cs.surface,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Botões de ação
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed:
+                                salvando ? null : () => Navigator.pop(dialogCtx),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: salvando
+                                ? null
+                                : () async {
+                                    final p = perguntaCtrl.text.trim();
+                                    final r = respostaCtrl.text.trim();
+                                    if (p.isEmpty || r.isEmpty) {
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                              'Preencha a pergunta e a resposta.'),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() => salvando = true);
+                                    try {
+                                      await _fs.salvarObjecaoTransicao(
+                                        id: item?['id'] as String?,
+                                        pergunta: p,
+                                        resposta: r,
+                                      );
+                                      final novas =
+                                          await _fs.getObjecoesTransicao();
+                                      if (mounted) {
+                                        setState(() {
+                                          _objecoesPersonalizadas = novas;
+                                        });
+                                      }
+                                      if (dialogCtx.mounted) {
+                                        Navigator.pop(dialogCtx);
+                                      }
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text(editando
+                                              ? 'Objeção atualizada com sucesso!'
+                                              : 'Nova objeção adicionada com sucesso!'),
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      setDialogState(() => salvando = false);
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Erro ao salvar objeção: $e'),
+                                        ),
+                                      );
+                                    }
+                                  },
+                            icon: salvando
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.check, size: 18),
+                            label: Text(
+                                salvando ? 'Salvando...' : 'Salvar Objeção'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Confirma e remove uma objeção personalizada da equipe.
+  Future<void> _confirmarRemoverObjecao(
+    ColorScheme cs,
+    Map<String, dynamic> item,
+  ) async {
+    final id = item['id'] as String?;
+    if (id == null) return;
+    final pergunta = (item['pergunta'] as String?) ?? '';
+    final messenger = ScaffoldMessenger.of(context);
+
+    final confirma = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Excluir Objeção'),
+        content: Text(
+          'Deseja excluir a pergunta "$pergunta"?\n\n'
+          'Ela será removida do roteiro da equipe e não sairá mais no PDF.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: FilledButton.styleFrom(backgroundColor: cs.error),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirma != true) return;
+
+    try {
+      await _fs.removerObjecaoTransicao(id);
+      final novas = await _fs.getObjecoesTransicao();
+      if (mounted) {
+        setState(() {
+          _objecoesPersonalizadas = novas;
+        });
+      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Objeção excluída com sucesso.')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Erro ao excluir: $e')),
+      );
+    }
+  }
+
   Widget _tabArgumentos(ColorScheme cs) {
+    final listaObjecoes = _todasObjecoes;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: cs.primaryContainer.withValues(alpha: 0.4),
+            color: cs.primaryContainer.withValues(alpha: 0.35),
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.forum_outlined, color: cs.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Roteiro de abordagem da transição: do resort (em obras) '
-                  'para o hotel (em operação). Use como apoio — ajuste ao caso '
-                  'e confirme prazos e cláusulas no contrato.',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.forum_outlined, color: cs.primary, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Roteiro de Abordagem e Objeções da Transição',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Do resort (em obras) para o hotel (em operação). Use este guia como apoio comercial, adicione novas objeções mapeadas pela equipe e imprima em PDF para reuniões ou atendimentos.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _imprimirArgumentos,
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('Imprimir / Salvar PDF'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cs.primary,
+                      foregroundColor: cs.onPrimary,
+                    ),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _abrirDialogObjecao(cs),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Adicionar Objeção'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -5960,19 +6334,111 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         const SizedBox(height: 16),
         _secaoArg(cs, 'Por que o valor continua o mesmo',
             Icons.price_check_rounded, Colors.teal.shade700, _porqueMesmoValor),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
+        // Barra de busca e título da seção de objeções
         Row(
           children: [
             Icon(Icons.question_answer_outlined, color: Colors.orange.shade800),
             const SizedBox(width: 8),
-            const Expanded(
-              child: Text('Objeções dos clientes e como responder',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Row(
+                children: [
+                  const Text(
+                    'Objeções dos clientes e como responder',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${listaObjecoes.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                  if (_objecoesPersonalizadas.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${_objecoesPersonalizadas.length} equipe',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        for (final qr in _objeoesRespostas) _objecaoTile(cs, qr[0], qr[1]),
+        const SizedBox(height: 10),
+        TextField(
+          decoration: InputDecoration(
+            hintText: 'Filtrar perguntas ou respostas por palavra-chave...',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _buscaObjecoes.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () => setState(() => _buscaObjecoes = ''),
+                  )
+                : null,
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            filled: true,
+            fillColor: cs.surface,
+          ),
+          onChanged: (v) => setState(() => _buscaObjecoes = v),
+        ),
+        const SizedBox(height: 10),
+        if (listaObjecoes.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  _buscaObjecoes.isNotEmpty
+                      ? 'Nenhuma objeção encontrada para "$_buscaObjecoes".'
+                      : 'Nenhuma objeção cadastrada.',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+            ),
+          )
+        else
+          for (final o in listaObjecoes)
+            _objecaoTile(
+              cs,
+              o['pergunta'] as String,
+              o['resposta'] as String,
+              id: o['id'] as String?,
+              personalizada: (o['personalizada'] as bool?) ?? false,
+              autor: o['criadoPorNome'] as String?,
+              onEditar: o['personalizada'] == true
+                  ? () => _abrirDialogObjecao(cs, item: o)
+                  : null,
+              onExcluir: o['personalizada'] == true
+                  ? () => _confirmarRemoverObjecao(cs, o)
+                  : null,
+            ),
       ],
     );
   }
@@ -8003,14 +8469,63 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  Widget _objecaoTile(ColorScheme cs, String objecao, String resposta) {
+  Widget _objecaoTile(
+    ColorScheme cs,
+    String objecao,
+    String resposta, {
+    String? id,
+    bool personalizada = false,
+    String? autor,
+    VoidCallback? onEditar,
+    VoidCallback? onExcluir,
+  }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
+      elevation: personalizada ? 1.5 : 0.5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: personalizada
+              ? cs.primary.withValues(alpha: 0.4)
+              : cs.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
       child: ExpansionTile(
-        leading: Icon(Icons.chat_bubble_outline, color: Colors.orange.shade800),
-        title: Text('"$objecao"',
-            style: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600)),
+        leading: Icon(
+          Icons.chat_bubble_outline,
+          color: personalizada ? cs.primary : Colors.orange.shade800,
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '"$objecao"',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (personalizada) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Personalizada',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -8021,12 +8536,54 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   size: 16, color: Colors.green.shade700),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(resposta,
-                    style: TextStyle(
-                        fontSize: 13, color: cs.onSurfaceVariant, height: 1.4)),
+                child: Text(
+                  resposta,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
               ),
             ],
           ),
+          if (personalizada) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (autor != null && autor.isNotEmpty)
+                  Expanded(
+                    child: Text(
+                      'Cadastrado por $autor',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                if (onEditar != null)
+                  TextButton.icon(
+                    onPressed: onEditar,
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Editar', style: TextStyle(fontSize: 12)),
+                  ),
+                if (onExcluir != null)
+                  TextButton.icon(
+                    onPressed: onExcluir,
+                    icon: Icon(Icons.delete_outline, size: 16, color: cs.error),
+                    label: Text(
+                      'Excluir',
+                      style: TextStyle(fontSize: 12, color: cs.error),
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

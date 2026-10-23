@@ -593,6 +593,74 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
+  // --- TRANSIÇÃO: objeções e respostas adicionadas pelo usuário ---
+  // Guardado em `config/transicao_objecoes`, campo `objecoes` = lista de
+  // { "id": String, "pergunta": String, "resposta": String, "criadoEm": Timestamp, "criadoPorNome": String }
+  static const _docTransicaoObjecoes = 'transicao_objecoes';
+
+  /// Lê as objeções personalizadas cadastradas para a transição.
+  Future<List<Map<String, dynamic>>> getObjecoesTransicao() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docTransicaoObjecoes).get();
+    final raw = snap.data()?['objecoes'];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  /// Salva (cria ou atualiza) uma objeção na lista de objeções da transição.
+  Future<void> salvarObjecaoTransicao({
+    String? id,
+    required String pergunta,
+    required String resposta,
+  }) async {
+    final ref = _db.collection(_colConfig).doc(_docTransicaoObjecoes);
+    final lista = await getObjecoesTransicao();
+    final itemId = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    final idx = lista.indexWhere((o) => o['id'] == itemId);
+
+    final item = {
+      'id': itemId,
+      'pergunta': pergunta.trim(),
+      'resposta': resposta.trim(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    };
+
+    if (idx >= 0) {
+      lista[idx] = {
+        ...lista[idx],
+        ...item,
+      };
+    } else {
+      lista.add({
+        ...item,
+        'criadoEm': FieldValue.serverTimestamp(),
+        'criadoPorNome': _currentUserName,
+      });
+    }
+
+    await ref.set({
+      'objecoes': lista,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Remove uma objeção personalizada da transição.
+  Future<void> removerObjecaoTransicao(String id) async {
+    final ref = _db.collection(_colConfig).doc(_docTransicaoObjecoes);
+    final lista = await getObjecoesTransicao();
+    lista.removeWhere((o) => o['id'] == id);
+    await ref.set({
+      'objecoes': lista,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
   // --- CLIENTES ---
 
   Stream<List<Cliente>> getTodosClientesStream({
