@@ -27,8 +27,9 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   static final _fmt = DateFormat('dd/MM/yyyy');
   static final _diaSem = DateFormat('EEE', 'pt_BR');
 
-  // Tiers e dias disponíveis (batem com as abas da planilha).
-  static const _tiers = ['ouro', 'prata', 'bronze'];
+  // Tiers e dias disponíveis. 'ourocorrido' = produto "Ouro Dias Corridos"
+  // (2 quinzenas de 14 dias: 1 Alta + 1 Média por ano).
+  static const _tiers = ['ouro', 'ourocorrido', 'prata', 'bronze'];
   static const _dias = ['domingo', 'segunda', 'quinta', 'sexta', 'sabado'];
   static const _rotuloDia = {
     'domingo': 'Domingo',
@@ -39,11 +40,13 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   };
   static const _rotuloTier = {
     'ouro': 'Ouro',
+    'ourocorrido': 'Ouro Dias Corridos',
     'prata': 'Prata',
     'bronze': 'Bronze',
   };
   static const _corTier = {
     'ouro': Color(0xFFC9A227),
+    'ourocorrido': Color(0xFFB8860B),
     'prata': Color(0xFF7A8390),
     'bronze': Color(0xFF9E6B3F),
   };
@@ -95,6 +98,8 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   List<SemanaMP> get _semanasCota =>
       (_cota == null ? null : _dados[_cota]) ?? const [];
 
+  String get _unidade => _tier == 'ourocorrido' ? 'quinzena(s)' : 'semana(s)';
+
   List<int> get _anosDisponiveis {
     final s = <int>{for (final w in _semanasCota) w.ano};
     final l = s.toList()..sort();
@@ -138,19 +143,26 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
         ),
         const SizedBox(height: 16),
 
-        // Seletor de tier.
-        SegmentedButton<String>(
-          segments: [
+        // Seletor de tier/produto.
+        _dropdown<String>(
+          cs,
+          rotulo: 'Produto',
+          value: _tier,
+          largura: 230,
+          itens: [
             for (final t in _tiers)
-              ButtonSegment(
+              DropdownMenuItem(
                 value: t,
-                label: Text(_rotuloTier[t]!),
-                icon: Icon(Icons.circle, size: 12, color: _corTier[t]),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.circle, size: 12, color: _corTier[t]),
+                  const SizedBox(width: 8),
+                  Text(_rotuloTier[t]!),
+                ]),
               ),
           ],
-          selected: {_tier},
-          onSelectionChanged: (s) {
-            setState(() => _tier = s.first);
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => _tier = v);
             _carregar();
           },
         ),
@@ -247,8 +259,9 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
         Expanded(
           child: Text(
             '${_rotuloTier[_tier]} · entrada ${_rotuloDia[_dia]!.toLowerCase()} · '
-            'Cota $_cota · ~$porAno semana(s)/ano · '
-            '${_semanasCota.length} no total (2027–2078)',
+            'Cota $_cota · ~$porAno $_unidade/ano · '
+            '${_semanasCota.length} no total (2027–2078)'
+            '${_tier == 'ourocorrido' ? ' · 14 dias cada' : ''}',
             style: TextStyle(fontSize: 13, color: cs.onSurface),
           ),
         ),
@@ -347,9 +360,10 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
     required T? value,
     required List<DropdownMenuItem<T>> itens,
     required ValueChanged<T?> onChanged,
+    double largura = 150,
   }) {
     return SizedBox(
-      width: 150,
+      width: largura,
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: rotulo,
