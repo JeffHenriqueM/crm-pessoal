@@ -147,8 +147,10 @@ class _AbaAdminOverviewState extends State<AbaAdminOverview> {
 
     // Ranking conta SOMENTE vendedores/captadores (ticket #60) — exclui
     // admin/financeiro/pós-venda/recepção e o agrupador "Sem vendedor".
+    // Usuários "sem acesso" também saem do ranking (mas seus leads continuam
+    // nos totais gerais, pois `stats` não é filtrado).
     final idsVendas = widget.todosVendedores
-        .where((u) => ehPerfilVendas(u.perfil))
+        .where((u) => ehPerfilVendas(u.perfil) && !u.acessoBloqueado)
         .map((u) => u.id)
         .toSet();
     final rankingFechados =

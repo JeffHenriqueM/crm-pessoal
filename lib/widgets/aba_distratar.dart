@@ -47,7 +47,7 @@ class _AbaDistratarState extends State<AbaDistratar> {
   List<Contrato> _contratos = [];
   List<BaixaFinanceira> _baixas = [];
   AnaliseDistrato? _analise;
-  bool _carregando = true;
+  bool _carregando = false; // true só durante a busca (disparada pelo botão)
   int _modo = 0; // 0 = maiores atrasos, 1 = inadimplentes
   final _processando = <String>{}; // localizadores em gravação
 
@@ -67,20 +67,20 @@ class _AbaDistratarState extends State<AbaDistratar> {
 
   bool get _temPermissao {
     final p = widget.userProfile.toLowerCase().trim();
-    return p == 'super admin' || p == 'pós-venda';
+    return p == 'super admin' || p == 'pós-venda' || p == 'admin';
   }
 
   @override
   void initState() {
     super.initState();
-    if (_temPermissao) {
-      _carregar();
-    } else {
-      _carregando = false;
-    }
+    // Carrega automaticamente ao abrir a aba. As leituras são cacheadas no
+    // serviço (contratos 10 min, baixas 12 h), então reabrir a aba reaproveita
+    // o que já está em memória — não precisa clicar em "Carregar" toda vez.
+    if (_temPermissao) _carregar();
   }
 
   Future<void> _carregar() async {
+    setState(() => _carregando = true);
     try {
       final contratos = await _firestore.getContratos();
       final baixas = await _firestore.getBaixasFinanceiras();
@@ -267,6 +267,38 @@ class _AbaDistratarState extends State<AbaDistratar> {
     );
   }
 
+  /// Fallback: só aparece se o carregamento automático falhar (ex.: erro de
+  /// rede). O normal é a aba já abrir com a análise carregada.
+  Widget _promptCarregar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.gavel_outlined, size: 48, color: cs.primary),
+            const SizedBox(height: 12),
+            const Text('Análise não carregada',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+              'Não consegui carregar automaticamente. Toque para tentar de novo.',
+              style: TextStyle(color: cs.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _carregar,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Carregar análise'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_temPermissao) {
@@ -285,7 +317,7 @@ class _AbaDistratarState extends State<AbaDistratar> {
     }
     final analise = _analise;
     if (analise == null) {
-      return const Center(child: Text('Sem dados.'));
+      return _promptCarregar(context);
     }
 
     final base =
@@ -307,9 +339,15 @@ class _AbaDistratarState extends State<AbaDistratar> {
                       Padding(
                         padding: const EdgeInsets.all(32),
                         child: Center(
-                          child: Text(base.isEmpty
-                              ? 'Nenhum contrato nesta lista.'
-                              : 'Nenhum contrato com os filtros aplicados.'),
+                          child: Text(
+                            base.isEmpty
+                                ? 'Nenhum contrato nesta lista.'
+                                : 'Nenhum contrato com os filtros aplicados.',
+                            style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant),
+                          ),
                         ),
                       ),
                     ],
@@ -393,11 +431,15 @@ class _AbaDistratarState extends State<AbaDistratar> {
               isDense: true,
               isExpanded: true,
               value: _ordenarPor,
+              dropdownColor: cs.surfaceContainerHigh,
+              iconEnabledColor: cs.onSurfaceVariant,
+              style: TextStyle(fontSize: 13, color: cs.onSurface),
               items: [
                 for (final o in _OrdenarPor.values)
                   DropdownMenuItem(
                     value: o,
-                    child: Text(o.label, style: const TextStyle(fontSize: 13)),
+                    child: Text(o.label,
+                        style: TextStyle(fontSize: 13, color: cs.onSurface)),
                   ),
               ],
               onChanged: (v) => setState(() => _ordenarPor = v ?? _ordenarPor),
@@ -405,9 +447,11 @@ class _AbaDistratarState extends State<AbaDistratar> {
           ),
         ),
         IconButton(
-          tooltip: _ordemDesc ? 'Decrescente (maior→menor)' : 'Crescente (menor→maior)',
+          tooltip: _ordemDesc
+              ? 'Decrescente (maior→menor)'
+              : 'Crescente (menor→maior)',
           icon: Icon(_ordemDesc ? Icons.arrow_downward : Icons.arrow_upward,
-              size: 18),
+              size: 18, color: cs.onSurfaceVariant),
           visualDensity: VisualDensity.compact,
           onPressed: () => setState(() => _ordemDesc = !_ordemDesc),
         ),
@@ -458,14 +502,17 @@ class _AbaDistratarState extends State<AbaDistratar> {
                 child: TextField(
                   decoration: InputDecoration(
                     hintText: 'Buscar por nome ou código…',
-                    prefixIcon: const Icon(Icons.search, size: 20),
+                    hintStyle: TextStyle(color: cs.onSurfaceVariant),
+                    prefixIcon:
+                        Icon(Icons.search, size: 20, color: cs.onSurfaceVariant),
                     isDense: true,
                     filled: true,
                     fillColor: cs.surfaceContainerHighest,
                     suffixIcon: _busca.isEmpty
                         ? null
                         : IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
+                            icon: Icon(Icons.clear,
+                                size: 18, color: cs.onSurfaceVariant),
                             onPressed: () => setState(() => _busca = ''),
                           ),
                     border: OutlineInputBorder(
@@ -496,6 +543,9 @@ class _AbaDistratarState extends State<AbaDistratar> {
   }
 
   Widget _chipsSituacao(AnaliseDistrato analise) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final base =
         _modo == 0 ? analise.maioresAtrasos : analise.inadimplentes;
     int contar(bool Function(Contrato) f) => base.where(f).length;
@@ -511,25 +561,49 @@ class _AbaDistratarState extends State<AbaDistratar> {
           contar((c) =>
               c.emDistrato &&
               (c.situacaoDistrato ?? SituacaoDistrato.marcado) == s),
-          _corSituacao(s),
+          _corSituacao(s, isDark: isDark),
         ),
     ];
 
     return SizedBox(
-      height: 36,
+      height: 38,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: itens.length,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (_, i) {
-          final (valor, label, n, cor) = itens[i];
+          final (valor, label, n, corItem) = itens[i];
           final sel = _filtroSit == valor;
+          final corBase = corItem ?? cs.primary;
+          final corTexto = sel
+              ? (corItem ?? (isDark ? cs.primary : cs.primary))
+              : cs.onSurface;
+          final corBg = sel
+              ? corBase.withValues(alpha: isDark ? 0.25 : 0.14)
+              : (isDark
+                  ? cs.surfaceContainerHigh
+                  : cs.surfaceContainerHighest.withValues(alpha: 0.35));
+          final corBorda = sel
+              ? corBase
+              : (isDark
+                  ? cs.outlineVariant.withValues(alpha: 0.4)
+                  : cs.outlineVariant.withValues(alpha: 0.45));
+
           return ChoiceChip(
-            label: Text('$label ($n)'),
+            label: Text(
+              '$label ($n)',
+              style: TextStyle(
+                color: corTexto,
+                fontWeight: sel ? FontWeight.bold : FontWeight.w500,
+                fontSize: 12.5,
+              ),
+            ),
             selected: sel,
+            showCheckmark: false,
             visualDensity: VisualDensity.compact,
-            selectedColor: (cor ?? Theme.of(context).colorScheme.primary)
-                .withValues(alpha: 0.18),
+            backgroundColor: corBg,
+            selectedColor: corBg,
+            side: BorderSide(color: corBorda, width: sel ? 1.5 : 1.0),
             onSelected: (_) => setState(() => _filtroSit = valor),
           );
         },
@@ -538,23 +612,32 @@ class _AbaDistratarState extends State<AbaDistratar> {
   }
 
   Widget _kpi(String label, String valor, IconData icone, Color cor) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final corAjustada = isDark ? _clarearParaDarkMode(cor) : cor;
+
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: cor.withValues(alpha: 0.08),
+          color: corAjustada.withValues(alpha: isDark ? 0.16 : 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: cor.withValues(alpha: 0.25)),
+          border: Border.all(
+              color: corAjustada.withValues(alpha: isDark ? 0.35 : 0.25)),
         ),
         child: Column(
           children: [
-            Icon(icone, color: cor, size: 20),
+            Icon(icone, color: corAjustada, size: 20),
             const SizedBox(height: 4),
             Text(valor,
                 style: TextStyle(
-                    fontWeight: FontWeight.bold, color: cor, fontSize: 15)),
+                    fontWeight: FontWeight.bold,
+                    color: corAjustada,
+                    fontSize: 15)),
             Text(label,
-                style: Theme.of(context).textTheme.bodySmall,
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSurfaceVariant),
                 textAlign: TextAlign.center),
           ],
         ),
@@ -562,8 +645,21 @@ class _AbaDistratarState extends State<AbaDistratar> {
     );
   }
 
+  Color _clarearParaDarkMode(Color cor) {
+    if (cor == Colors.red) return Colors.red.shade300;
+    if (cor == Colors.orange) return Colors.orange.shade300;
+    if (cor == Colors.teal) return Colors.teal.shade300;
+    if (cor == Colors.blueGrey) return Colors.blueGrey.shade200;
+    if (cor == Colors.blue) return Colors.lightBlue.shade300;
+    if (cor == Colors.purple) return Colors.purple.shade200;
+    if (cor == Colors.green) return Colors.green.shade300;
+    return cor;
+  }
+
   Widget _cardContrato(Contrato c, Map<String, DateTime> ultimoPagamento) {
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final ultimo = ultimoPagamento[c.localizador];
     final processando = _processando.contains(c.localizador);
 
@@ -624,7 +720,8 @@ class _AbaDistratarState extends State<AbaDistratar> {
                         const SizedBox(height: 4),
                         Text(
                           subtitlePartes.join('  •  '),
-                          style: Theme.of(context).textTheme.bodySmall,
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant),
                         ),
                         if (c.emDistrato &&
                             (c.notificadoEm != null ||
@@ -675,11 +772,15 @@ class _AbaDistratarState extends State<AbaDistratar> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: c.valorAtrasado > 0
-                              ? Colors.red.shade700
+                              ? (isDark
+                                  ? Colors.red.shade300
+                                  : Colors.red.shade700)
                               : cs.onSurfaceVariant,
                         ),
                       ),
-                      const Text('em atraso', style: TextStyle(fontSize: 11)),
+                      Text('em atraso',
+                          style: TextStyle(
+                              fontSize: 11, color: cs.onSurfaceVariant)),
                     ],
                   ),
                 ],
@@ -725,13 +826,16 @@ class _AbaDistratarState extends State<AbaDistratar> {
   }
 
   Widget _situacaoChip(Contrato c) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final s = c.situacaoDistrato ?? SituacaoDistrato.marcado;
-    final cor = _corSituacao(s);
+    final cor = _corSituacao(s, isDark: isDark);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: cor.withValues(alpha: 0.14),
+        color: cor.withValues(alpha: isDark ? 0.22 : 0.14),
         borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+            color: cor.withValues(alpha: isDark ? 0.45 : 0.25)),
       ),
       child: Text(
         s.label.toUpperCase(),
@@ -741,22 +845,40 @@ class _AbaDistratarState extends State<AbaDistratar> {
     );
   }
 
-  Color _corSituacao(SituacaoDistrato s) {
+  Color _corSituacao(SituacaoDistrato s, {bool isDark = false}) {
+    if (isDark) {
+      switch (s) {
+        case SituacaoDistrato.emAnalise:
+          return Colors.teal.shade300;
+        case SituacaoDistrato.marcado:
+          return Colors.blueGrey.shade200;
+        case SituacaoDistrato.notificado:
+          return Colors.lightBlue.shade300;
+        case SituacaoDistrato.emTratativa:
+          return Colors.orange.shade300;
+        case SituacaoDistrato.emNegociacao:
+          return Colors.purple.shade200;
+        case SituacaoDistrato.distratoEnviado:
+          return Colors.red.shade300;
+        case SituacaoDistrato.regularizado:
+          return Colors.green.shade300;
+      }
+    }
     switch (s) {
       case SituacaoDistrato.emAnalise:
-        return Colors.teal;
+        return Colors.teal.shade700;
       case SituacaoDistrato.marcado:
-        return Colors.blueGrey;
+        return Colors.blueGrey.shade700;
       case SituacaoDistrato.notificado:
-        return Colors.blue;
+        return Colors.blue.shade800;
       case SituacaoDistrato.emTratativa:
-        return Colors.orange;
+        return Colors.orange.shade900;
       case SituacaoDistrato.emNegociacao:
-        return Colors.purple;
+        return Colors.purple.shade800;
       case SituacaoDistrato.distratoEnviado:
-        return Colors.red;
+        return Colors.red.shade700;
       case SituacaoDistrato.regularizado:
-        return Colors.green;
+        return Colors.green.shade800;
     }
   }
 
@@ -874,6 +996,7 @@ class _DialogSituacaoDistratoState extends State<_DialogSituacaoDistrato> {
 
   Widget _campoData(String label, DateTime? valor, VoidCallback onTap,
       {VoidCallback? onClear}) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -883,16 +1006,23 @@ class _DialogSituacaoDistratoState extends State<_DialogSituacaoDistrato> {
           border: const OutlineInputBorder(),
           suffixIcon: valor != null && onClear != null
               ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18), onPressed: onClear)
-              : const Icon(Icons.calendar_today, size: 18),
+                  icon: Icon(Icons.clear, size: 18, color: cs.onSurfaceVariant),
+                  onPressed: onClear)
+              : Icon(Icons.calendar_today, size: 18, color: cs.onSurfaceVariant),
         ),
-        child: Text(valor != null ? _fmt.format(valor) : '—'),
+        child: Text(
+          valor != null ? _fmt.format(valor) : '—',
+          style: TextStyle(
+            color: valor != null ? cs.onSurface : cs.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return AlertDialog(
       title: const Text('Situação / acompanhamento'),
       content: SingleChildScrollView(
@@ -907,13 +1037,19 @@ class _DialogSituacaoDistratoState extends State<_DialogSituacaoDistrato> {
               const SizedBox(height: 12),
               DropdownButtonFormField<SituacaoDistrato>(
                 initialValue: _situacao,
+                dropdownColor: cs.surfaceContainerHigh,
+                style: TextStyle(fontSize: 14, color: cs.onSurface),
                 decoration: const InputDecoration(
                   labelText: 'Situação',
                   border: OutlineInputBorder(),
                 ),
                 items: [
                   for (final s in SituacaoDistrato.values)
-                    DropdownMenuItem(value: s, child: Text(s.label)),
+                    DropdownMenuItem(
+                      value: s,
+                      child: Text(s.label,
+                          style: TextStyle(color: cs.onSurface)),
+                    ),
                 ],
                 onChanged: (v) => setState(() => _situacao = v ?? _situacao),
               ),

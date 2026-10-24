@@ -85,7 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ── Dashboard admin (6 abas) ──────────────────────────────────────────────
+  // ── Dashboard admin (11 abas) ─────────────────────────────────────────────
   Widget _buildAdminDashboard() {
     return Scaffold(
       appBar: AppBar(

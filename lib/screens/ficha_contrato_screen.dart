@@ -40,8 +40,11 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   // refletir na mesma tela (a tela não faz stream do contrato).
   late StatusAssinatura _statusAssinatura = widget.contrato.statusAssinatura;
 
-  /// Último pagamento do cliente (carregado assincronamente; null = sem dados).
+  /// Último pagamento do cliente (carregado sob demanda; null = sem dados).
   BaixaFinanceira? _ultimoPagamento;
+  // A baixa só é buscada quando o usuário clica em "Ver último pagamento".
+  bool _pagamentoSolicitado = false;
+  bool _carregandoPagamento = false;
 
   StreamSubscription<List<Interacao>>? _interSub;
 
@@ -52,10 +55,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
     _auth.getCurrentUserProfile().then((p) {
       if (!mounted) return;
       setState(() => _perfil = p);
-      // Carrega último pagamento apenas para perfis autorizados.
-      if (p == 'admin' || p == 'financeiro' || p == 'super admin') {
-        _carregarUltimoPagamento();
-      }
+      // Não busca o pagamento aqui — aguarda o clique em "Ver último pagamento".
     });
     _interSub = _fs
         .getInteracoesContrato(widget.contrato.localizador)
@@ -81,12 +81,22 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
       _perfil == 'super admin';
 
   Future<void> _carregarUltimoPagamento() async {
+    setState(() {
+      _pagamentoSolicitado = true;
+      _carregandoPagamento = true;
+    });
     try {
       final baixa = await _fs
           .getUltimoPagamentoCliente(widget.contrato.nomeComprador);
-      if (mounted) setState(() => _ultimoPagamento = baixa);
+      if (mounted) {
+        setState(() {
+          _ultimoPagamento = baixa;
+          _carregandoPagamento = false;
+        });
+      }
     } catch (e) {
       debugPrint('[FichaContratoScreen] Erro ao buscar último pagamento: $e');
+      if (mounted) setState(() => _carregandoPagamento = false);
     }
   }
 
@@ -137,6 +147,10 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
             onEditarLinkPdf: _editarLinkPdf,
             ultimoPagamento:
                 _podeVerFinanceiro ? _ultimoPagamento : null,
+            podeVerPagamento: _podeVerFinanceiro,
+            pagamentoCarregado: _pagamentoSolicitado && !_carregandoPagamento,
+            carregandoPagamento: _carregandoPagamento,
+            onCarregarPagamento: _carregarUltimoPagamento,
           ),
           _InteracoesTab(
             interacoes: _interacoes,
@@ -367,6 +381,13 @@ class _DadosTab extends StatelessWidget {
   /// ou nenhuma baixa encontrada).
   final BaixaFinanceira? ultimoPagamento;
 
+  /// Financeiro visível para o perfil (mostra o botão/seção de pagamento).
+  final bool podeVerPagamento;
+  /// Já foi buscado (mostra o resultado em vez do botão).
+  final bool pagamentoCarregado;
+  final bool carregandoPagamento;
+  final VoidCallback? onCarregarPagamento;
+
   const _DadosTab({
     required this.contrato,
     required this.isAdmin,
@@ -380,6 +401,10 @@ class _DadosTab extends StatelessWidget {
     required this.onAbrirPdf,
     required this.onEditarLinkPdf,
     this.ultimoPagamento,
+    this.podeVerPagamento = false,
+    this.pagamentoCarregado = false,
+    this.carregandoPagamento = false,
+    this.onCarregarPagamento,
   });
 
   @override
@@ -615,8 +640,33 @@ class _DadosTab extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
 
-        // Último Pagamento (visível apenas para admin, financeiro, super admin)
-        if (ultimoPagamento != null) ...[
+        // Último Pagamento (visível apenas para admin, financeiro, super admin).
+        // A baixa só é buscada ao clicar — evita leitura à toa ao abrir a ficha.
+        if (podeVerPagamento && !pagamentoCarregado) ...[
+          _secao('Último Pagamento', [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: carregandoPagamento ? null : onCarregarPagamento,
+                icon: carregandoPagamento
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.payments_outlined, size: 18),
+                label: Text(carregandoPagamento
+                    ? 'Buscando…'
+                    : 'Ver último pagamento'),
+              ),
+            ),
+          ]),
+        ] else if (podeVerPagamento && ultimoPagamento == null) ...[
+          _secao('Último Pagamento', [
+            const Text('Nenhum pagamento encontrado para este cliente.',
+                style: TextStyle(color: Colors.grey)),
+          ]),
+        ] else if (ultimoPagamento != null) ...[
           _secao('Último Pagamento', [
             Builder(builder: (_) {
               final ult = ultimoPagamento!;

@@ -40,6 +40,10 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
 
   /// Mapa de último pagamento indexado por nomeComprador.
   Map<String, BaixaFinanceira> _ultimosPagamentos = {};
+  // Os últimos pagamentos (baixas) só são buscados quando o usuário clica no
+  // botão — leitura evitada ao abrir a tela.
+  bool _pagamentosCarregados = false;
+  bool _carregandoPagamentos = false;
 
   StreamSubscription<List<Contrato>>? _sub;
 
@@ -53,7 +57,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           _todos = lista;
           _carregando = false;
         });
-        _carregarUltimosPagamentos(lista);
+        // Não busca os pagamentos aqui — aguarda o clique no botão.
       },
       onError: (_) {
         if (mounted) setState(() => _carregando = false);
@@ -62,14 +66,22 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   }
 
   /// Busca em batch os últimos pagamentos para os contratos visíveis.
-  /// Roda em background — falha silenciosa (não bloqueia a tela).
+  /// Disparada pelo botão "Carregar pagamentos" (não roda ao abrir a tela).
   Future<void> _carregarUltimosPagamentos(List<Contrato> lista) async {
+    setState(() => _carregandoPagamentos = true);
     try {
       final nomes = lista.map((c) => c.nomeComprador).toList();
       final mapa = await _fs.getUltimosPagamentosClientes(nomes);
-      if (mounted) setState(() => _ultimosPagamentos = mapa);
+      if (mounted) {
+        setState(() {
+          _ultimosPagamentos = mapa;
+          _pagamentosCarregados = true;
+          _carregandoPagamentos = false;
+        });
+      }
     } catch (e) {
       debugPrint('[PosVendaScreen] Erro ao buscar últimos pagamentos: $e');
+      if (mounted) setState(() => _carregandoPagamentos = false);
     }
   }
 
@@ -204,6 +216,25 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                   tooltip: 'Filtrar e ordenar',
                   onPressed: () => _abrirFiltros(context),
                 ),
+              ),
+              const SizedBox(width: 4),
+              // Carrega os últimos pagamentos (baixas) sob demanda.
+              IconButton(
+                icon: _carregandoPagamentos
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(_pagamentosCarregados
+                        ? Icons.price_check
+                        : Icons.payments_outlined),
+                tooltip: _pagamentosCarregados
+                    ? 'Pagamentos carregados — clique para atualizar'
+                    : 'Carregar últimos pagamentos',
+                onPressed: _carregandoPagamentos
+                    ? null
+                    : () => _carregarUltimosPagamentos(_todos),
               ),
               if (_podeImportar) ...[
                 const SizedBox(width: 4),
@@ -559,48 +590,56 @@ class _ContratoCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Flexible(
-                    child: Text(
-                      c.nomeComprador,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            c.nomeComprador,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (c.dataContrato != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            'compra ${fmtData.format(c.dataContrato!)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (c.temAtrasos) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Em atraso',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.red.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (c.dataContrato != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      'compra ${fmtData.format(c.dataContrato!)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  if (c.temAtrasos)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Em atraso',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.red.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   BotoesContatoContrato(contrato: c, iconSize: 18),
                 ],
               ),

@@ -228,13 +228,16 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
   }
 
   Future<void> _abrirWhatsApp(BuildContext context, String telefone,
-      {String nome = '', String? esposa}) async {
+      {String nome = '', String? esposa, String? apartamento}) async {
     final messenger = ScaffoldMessenger.of(context);
     // Antes de abrir, oferece os modelos de mensagem (ou "sem mensagem").
+    // Aqui o {apartamento} é o próprio quarto do modal — não depende de o
+    // hóspede ter um contrato associado.
     final escolha = await escolherMensagemWhatsApp(
       context,
       nome: nome,
       esposa: esposa,
+      apartamento: apartamento,
       fs: _service,
     );
     if (escolha == null) return; // usuário cancelou
@@ -1041,7 +1044,8 @@ class _FestaSociosViewState extends State<_FestaSociosView> {
                       nome: (o?.ocupante ?? '')
                           .replaceFirst(RegExp(r'^\*'), '')
                           .trim(),
-                      esposa: _esposaDoQuarto(assoc)),
+                      esposa: _esposaDoQuarto(assoc),
+                      apartamento: q.numero),
                   icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
                   label: const Text('Abrir WhatsApp'),
                   style: FilledButton.styleFrom(

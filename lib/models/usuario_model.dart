@@ -7,6 +7,13 @@ class Usuario {
   final String perfil;
   final bool ativo;
 
+  /// Acesso ao sistema bloqueado: o usuário NÃO consegue fazer login, mas
+  /// continua sendo um usuário normal para atribuição de leads e mantém todo o
+  /// histórico. Distinto de [ativo]=false (desativação completa, que também o
+  /// tira dos dropdowns de atribuição). Usado para pessoas que saíram mas cujos
+  /// leads seguem sendo trabalhados/atribuídos.
+  final bool acessoBloqueado;
+
   /// Meta mensal legada (fechamentos). Mantida para retrocompatibilidade.
   final int? metaMensal;
 
@@ -39,6 +46,7 @@ class Usuario {
     required this.email,
     required this.perfil,
     this.ativo = true,
+    this.acessoBloqueado = false,
     this.metaMensal,
     this.tipoMeta,
     this.valorMeta,
@@ -64,6 +72,7 @@ class Usuario {
       email: data['email'] ?? 'Email não encontrado',
       perfil: data['perfil'] ?? 'vendedor',
       ativo: data['ativo'] ?? true,
+      acessoBloqueado: data['acessoBloqueado'] ?? false,
       metaMensal: data['metaMensal'] as int?,
       tipoMeta: data['tipoMeta'] as String?,
       valorMeta: (data['valorMeta'] as num?)?.toDouble(),
@@ -77,6 +86,11 @@ class Usuario {
       upgradesTotal: (data['upgradesTotal'] as num?)?.toInt() ?? 0,
     );
   }
+
+  /// Conta como membro da equipe nas rankings/metas: ativo e com acesso.
+  /// Usuários "sem acesso" continuam atribuíveis a leads, mas somem das
+  /// rankings e metas (comportam-se como inativos nessas visões).
+  bool get contabilizaEquipe => ativo && !acessoBloqueado;
 
   int _mesAtual(Map<String, int> m) {
     final a = DateTime.now();
@@ -117,6 +131,7 @@ class Usuario {
       'email': email,
       'perfil': perfil,
       'ativo': ativo,
+      'acessoBloqueado': acessoBloqueado,
       if (metas.isNotEmpty) 'metas': metas,
       if (metaMensal != null) 'metaMensal': metaMensal,
       if (tipoMeta != null) 'tipoMeta': tipoMeta,
