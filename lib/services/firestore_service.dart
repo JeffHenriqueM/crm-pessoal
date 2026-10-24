@@ -23,6 +23,7 @@ import '../models/produto_model.dart';
 import '../models/baixa_financeira_model.dart';
 import '../models/semana_mp.dart';
 import '../models/resolucao_calendario_mp.dart';
+import '../models/ocupacao_mp.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 import '../models/versao_preco_hotel.dart';
@@ -579,6 +580,51 @@ class FirestoreService {
     }
     return ResolucaoCalendarioMP(
         ok: true, tier: tier, dia: dia, cota: cota, semanas: semanas);
+  }
+
+  /// Monta a agenda de ocupação: entradas e saídas de sócios por dia, a partir
+  /// dos contratos **Ativos** cruzados com o calendário de rodízio. Usa os
+  /// caches de contratos/calendário/check-in (barato após a 1ª leitura).
+  Future<OcupacaoMP> montarOcupacaoMP() async {
+    final contratos = await getContratos();
+    final ativos =
+        contratos.where((c) => c.status.trim().toLowerCase() == 'ativo').toList();
+    final entradas = <String, List<EventoOcupacao>>{};
+    final saidas = <String, List<EventoOcupacao>>{};
+    var naoResolvidos = 0;
+
+    for (final c in ativos) {
+      final r = await resolverCalendarioContrato(c);
+      if (!r.ok) {
+        naoResolvidos++;
+        continue;
+      }
+      for (final w in r.semanas) {
+        final evt = EventoOcupacao(
+          localizador: c.localizador,
+          nome: c.nomeComprador,
+          bloco: c.bloco,
+          imovel: c.imovel,
+          tier: r.tier!,
+          cota: r.cota!,
+          dia: r.dia!,
+          tipoSemana: w.tipo,
+          feriado: w.feriado,
+        );
+        if (w.entrada.isNotEmpty) {
+          (entradas[w.entrada] ??= []).add(evt);
+        }
+        if (w.saida.isNotEmpty) {
+          (saidas[w.saida] ??= []).add(evt);
+        }
+      }
+    }
+    return OcupacaoMP(
+      entradasPorDia: entradas,
+      saidasPorDia: saidas,
+      ativos: ativos.length,
+      naoResolvidos: naoResolvidos,
+    );
   }
 
   // --- HOTEL: versões da tabela de preços ---
