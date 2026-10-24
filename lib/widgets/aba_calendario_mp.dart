@@ -25,6 +25,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   late final FirestoreService _fs = widget.firestoreService ?? FirestoreService();
 
   static final _fmt = DateFormat('dd/MM/yyyy');
+  static final _diaSem = DateFormat('EEE', 'pt_BR');
 
   // Tiers e dias disponíveis (batem com as abas da planilha).
   static const _tiers = ['ouro', 'prata', 'bronze'];
@@ -261,7 +262,8 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
     final entrada = DateTime.tryParse(w.entrada);
     final saida = DateTime.tryParse(w.saida);
     final periodo = (entrada != null && saida != null)
-        ? '${_fmt.format(entrada)} → ${_fmt.format(saida)}'
+        ? '${_fmt.format(entrada)} (${_diaSem.format(entrada)}) → '
+            '${_fmt.format(saida)} (${_diaSem.format(saida)})'
         : '${w.entrada} → ${w.saida}';
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

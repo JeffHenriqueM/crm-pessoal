@@ -900,6 +900,7 @@ class _CalendarioContratoCard extends StatefulWidget {
 class _CalendarioContratoCardState extends State<_CalendarioContratoCard> {
   final _fs = FirestoreService();
   static final _fmt = DateFormat('dd/MM/yyyy');
+  static final _diaSem = DateFormat('EEE', 'pt_BR');
   static const _rotuloDia = {
     'domingo': 'domingo',
     'segunda': 'segunda',
@@ -1017,7 +1018,8 @@ class _CalendarioContratoCardState extends State<_CalendarioContratoCard> {
     final e = DateTime.tryParse(w.entrada);
     final s = DateTime.tryParse(w.saida);
     final periodo = (e != null && s != null)
-        ? '${_fmt.format(e)} → ${_fmt.format(s)}'
+        ? '${_fmt.format(e)} (${_diaSem.format(e)}) → '
+            '${_fmt.format(s)} (${_diaSem.format(s)})'
         : '${w.entrada} → ${w.saida}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
