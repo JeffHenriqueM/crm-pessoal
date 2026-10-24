@@ -29,7 +29,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
 
   // Tiers e dias disponíveis. 'ourocorrido' = produto "Ouro Dias Corridos"
   // (2 quinzenas de 14 dias: 1 Alta + 1 Média por ano).
-  static const _tiers = ['ouro', 'ourocorrido', 'prata', 'bronze'];
+  static const _tiers = ['ouro', 'ourocorrido', 'prata', 'bronze', 'titanio'];
   static const _dias = ['domingo', 'segunda', 'quinta', 'sexta', 'sabado'];
   static const _rotuloDia = {
     'domingo': 'Domingo',
@@ -43,13 +43,18 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
     'ourocorrido': 'Ouro Dias Corridos',
     'prata': 'Prata',
     'bronze': 'Bronze',
+    'titanio': 'Titânio',
   };
   static const _corTier = {
     'ouro': Color(0xFFC9A227),
     'ourocorrido': Color(0xFFB8860B),
     'prata': Color(0xFF7A8390),
     'bronze': Color(0xFF9E6B3F),
+    'titanio': Color(0xFF546E7A),
   };
+
+  // Produtos de quinzena (14 dias corridos) — texto adaptado.
+  static const _produtosQuinzena = {'ourocorrido', 'titanio'};
 
   String _tier = 'ouro';
   String _dia = 'domingo';
@@ -98,7 +103,8 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   List<SemanaMP> get _semanasCota =>
       (_cota == null ? null : _dados[_cota]) ?? const [];
 
-  String get _unidade => _tier == 'ourocorrido' ? 'quinzena(s)' : 'semana(s)';
+  String get _unidade =>
+      _produtosQuinzena.contains(_tier) ? 'quinzena(s)' : 'semana(s)';
 
   List<int> get _anosDisponiveis {
     final s = <int>{for (final w in _semanasCota) w.ano};
@@ -261,7 +267,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
             '${_rotuloTier[_tier]} · entrada ${_rotuloDia[_dia]!.toLowerCase()} · '
             'Cota $_cota · ~$porAno $_unidade/ano · '
             '${_semanasCota.length} no total (2027–2078)'
-            '${_tier == 'ourocorrido' ? ' · 14 dias cada' : ''}',
+            '${_produtosQuinzena.contains(_tier) ? ' · 14 dias cada' : ''}',
             style: TextStyle(fontSize: 13, color: cs.onSurface),
           ),
         ),
