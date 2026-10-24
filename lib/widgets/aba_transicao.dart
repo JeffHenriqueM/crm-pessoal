@@ -718,13 +718,15 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         _carregado = true;
         _carregando = false;
       });
-    } catch (e) {
-      debugPrint('AbaTransicao._carregar: $e');
+    } catch (e, stack) {
+      debugPrint('AbaTransicao._carregar: $e\n$stack');
       if (!mounted) return;
       setState(() => _carregando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro ao carregar a transição.')),
-      );
+      if (forcarContratos) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao carregar a transição: $e')),
+        );
+      }
     }
   }
 

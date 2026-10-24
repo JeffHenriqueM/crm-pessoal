@@ -275,13 +275,21 @@ class FirestoreService {
 
   /// Lê o mapa apartamento → cota definido manualmente no módulo Hotel.
   Future<Map<String, String>> getCotasHotel() async {
-    final snap = await _db.collection(_colConfig).doc(_docHotelCotas).get();
-    final raw = (snap.data()?['cotas'] as Map<String, dynamic>?) ?? {};
-    final m = <String, String>{};
-    raw.forEach((k, v) {
-      if (v is String && v.isNotEmpty) m[k] = v;
-    });
-    return m;
+    try {
+      final snap = await _db.collection(_colConfig).doc(_docHotelCotas).get();
+      final data = snap.data();
+      final raw = data?['cotas'];
+      final m = <String, String>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is String && v.isNotEmpty) m[k.toString()] = v;
+        });
+      }
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler cotasHotel: $e');
+      return {};
+    }
   }
 
   /// Define (ou limpa, com [cota] == null) a cota de um apartamento.
@@ -326,16 +334,24 @@ class FirestoreService {
   /// Lê o mapa apartamento → dia de check-in definido no módulo Hotel.
   /// Regra: o apto 141 é sexta-feira por padrão.
   Future<Map<String, String>> getCheckinHotel() async {
-    final snap =
-        await _db.collection(_colConfig).doc(_docHotelCheckin).get();
-    final raw = (snap.data()?['checkin'] as Map<String, dynamic>?) ?? {};
-    final m = <String, String>{};
-    raw.forEach((k, v) {
-      if (v is String && v.isNotEmpty) m[k] = v;
-    });
-    // Regra explícita do negócio: 141 é sexta-feira por padrão
-    m.putIfAbsent('141', () => 'sexta');
-    return m;
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docHotelCheckin).get();
+      final data = snap.data();
+      final raw = data?['checkin'];
+      final m = <String, String>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is String && v.isNotEmpty) m[k.toString()] = v;
+        });
+      }
+      // Regra explícita do negócio: 141 é sexta-feira por padrão
+      m.putIfAbsent('141', () => 'sexta');
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler checkinHotel: $e');
+      return {'141': 'sexta'};
+    }
   }
 
   /// Define (ou limpa, com [dia] == null) o dia de check-in de um apartamento.
@@ -399,14 +415,22 @@ class FirestoreService {
 
   /// Lê a tabela de preços do Hotel (categoria × cota). Chave = "categoria|cota".
   Future<Map<String, double>> getPrecosHotel() async {
-    final snap =
-        await _db.collection(_colConfig).doc(_docHotelPrecos).get();
-    final raw = (snap.data()?['precos'] as Map<String, dynamic>?) ?? {};
-    final m = <String, double>{};
-    raw.forEach((k, v) {
-      if (v is num && v > 0) m[k] = v.toDouble();
-    });
-    return m;
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docHotelPrecos).get();
+      final data = snap.data();
+      final raw = data?['precos'];
+      final m = <String, double>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is num && v > 0) m[k.toString()] = v.toDouble();
+        });
+      }
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler precosHotel: $e');
+      return {};
+    }
   }
 
   /// Substitui TODA a tabela de preços do Hotel de uma vez.
@@ -424,28 +448,54 @@ class FirestoreService {
 
   /// Busca todas as versões da tabela de preços salvas, ordenadas pela data de criação.
   Future<List<VersaoPrecoHotel>> getVersoesPrecosHotel() async {
-    final snap = await _db
-        .collection(_colHotelPrecosVersoes)
-        .orderBy('criadoEm', descending: false)
-        .get();
-    final versoes = snap.docs.map(VersaoPrecoHotel.fromFirestore).toList();
-    if (versoes.isEmpty) {
-      // Seed inicial a partir da tabela atual em config/hotel_precos
-      final precosAtuais = await getPrecosHotel();
-      final versaoInicial = VersaoPrecoHotel(
-        id: 'versao_jeff',
-        nome: 'Versão Jeff',
-        criadoPorId: _currentUserId,
-        criadoPorNome: _currentUserName.contains('Usuário') ? 'Jeff' : _currentUserName,
-        criadoEm: DateTime.now(),
-        atualizadoEm: DateTime.now(),
-        precos: precosAtuais,
-        isPadrao: true,
-      );
-      await salvarVersaoPrecoHotel(versaoInicial);
-      return [versaoInicial];
+    try {
+      final snap = await _db
+          .collection(_colHotelPrecosVersoes)
+          .orderBy('criadoEm', descending: false)
+          .get();
+      final versoes = snap.docs.map(VersaoPrecoHotel.fromFirestore).toList();
+      if (versoes.isEmpty) {
+        // Seed inicial a partir da tabela atual em config/hotel_precos
+        final precosAtuais = await getPrecosHotel();
+        final versaoInicial = VersaoPrecoHotel(
+          id: 'versao_jeff',
+          nome: 'Versão Jeff',
+          criadoPorId: _currentUserId,
+          criadoPorNome: _currentUserName.contains('Usuário') ? 'Jeff' : _currentUserName,
+          criadoEm: DateTime.now(),
+          atualizadoEm: DateTime.now(),
+          precos: precosAtuais,
+          isPadrao: true,
+        );
+        try {
+          await salvarVersaoPrecoHotel(versaoInicial);
+        } catch (e) {
+          debugPrint('[Firestore] Erro ao salvar seed versao_jeff: $e');
+        }
+        return [versaoInicial];
+      }
+      return versoes;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar versoesPrecosHotel: $e');
+      // Fallback seguro: cria versão local em memória baseada nos preços atuais
+      try {
+        final precosAtuais = await getPrecosHotel();
+        return [
+          VersaoPrecoHotel(
+            id: 'versao_jeff',
+            nome: 'Versão Jeff',
+            criadoPorId: _currentUserId,
+            criadoPorNome: _currentUserName.contains('Usuário') ? 'Jeff' : _currentUserName,
+            criadoEm: DateTime.now(),
+            atualizadoEm: DateTime.now(),
+            precos: precosAtuais,
+            isPadrao: true,
+          )
+        ];
+      } catch (_) {
+        return [];
+      }
     }
-    return versoes;
   }
 
   /// Salva ou atualiza uma versão da tabela de preços.
@@ -479,25 +529,33 @@ class FirestoreService {
   /// Lê os argumentos de transição por sócio do módulo Hotel.
   /// Retorna um mapa indexado pelo nome do sócio.
   Future<Map<String, Map<String, dynamic>>> getArgumentosSociosHotel() async {
-    final snap =
-        await _db.collection(_colConfig).doc(_docHotelArgumentosSocios).get();
-    final raw = (snap.data()?['socios'] as Map<String, dynamic>?) ?? {};
-    final m = <String, Map<String, dynamic>>{};
-    raw.forEach((k, v) {
-      if (v is Map) {
-        final entry = Map<String, dynamic>.from(v);
-        final arg = (entry['argumentos'] as String?)?.trim() ?? '';
-        if (arg.isNotEmpty) {
-          m[k] = entry;
-        }
-      } else if (v is String && v.trim().isNotEmpty) {
-        m[k] = {
-          'nome': k,
-          'argumentos': v.trim(),
-        };
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docHotelArgumentosSocios).get();
+      final data = snap.data();
+      final raw = data?['socios'];
+      final m = <String, Map<String, dynamic>>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is Map) {
+            final entry = Map<String, dynamic>.from(v);
+            final arg = (entry['argumentos'] as String?)?.trim() ?? '';
+            if (arg.isNotEmpty) {
+              m[k.toString()] = entry;
+            }
+          } else if (v is String && v.trim().isNotEmpty) {
+            m[k.toString()] = {
+              'nome': k.toString(),
+              'argumentos': v.trim(),
+            };
+          }
+        });
       }
-    });
-    return m;
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler argumentosSociosHotel: $e');
+      return {};
+    }
   }
 
   /// Salva ou atualiza os argumentos de um sócio no módulo Hotel.
@@ -543,16 +601,24 @@ class FirestoreService {
   /// Lê as atualizações de transição por sócio (aceite, fases e distrato).
   /// Retorna um mapa indexado pelo nome do sócio.
   Future<Map<String, Map<String, dynamic>>> getAtualizacoesSociosTransicao() async {
-    final snap =
-        await _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios).get();
-    final raw = (snap.data()?['socios'] as Map<String, dynamic>?) ?? {};
-    final m = <String, Map<String, dynamic>>{};
-    raw.forEach((k, v) {
-      if (v is Map) {
-        m[k] = Map<String, dynamic>.from(v);
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios).get();
+      final data = snap.data();
+      final raw = data?['socios'];
+      final m = <String, Map<String, dynamic>>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is Map) {
+            m[k.toString()] = Map<String, dynamic>.from(v);
+          }
+        });
       }
-    });
-    return m;
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler atualizacoesSociosTransicao: $e');
+      return {};
+    }
   }
 
   /// Salva ou atualiza a situação de transição de um sócio.
@@ -600,14 +666,19 @@ class FirestoreService {
 
   /// Lê as objeções personalizadas cadastradas para a transição.
   Future<List<Map<String, dynamic>>> getObjecoesTransicao() async {
-    final snap =
-        await _db.collection(_colConfig).doc(_docTransicaoObjecoes).get();
-    final raw = snap.data()?['objecoes'];
-    if (raw is! List) return [];
-    return raw
-        .whereType<Map>()
-        .map((m) => Map<String, dynamic>.from(m))
-        .toList();
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docTransicaoObjecoes).get();
+      final raw = snap.data()?['objecoes'];
+      if (raw is! List) return [];
+      return raw
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler objecoesTransicao: $e');
+      return [];
+    }
   }
 
   /// Salva (cria ou atualiza) uma objeção na lista de objeções da transição.
