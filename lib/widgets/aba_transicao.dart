@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../models/contrato_model.dart';
 import '../models/imovel_model.dart';
 import '../models/versao_preco_hotel.dart';
+import '../screens/ficha_contrato_screen.dart';
 import '../services/analise_imoveis.dart';
 import '../services/argumentos_pdf.dart';
 import '../services/firestore_service.dart';
@@ -110,6 +111,32 @@ class _SocioAtualizacaoItem {
   });
 }
 
+/// Sócio consolidado para o ranking de prioridade de atendimento.
+/// Agrupa todos os contratos do mesmo sócio/comprador e soma os valores integralizados.
+class _ItemPrioridadeSocio {
+  final String nome;
+  final List<Contrato> contratos;
+  final double totalIntegralizado;
+  final double totalValorReajustado;
+  final double totalSaldoDevedor;
+  final double totalValorAtrasado;
+  final double percentualPago;
+  final bool temAtraso;
+  final String resumoUnidades;
+
+  const _ItemPrioridadeSocio({
+    required this.nome,
+    required this.contratos,
+    required this.totalIntegralizado,
+    required this.totalValorReajustado,
+    required this.totalSaldoDevedor,
+    required this.totalValorAtrasado,
+    required this.percentualPago,
+    required this.temAtraso,
+    required this.resumoUnidades,
+  });
+}
+
 class _AbaTransicaoState extends State<AbaTransicao> {
   late final FirestoreService _fs =
       widget.firestoreService ?? FirestoreService();
@@ -118,8 +145,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   Map<String, _LinhaStats> _stats = {}; // conta principal (sem os separados)
   // Clientes separados → estatísticas por linha (mostrados à parte).
   Map<String, Map<String, _LinhaStats>> _separados = {};
-  // Top 30 contratos ativos por valor pago (integralizado).
-  List<Contrato> _top30 = [];
+  // Sócios da lista de prioridade (consolidados por comprador e ordenados por valor total pago desc).
+  List<_ItemPrioridadeSocio> _sociosPrioridade = [];
+  String _buscaPrioridade = '';
+  bool _mostrarTodosPrioridade = false;
   // Todos os contratos ativos carregados.
   List<Contrato> _contratos = [];
   // Argumentos de transição por sócio (aba Sócios do Hotel).
@@ -405,6 +434,25 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return u.contains('S & S') && u.contains('ADMINISTRADORA');
   }
 
+  /// Formata o resumo legível das cotas/imóveis de um sócio (ex: "2 cotas: C-413 (Cota 01), B-109 (Cota 02)").
+  static String _resumoContratosSocio(List<Contrato> contratos) {
+    if (contratos.isEmpty) return '';
+    if (contratos.length == 1) {
+      final c = contratos.first;
+      final id = imovelIdDoContrato(c);
+      final local = id ?? '${c.bloco} ${c.imovel}'.trim();
+      final cota = c.cota.trim().isEmpty ? '' : ' · ${c.cota.trim()}';
+      return '$local$cota'.trim();
+    }
+    final itens = contratos.map((c) {
+      final id = imovelIdDoContrato(c);
+      final local = id ?? '${c.bloco} ${c.imovel}'.trim();
+      final cota = c.cota.trim().isEmpty ? '' : ' (${c.cota.trim()})';
+      return '$local$cota'.trim();
+    }).where((s) => s.isNotEmpty).toList();
+    return '${contratos.length} cotas: ${itens.join(', ')}';
+  }
+
   // Dados reais dos contratos ativos (carregados em _carregar).
   double _exposicaoDevolucao = 0; // soma do valorIntegralizado dos ativos
   double _baseDistrato = 0; // soma valorIntegralizado, excl. Matheus+Reynaldo
@@ -629,13 +677,68 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             .toList();
         separados[rotulo] = _montarStats(imoveis, doCliente);
       }
-      // Prioridade de atendimento: contratos ativos (inclui os de "pavimento"/
-      // avulsos), EXCETO os clientes tratados à parte (Matheus/Reynaldo),
-      // ordenados pelo valor já pago (integralizado).
-      final top = contratos
+      // Prioridade consolidada por SÓCIO ativo (exceto clientes tratados à parte):
+      // Agrupa todas as cotas e contratos de cada comprador e soma o valor integralizado de cada um,
+      // ordenando do maior para o menor ("quem mais pagou primeiro e vai descendo").
+      final contratosPrioridade = contratos
           .where((c) => _clienteSeparado(c.nomeComprador) == null)
-          .toList()
-        ..sort((a, b) => b.valorIntegralizado.compareTo(a.valorIntegralizado));
+          .toList();
+
+      final Map<String, List<Contrato>> gruposSocio = {};
+      final Map<String, String> nomesDisplay = {};
+      for (final c in contratosPrioridade) {
+        final chave = c.nomeComprador.trim().toUpperCase();
+        if (chave.isEmpty) continue;
+        gruposSocio.putIfAbsent(chave, () => []).add(c);
+        nomesDisplay.putIfAbsent(chave, () => c.nomeComprador.trim());
+      }
+
+      final List<_ItemPrioridadeSocio> listaPrioridadeSocios = [];
+      for (final entry in gruposSocio.entries) {
+        final chave = entry.key;
+        final listaC = entry.value;
+        final nome = nomesDisplay[chave] ?? chave;
+
+        final totalIntegralizado =
+            listaC.fold<double>(0, (s, c) => s + c.valorIntegralizado);
+        final totalReajustado =
+            listaC.fold<double>(0, (s, c) => s + c.valorTotalReajustado);
+        final totalSaldo =
+            listaC.fold<double>(0, (s, c) => s + c.saldoRestante);
+        final totalAtrasado =
+            listaC.fold<double>(0, (s, c) => s + c.valorAtrasado);
+        final temAtraso = listaC.any((c) => c.valorAtrasado > 0);
+
+        final double pctPago;
+        if (listaC.isNotEmpty && listaC.every((c) => c.estaQuitado)) {
+          pctPago = 100.0;
+        } else if (totalReajustado > 0) {
+          pctPago =
+              ((totalIntegralizado / totalReajustado) * 100).clamp(0.0, 100.0);
+        } else if (listaC.isNotEmpty) {
+          pctPago = listaC.fold<double>(0, (s, c) => s + c.percentualEfetivo) /
+              listaC.length;
+        } else {
+          pctPago = 0.0;
+        }
+
+        final resumo = _resumoContratosSocio(listaC);
+
+        listaPrioridadeSocios.add(_ItemPrioridadeSocio(
+          nome: nome,
+          contratos: listaC,
+          totalIntegralizado: totalIntegralizado,
+          totalValorReajustado: totalReajustado,
+          totalSaldoDevedor: totalSaldo,
+          totalValorAtrasado: totalAtrasado,
+          percentualPago: pctPago,
+          temAtraso: temAtraso,
+          resumoUnidades: resumo,
+        ));
+      }
+
+      listaPrioridadeSocios
+          .sort((a, b) => b.totalIntegralizado.compareTo(a.totalIntegralizado));
       // Exposição de devolução (pior caso) = tudo que já foi pago nos ativos.
       // Elegibilidade ao pool: % efetivo pago de cada contrato ativo.
       final exposicao =
@@ -689,7 +792,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       setState(() {
         _stats = _montarStats(imoveis, outros);
         _separados = separados;
-        _top30 = top.take(30).toList();
+        _sociosPrioridade = listaPrioridadeSocios;
         _contratos = contratos;
         _argumentosSociosHotel = argumentosSocios;
         _atualizacoesSocios = atualizacoesSocios;
@@ -770,22 +873,32 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 ]),
                 const SizedBox(height: 4),
                 Row(children: [
+                  const Icon(Icons.people_alt_outlined,
+                      size: 16, color: Colors.blue),
+                  const SizedBox(width: 6),
+                  Text('Sócios ativos classificados: ${_sociosPrioridade.length}'),
+                ]),
+                const SizedBox(height: 4),
+                Row(children: [
                   const Icon(Icons.cancel_outlined,
                       size: 16, color: Colors.orange),
                   const SizedBox(width: 6),
                   Text('Cancelados / Distratados desconsiderados: $cancelados'),
                 ]),
                 const Divider(height: 20),
-                const Text('Mix de vendas recalculado:',
+                const Text('Prioridade & Mix recalculados:',
                     style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text('• ${_mixDistribuicao.$1} cotas Bronze'),
-                Text('• ${_mixDistribuicao.$2} cotas Prata'),
-                Text('• ${_mixDistribuicao.$3} cotas Ouro'),
-                Text('• ${_mixDistribuicao.$4} aptos Integral'),
+                if (_sociosPrioridade.isNotEmpty)
+                  Text(
+                    '• 1º lugar: ${_sociosPrioridade.first.nome} (${_moeda.format(_sociosPrioridade.first.totalIntegralizado)})',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                Text('• ${_mixDistribuicao.$1} cotas Bronze · ${_mixDistribuicao.$2} Prata · ${_mixDistribuicao.$3} Ouro · ${_mixDistribuicao.$4} Integral'),
                 const SizedBox(height: 10),
                 Text(
-                  'Todos os cálculos, projeções, apartamentos e cotas foram sincronizados com sucesso.',
+                  'A lista de prioridade de atendimento foi recalculada e reordenada do maior para o menor valor integralizado.',
                   style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(ctx).colorScheme.onSurfaceVariant),
@@ -5751,10 +5864,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  // ── Aba: Prioridade (top 30 por valor pago) ───────────────────────────────
+  // ── Aba: Prioridade (classificação de sócios por valor integralizado) ──────
   Widget _tabPrioridade(ColorScheme cs) {
     return RefreshIndicator(
-      onRefresh: _carregar,
+      onRefresh: () => _carregar(forcarContratos: true),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [_blocoPrioridade(cs)],
@@ -8591,111 +8704,714 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  /// Prioridade de atendimento: top 30 contratos ativos por valor pago.
+  /// Prioridade de atendimento: sócios ativos classificados por valor total integralizado.
   Widget _blocoPrioridade(ColorScheme cs) {
-    if (_top30.isEmpty) return const SizedBox.shrink();
+    if (_carregando && _sociosPrioridade.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final query = _buscaPrioridade.trim().toLowerCase();
+    final filtrados = _sociosPrioridade.where((item) {
+      if (query.isEmpty) return true;
+      if (item.nome.toLowerCase().contains(query)) return true;
+      if (item.resumoUnidades.toLowerCase().contains(query)) return true;
+      for (final c in item.contratos) {
+        if (c.localizador.toLowerCase().contains(query)) return true;
+        if (c.cota.toLowerCase().contains(query)) return true;
+        if (c.imovel.toLowerCase().contains(query)) return true;
+        if (c.bloco.toLowerCase().contains(query)) return true;
+        final id = imovelIdDoContrato(c);
+        if (id != null && id.toLowerCase().contains(query)) return true;
+      }
+      return false;
+    }).toList();
+
+    final listaExibida = (_mostrarTodosPrioridade || query.isNotEmpty)
+        ? filtrados
+        : filtrados.take(30).toList();
+
+    final totalIntegralizadoGeral =
+        _sociosPrioridade.fold<double>(0, (s, i) => s + i.totalIntegralizado);
+    final totalCotasAtivas =
+        _sociosPrioridade.fold<int>(0, (s, i) => s + i.contratos.length);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Cabeçalho da aba com título e contador
         Row(
           children: [
             Icon(Icons.priority_high_rounded, color: cs.primary),
             const SizedBox(width: 8),
-            const Text('Prioridade de atendimento',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              'Prioridade de atendimento',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${_sociosPrioridade.length} sócios',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onPrimaryContainer,
+                ),
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 4),
         Text(
-            'Top 30 contratos ativos por valor pago — exceto clientes tratados '
-            'à parte (Matheus / Reynaldo).',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cs.outlineVariant),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < _top30.length; i++)
-                _linhaPrioridade(cs, i + 1, _top30[i],
-                    ultima: i == _top30.length - 1),
-            ],
-          ),
+          'Classificação consolidada por sócio pelo valor total integralizado (quem mais pagou primeiro e vai descendo). '
+          'Exclui clientes tratados à parte (Matheus / Reynaldo).',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
+        const SizedBox(height: 14),
+
+        // Cards de resumo / KPIs rápidos
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: [
+            _cardResumoPrioridade(
+              cs,
+              icon: Icons.monetization_on_outlined,
+              titulo: 'Integralizado total classificado',
+              valor: _moeda.format(totalIntegralizadoGeral),
+              cor: cs.primary,
+            ),
+            _cardResumoPrioridade(
+              cs,
+              icon: Icons.people_outline,
+              titulo: 'Total de Sócios Ativos',
+              valor: '${_sociosPrioridade.length}',
+              cor: Colors.indigo,
+            ),
+            _cardResumoPrioridade(
+              cs,
+              icon: Icons.apartment_outlined,
+              titulo: 'Cotas Ativas Representadas',
+              valor: '$totalCotasAtivas',
+              cor: Colors.teal,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Barra de busca e alternador Top 30 / Todos
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                onChanged: (v) => setState(() => _buscaPrioridade = v),
+                decoration: InputDecoration(
+                  hintText: 'Buscar por sócio, apartamento ou cota...',
+                  hintStyle:
+                      TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _buscaPrioridade.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () =>
+                              setState(() => _buscaPrioridade = ''),
+                        )
+                      : null,
+                  isDense: true,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: cs.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: cs.outlineVariant),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            SegmentedButton<bool>(
+              segments: [
+                const ButtonSegment<bool>(
+                  value: false,
+                  label: Text('Top 30', style: TextStyle(fontSize: 12)),
+                ),
+                ButtonSegment<bool>(
+                  value: true,
+                  label: Text('Todos (${_sociosPrioridade.length})',
+                      style: const TextStyle(fontSize: 12)),
+                ),
+              ],
+              selected: {_mostrarTodosPrioridade || query.isNotEmpty},
+              onSelectionChanged: (set) {
+                setState(() => _mostrarTodosPrioridade = set.first);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Lista de prioridade
+        if (_sociosPrioridade.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(32),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.inbox_outlined,
+                    size: 40, color: cs.onSurfaceVariant),
+                const SizedBox(height: 8),
+                const Text('Nenhum contrato ativo encontrado.'),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  onPressed: _recontarContratos,
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Recontar contratos'),
+                ),
+              ],
+            ),
+          )
+        else if (filtrados.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(32),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.search_off_rounded,
+                    size: 40, color: cs.onSurfaceVariant),
+                const SizedBox(height: 8),
+                Text('Nenhum sócio encontrado para "$_buscaPrioridade".'),
+              ],
+            ),
+          )
+        else ...[
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < listaExibida.length; i++)
+                  _linhaPrioridade(
+                    cs,
+                    _sociosPrioridade.indexOf(listaExibida[i]) + 1,
+                    listaExibida[i],
+                    ultima: i == listaExibida.length - 1,
+                  ),
+              ],
+            ),
+          ),
+          if (!_mostrarTodosPrioridade &&
+              query.isEmpty &&
+              _sociosPrioridade.length > 30) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton.icon(
+                onPressed: () =>
+                    setState(() => _mostrarTodosPrioridade = true),
+                icon: const Icon(Icons.expand_more, size: 18),
+                label: Text(
+                  'Ver todos os ${_sociosPrioridade.length} sócios',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ],
       ],
     );
   }
 
-  Widget _linhaPrioridade(ColorScheme cs, int pos, Contrato c,
-      {required bool ultima}) {
-    final sep = _clienteSeparado(c.nomeComprador);
-    final id = imovelIdDoContrato(c);
-    final local = id ?? '${c.bloco} ${c.imovel}'.trim();
-    final cota = c.cota.trim().isEmpty ? '' : ' · ${c.cota.trim()}';
+  Widget _cardResumoPrioridade(
+    ColorScheme cs, {
+    required IconData icon,
+    required String titulo,
+    required String valor,
+    required Color cor,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        border: ultima
-            ? null
-            : Border(bottom: BorderSide(color: cs.outlineVariant)),
+        color: cor.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cor.withValues(alpha: 0.2)),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: 26,
-            child: Text('$pos',
+          Icon(icon, size: 22, color: cor),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titulo,
                 style: TextStyle(
-                    fontWeight: FontWeight.bold, color: cs.primary)),
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                valor,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: cor,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(c.nomeComprador,
+        ],
+      ),
+    );
+  }
+
+  Widget _badgePosicao(int pos, ColorScheme cs) {
+    Color? corFundo;
+    const corTexto = Colors.white;
+    if (pos == 1) {
+      corFundo = Colors.amber.shade700;
+    } else if (pos == 2) {
+      corFundo = Colors.blueGrey.shade500;
+    } else if (pos == 3) {
+      corFundo = const Color(0xFFCD7F32);
+    }
+
+    if (corFundo != null) {
+      return Container(
+        width: 26,
+        height: 26,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: corFundo,
+          shape: BoxShape.circle,
+        ),
+        child: Text(
+          '$pos',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 11,
+            color: corTexto,
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      width: 26,
+      child: Text(
+        '$pos',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _linhaPrioridade(
+    ColorScheme cs,
+    int pos,
+    _ItemPrioridadeSocio item, {
+    required bool ultima,
+  }) {
+    return InkWell(
+      onTap: () => _mostrarDetalhesSocioPrioridade(cs, item),
+      borderRadius: ultima
+          ? const BorderRadius.vertical(bottom: Radius.circular(12))
+          : (pos == 1
+              ? const BorderRadius.vertical(top: Radius.circular(12))
+              : BorderRadius.zero),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          border: ultima
+              ? null
+              : Border(bottom: BorderSide(color: cs.outlineVariant)),
+        ),
+        child: Row(
+          children: [
+            _badgePosicao(pos, cs),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          item.nome,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    if (sep != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: Colors.deepPurple.shade400
-                              .withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(5),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
-                        child: Text('separado',
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.deepPurple.shade400)),
                       ),
+                      if (item.contratos.length > 1) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${item.contratos.length} cotas',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${item.resumoUnidades} · ${item.percentualPago.toStringAsFixed(0)}% pago',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (item.temAtraso) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color:
+                                Colors.red.shade400.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'em atraso',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.red.shade400,
+                            ),
+                          ),
+                        ),
+                      ] else if (item.contratos
+                          .every((c) => c.estaQuitado)) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade400
+                                .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'quitado',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.green.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _moeda.format(item.totalIntegralizado),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
                 Text(
-                  '$local$cota · ${c.percentualEfetivo.toStringAsFixed(0)}% pago'
-                  '${c.valorAtrasado > 0 ? ' · em atraso' : ''}',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  item.contratos.length == 1
+                      ? '1 contrato'
+                      : '${item.contratos.length} contratos',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _mostrarDetalhesSocioPrioridade(
+      ColorScheme cs, _ItemPrioridadeSocio item) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Cabeçalho
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: cs.primaryContainer,
+                      foregroundColor: cs.onPrimaryContainer,
+                      child: const Icon(Icons.person),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.nome,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '${item.contratos.length} ${item.contratos.length == 1 ? 'contrato ativo' : 'contratos ativos'}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Resumo financeiro consolidado
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _colunaKpiPrioridade(
+                        'Total Integralizado',
+                        _moeda.format(item.totalIntegralizado),
+                        cor: cs.primary,
+                        destaque: true,
+                      ),
+                      _colunaKpiPrioridade(
+                        '% Pago Médio',
+                        '${item.percentualPago.toStringAsFixed(1)}%',
+                        cor: item.temAtraso
+                            ? Colors.orange.shade700
+                            : Colors.green.shade700,
+                      ),
+                      _colunaKpiPrioridade(
+                        'Saldo Devedor',
+                        _moeda.format(item.totalSaldoDevedor),
+                      ),
+                      if (item.totalValorAtrasado > 0)
+                        _colunaKpiPrioridade(
+                          'Atrasado',
+                          _moeda.format(item.totalValorAtrasado),
+                          cor: cs.error,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Text(
+                  'Cotas e Contratos vinculados (${item.contratos.length}):',
+                  style:
+                      const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+
+                // Lista de contratos do sócio
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: item.contratos.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final c = item.contratos[i];
+                      final id = imovelIdDoContrato(c);
+                      final local = id ?? '${c.bloco} ${c.imovel}'.trim();
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: cs.outlineVariant),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$local · ${c.cota}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                if (c.produto.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: cs.surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      c.produto,
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Text(
+                                  'Integralizado: ${_moeda.format(c.valorIntegralizado)} (${c.percentualEfetivo.toStringAsFixed(0)}%)',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.onSurfaceVariant),
+                                ),
+                                const Spacer(),
+                                if (c.valorAtrasado > 0)
+                                  Text(
+                                    'Atraso: ${_moeda.format(c.valorAtrasado)}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.error,
+                                        fontWeight: FontWeight.bold),
+                                  )
+                                else if (c.estaQuitado)
+                                  Text(
+                                    'Quitado',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(Icons.description_outlined,
+                                    size: 15),
+                                label: const Text('Ver ficha do contrato',
+                                    style: TextStyle(fontSize: 12)),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          FichaContratoScreen(contrato: c),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Text(_moeda.format(c.valorIntegralizado),
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _colunaKpiPrioridade(String titulo, String valor,
+      {Color? cor, bool destaque = false}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          titulo,
+          style: const TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          valor,
+          style: TextStyle(
+            fontSize: destaque ? 14 : 13,
+            fontWeight: FontWeight.bold,
+            color: cor,
+          ),
+        ),
+      ],
     );
   }
 
