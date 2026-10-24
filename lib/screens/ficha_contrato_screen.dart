@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/baixa_financeira_model.dart';
 import '../models/contrato_model.dart';
 import '../models/interacao_model.dart';
+import '../models/resolucao_calendario_mp.dart';
+import '../models/semana_mp.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/whatsapp_interacao.dart';
@@ -783,6 +785,10 @@ class _DadosTab extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
 
+        // Semanas do rodízio da multipropriedade (resolvidas do contrato)
+        _CalendarioContratoCard(contrato: c),
+        const SizedBox(height: 8),
+
         // Endereço
         _secao('Endereço', [
           _campo(
@@ -871,6 +877,184 @@ class _DadosTab extends StatelessWidget {
                 color: destaque,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Card: semanas do rodízio da multipropriedade ──────────────────────────────
+// Resolve tier (produto) + nº da cota (cota/código) + dia de check-in
+// (bloco + imóvel) e mostra as próximas semanas do contrato. Só leitura.
+
+class _CalendarioContratoCard extends StatefulWidget {
+  final Contrato contrato;
+  const _CalendarioContratoCard({required this.contrato});
+
+  @override
+  State<_CalendarioContratoCard> createState() =>
+      _CalendarioContratoCardState();
+}
+
+class _CalendarioContratoCardState extends State<_CalendarioContratoCard> {
+  final _fs = FirestoreService();
+  static final _fmt = DateFormat('dd/MM/yyyy');
+  static const _rotuloDia = {
+    'domingo': 'domingo',
+    'segunda': 'segunda',
+    'quinta': 'quinta',
+    'sexta': 'sexta',
+    'sabado': 'sábado',
+  };
+  late Future<ResolucaoCalendarioMP> _future;
+  bool _verTodas = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _fs.resolverCalendarioContrato(widget.contrato);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.calendar_month_outlined,
+                  size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 6),
+              const Text('Semanas da multipropriedade',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            ]),
+            const SizedBox(height: 8),
+            FutureBuilder<ResolucaoCalendarioMP>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                  );
+                }
+                final r = snap.data;
+                if (r == null || !r.ok) {
+                  return _info(r?.motivo ??
+                      'Não foi possível resolver o calendário deste contrato.');
+                }
+                return _conteudo(r);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _info(String msg) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(children: [
+      Icon(Icons.info_outline, size: 16, color: cs.onSurfaceVariant),
+      const SizedBox(width: 6),
+      Expanded(
+          child: Text(msg,
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
+    ]);
+  }
+
+  Widget _conteudo(ResolucaoCalendarioMP r) {
+    final cs = Theme.of(context).colorScheme;
+    final hoje = DateTime.now();
+    // Próximas semanas (entrada >= hoje); se não houver, mostra as últimas.
+    final futuras = r.semanas
+        .where((w) =>
+            (DateTime.tryParse(w.entrada) ?? hoje).isAfter(hoje) ||
+            (DateTime.tryParse(w.entrada)?.isAtSameMomentAs(hoje) ?? false))
+        .toList();
+    final base = futuras.isNotEmpty ? futuras : r.semanas;
+    final mostra = _verTodas ? base : base.take(6).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_tierLabel(r.tier!)} · entrada ${_rotuloDia[r.dia] ?? r.dia} · '
+          'Cota ${r.cota} · ${r.semanas.length} semanas (2027–2078)',
+          style: TextStyle(fontSize: 13, color: cs.onSurface),
+        ),
+        const SizedBox(height: 8),
+        for (final w in mostra) _linhaSemana(w),
+        if (base.length > mostra.length || _verTodas)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _verTodas = !_verTodas),
+              child: Text(_verTodas
+                  ? 'Mostrar menos'
+                  : 'Ver todas (${base.length})'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _tierLabel(String t) =>
+      {'ouro': 'Ouro', 'prata': 'Prata', 'bronze': 'Bronze'}[t] ?? t;
+
+  Widget _linhaSemana(SemanaMP w) {
+    final cs = Theme.of(context).colorScheme;
+    final alta = w.tipo.toLowerCase().startsWith('alta');
+    final corTipo = alta ? const Color(0xFFD97706) : const Color(0xFF2563EB);
+    final e = DateTime.tryParse(w.entrada);
+    final s = DateTime.tryParse(w.saida);
+    final periodo = (e != null && s != null)
+        ? '${_fmt.format(e)} → ${_fmt.format(s)}'
+        : '${w.entrada} → ${w.saida}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 30,
+            decoration: BoxDecoration(
+                color: corTipo, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(periodo,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+                if (w.temFeriado)
+                  Text(w.feriado,
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: corTipo.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(w.tipo.isEmpty ? '—' : w.tipo,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: corTipo)),
           ),
         ],
       ),

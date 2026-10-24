@@ -22,6 +22,7 @@ import '../models/notificacao_inapp_model.dart';
 import '../models/produto_model.dart';
 import '../models/baixa_financeira_model.dart';
 import '../models/semana_mp.dart';
+import '../models/resolucao_calendario_mp.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 import '../models/versao_preco_hotel.dart';
@@ -474,6 +475,110 @@ class FirestoreService {
     });
     _cacheCalendarioMP[chave] = out;
     return out;
+  }
+
+  // Check-in por imóvel da Multipropriedade (planilha, bloco a bloco).
+  // `config/mp_checkin`, campo `blocos` = { "<bloco>": { "<imovel>": "<dia>" } }.
+  static const _docMpCheckin = 'mp_checkin';
+  Map<String, Map<String, String>>? _cacheCheckinMP;
+
+  /// Lê o mapa de check-in da Multipropriedade: bloco → imóvel → dia.
+  Future<Map<String, Map<String, String>>> getCheckinMP() async {
+    final cacheado = _cacheCheckinMP;
+    if (cacheado != null) return cacheado;
+    final snap = await _db.collection(_colConfig).doc(_docMpCheckin).get();
+    final raw = (snap.data()?['blocos'] as Map<String, dynamic>?) ?? {};
+    final out = <String, Map<String, String>>{};
+    raw.forEach((bloco, mapa) {
+      if (mapa is Map) {
+        out[bloco] = {
+          for (final e in mapa.entries)
+            if (e.value is String && (e.value as String).isNotEmpty)
+              e.key.toString(): e.value as String,
+        };
+      }
+    });
+    _cacheCheckinMP = out;
+    return out;
+  }
+
+  /// Chave do bloco no mapa de check-in a partir do rótulo do contrato
+  /// ("B (HERA)" → "B"). Null se o bloco não é um dos blocos-letra mapeados.
+  static String? blocoKeyMP(String bloco) {
+    final b = bloco.toUpperCase().trim();
+    if (b.contains('HERA')) return 'B';
+    if (b.contains('AFRODITE')) return 'C';
+    if (b.contains('ATENA')) return 'D';
+    // Rótulos curtos "B", "C (…)" — letra isolada (não pega "BANGALO").
+    final m = RegExp(r'^([BCD])\b').firstMatch(b);
+    return m?.group(1);
+  }
+
+  /// Tier do rodízio a partir do produto ("LUXO PRATA T" → prata). Null se o
+  /// produto não é de um tier com rodízio (ex.: Integral/Diamante).
+  static String? tierRodizioDeProduto(String produto) {
+    final p = produto.toUpperCase();
+    if (p.contains('OURO')) return 'ouro';
+    if (p.contains('PRATA')) return 'prata';
+    if (p.contains('BRONZE')) return 'bronze';
+    return null;
+  }
+
+  /// Número da cota a partir do campo `cota` ("Cota-07" → 7), caindo para o
+  /// código do contrato ("…/Cota-07") quando necessário.
+  static int? numeroCotaContrato(String cota, String? codigo) {
+    final m = RegExp(r'(\d+)').firstMatch(cota);
+    if (m != null) return int.tryParse(m.group(1)!);
+    if (codigo != null) {
+      final m2 = RegExp(r'[Cc]ota-?(\d+)').firstMatch(codigo);
+      if (m2 != null) return int.tryParse(m2.group(1)!);
+    }
+    return null;
+  }
+
+  /// Resolve as semanas do rodízio de um [contrato]: deriva tier (produto),
+  /// número da cota (cota/código) e dia de check-in (bloco + imóvel), e busca
+  /// as semanas no calendário. Retorna ok=false com motivo quando falta dado.
+  Future<ResolucaoCalendarioMP> resolverCalendarioContrato(
+      Contrato contrato) async {
+    final tier = tierRodizioDeProduto(contrato.produto);
+    if (tier == null) {
+      return ResolucaoCalendarioMP.erro(
+          'Produto sem tier de rodízio (Ouro/Prata/Bronze).');
+    }
+    final cota = numeroCotaContrato(contrato.cota, contrato.codigoContrato);
+    if (cota == null) {
+      return ResolucaoCalendarioMP.erro('Número da cota não identificado.',
+          tier: tier);
+    }
+    final blocoKey = blocoKeyMP(contrato.bloco);
+    if (blocoKey == null) {
+      return ResolucaoCalendarioMP.erro(
+          'Bloco "${contrato.bloco}" ainda não tem check-in cadastrado.',
+          tier: tier,
+          cota: cota);
+    }
+    final checkin = await getCheckinMP();
+    final imovelKey =
+        int.tryParse(contrato.imovel.trim())?.toString() ?? contrato.imovel.trim();
+    final dia = checkin[blocoKey]?[imovelKey];
+    if (dia == null) {
+      return ResolucaoCalendarioMP.erro(
+          'Imóvel ${contrato.imovel} (bloco $blocoKey) sem check-in cadastrado.',
+          tier: tier,
+          cota: cota);
+    }
+    final cal = await getCalendarioMP(tier, dia);
+    final semanas = cal[cota] ?? const <SemanaMP>[];
+    if (semanas.isEmpty) {
+      return ResolucaoCalendarioMP.erro(
+          'Sem semanas para a cota $cota ($tier, $dia).',
+          tier: tier,
+          dia: dia,
+          cota: cota);
+    }
+    return ResolucaoCalendarioMP(
+        ok: true, tier: tier, dia: dia, cota: cota, semanas: semanas);
   }
 
   // --- HOTEL: versões da tabela de preços ---
