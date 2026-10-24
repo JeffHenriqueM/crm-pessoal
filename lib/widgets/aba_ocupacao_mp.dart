@@ -30,10 +30,13 @@ class _AbaOcupacaoMPState extends State<AbaOcupacaoMP> {
   late DateTime _focado;
   DateTime? _selecionado;
 
+  // Uso começa na virada 2027→2028; a agenda abre nessa data.
+  static final _inicioUso = DateTime(2027, 12, 26);
+
   @override
   void initState() {
     super.initState();
-    _focado = DateTime(2027, 1, 1);
+    _focado = _inicioUso;
     _carregar();
   }
 
@@ -45,14 +48,16 @@ class _AbaOcupacaoMPState extends State<AbaOcupacaoMP> {
     try {
       final o = await _fs.montarOcupacaoMP();
       if (!mounted) return;
-      // Foca no 1º dia com entradas (senão jan/2027).
-      final dias = o.entradasPorDia.keys.toList()..sort();
-      final primeiro =
-          dias.isNotEmpty ? DateTime.parse(dias.first) : DateTime(2027, 1, 1);
+      // Foca no 1º dia com entradas a partir do início do uso (26/12/2027).
+      final datas = o.entradasPorDia.keys.map(DateTime.parse).toList()..sort();
+      final aPartir = datas.where((d) => !d.isBefore(_inicioUso)).toList();
+      final foco = aPartir.isNotEmpty
+          ? aPartir.first
+          : (datas.isNotEmpty ? datas.last : _inicioUso);
       setState(() {
         _ocup = o;
-        _focado = primeiro;
-        _selecionado = primeiro;
+        _focado = foco;
+        _selecionado = foco;
         _carregando = false;
       });
     } catch (e) {
