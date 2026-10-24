@@ -21,6 +21,7 @@ import '../models/negociacao_model.dart';
 import '../models/notificacao_inapp_model.dart';
 import '../models/produto_model.dart';
 import '../models/baixa_financeira_model.dart';
+import '../models/semana_mp.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 import '../models/versao_preco_hotel.dart';
@@ -440,6 +441,39 @@ class FirestoreService {
       'atualizadoEm': FieldValue.serverTimestamp(),
       'atualizadoPorNome': _currentUserName,
     });
+  }
+
+  // --- MULTIPROPRIEDADE: calendário de rodízio (planilha importada) ---
+  // Dado estático em `config/calendario_<tier>_<dia>` (15 docs), campo
+  // `cotas` = { "<numero da cota>": [ {a,e,s,t,f}, ... ] }. Só leitura; cache
+  // em memória (por instância) pois o conteúdo nunca muda em runtime.
+  final Map<String, Map<int, List<SemanaMP>>> _cacheCalendarioMP = {};
+
+  /// Lê o calendário de rodízio de um [tier] (ouro/prata/bronze) e [dia] de
+  /// check-in (domingo/segunda/quinta/sexta/sabado). Retorna cota → semanas
+  /// ordenadas por data de entrada. Vazio se o documento não existir.
+  Future<Map<int, List<SemanaMP>>> getCalendarioMP(
+      String tier, String dia) async {
+    final chave = '${tier}_$dia';
+    final cacheado = _cacheCalendarioMP[chave];
+    if (cacheado != null) return cacheado;
+
+    final snap =
+        await _db.collection(_colConfig).doc('calendario_$chave').get();
+    final raw = (snap.data()?['cotas'] as Map<String, dynamic>?) ?? {};
+    final out = <int, List<SemanaMP>>{};
+    raw.forEach((k, v) {
+      final n = int.tryParse(k);
+      if (n == null || v is! List) return;
+      final semanas = v
+          .whereType<Map>()
+          .map((m) => SemanaMP.fromMap(Map<String, dynamic>.from(m)))
+          .toList()
+        ..sort((a, b) => a.entrada.compareTo(b.entrada));
+      out[n] = semanas;
+    });
+    _cacheCalendarioMP[chave] = out;
+    return out;
   }
 
   // --- HOTEL: versões da tabela de preços ---

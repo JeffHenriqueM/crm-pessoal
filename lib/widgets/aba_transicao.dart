@@ -13,6 +13,7 @@ import '../services/analise_imoveis.dart';
 import '../services/argumentos_pdf.dart';
 import '../services/firestore_service.dart';
 import '../services/reynaldo_pdf.dart';
+import 'aba_calendario_mp.dart';
 
 /// Define qual conjunto de abas o widget mostra.
 /// - [transicao]: Apartamentos (vendas), Prioridade, Argumentos, Comprador,
@@ -949,6 +950,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               const Tab(
                   text: 'Cotas', icon: Icon(Icons.workspace_premium_outlined)),
               _tabCotas(cs)
+            ),
+            (
+              const Tab(
+                  text: 'Calendário',
+                  icon: Icon(Icons.calendar_month_outlined)),
+              const AbaCalendarioMP()
             ),
             (
               const Tab(
