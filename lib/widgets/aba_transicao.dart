@@ -15,6 +15,7 @@ import '../services/firestore_service.dart';
 import '../services/reynaldo_pdf.dart';
 import 'aba_calendario_mp.dart';
 import 'aba_ocupacao_mp.dart';
+import 'aba_verificacao_mp.dart';
 
 /// Define qual conjunto de abas o widget mostra.
 /// - [transicao]: Apartamentos (vendas), Prioridade, Argumentos, Comprador,
@@ -963,6 +964,12 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                   text: 'Ocupação',
                   icon: Icon(Icons.event_available_outlined)),
               const AbaOcupacaoMP()
+            ),
+            (
+              const Tab(
+                  text: 'Verificação',
+                  icon: Icon(Icons.fact_check_outlined)),
+              const AbaVerificacaoMP()
             ),
             (
               const Tab(

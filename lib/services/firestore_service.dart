@@ -24,6 +24,7 @@ import '../models/baixa_financeira_model.dart';
 import '../models/semana_mp.dart';
 import '../models/resolucao_calendario_mp.dart';
 import '../models/ocupacao_mp.dart';
+import '../models/auditoria_mp.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
 import '../models/versao_preco_hotel.dart';
@@ -625,6 +626,105 @@ class FirestoreService {
       ativos: ativos.length,
       naoResolvidos: naoResolvidos,
     );
+  }
+
+  // Cota reservada ao hotel/manutenção por tier (topo de cada tier).
+  static const Map<String, int> cotasReservadasMP = {
+    'ouro': 13,
+    'prata': 26,
+    'bronze': 52,
+  };
+
+  /// Ano em que o uso do rodízio começa (virada 2027→2028).
+  static const int anoInicioUsoMP = 2028;
+
+  /// Audita o calendário de rodízio procurando inconsistências: semanas com
+  /// duração != 7 dias, semanas divididas por duas cotas (sobreposição) e
+  /// cotas com nº de semanas/ano fora do esperado (4 Ouro, 2 Prata, 1 Bronze).
+  Future<AuditoriaMP> auditarCalendarioMP() async {
+    const esperadoPorTier = {'ouro': 4, 'prata': 2, 'bronze': 1};
+    const dias = ['domingo', 'segunda', 'quinta', 'sexta', 'sabado'];
+    final achados = <AchadoAuditoria>[];
+    var total = 0;
+
+    for (final tier in esperadoPorTier.keys) {
+      final exp = esperadoPorTier[tier]!;
+      final reservada = cotasReservadasMP[tier];
+      var duracaoFora = 0;
+      for (final dia in dias) {
+        final cal = await getCalendarioMP(tier, dia);
+        if (cal.isEmpty) continue;
+        // ano -> entrada -> cotas (p/ detectar sobreposição)
+        final porAno = <int, Map<String, List<int>>>{};
+        cal.forEach((cota, semanas) {
+          final contagemAno = <int, int>{};
+          for (final w in semanas) {
+            total++;
+            final e = DateTime.tryParse(w.entrada);
+            final s = DateTime.tryParse(w.saida);
+            if (e != null && s != null && s.difference(e).inDays != 7) {
+              duracaoFora++;
+            }
+            if (e != null) {
+              contagemAno[e.year] = (contagemAno[e.year] ?? 0) + 1;
+              porAno
+                  .putIfAbsent(e.year, () => {})
+                  .putIfAbsent(w.entrada, () => [])
+                  .add(cota);
+            }
+          }
+          if (cota != reservada) {
+            contagemAno.forEach((ano, n) {
+              if (n != exp) {
+                achados.add(AchadoAuditoria(
+                  categoria: 'Semanas/ano',
+                  chave: '$tier|$dia',
+                  descricao:
+                      'Cota $cota em $ano tem $n semana(s); esperado $exp.',
+                  ocorrencias: 1,
+                ));
+              }
+            });
+          }
+        });
+        // Sobreposições (semana dividida por 2+ cotas) no mesmo ano.
+        var anos = 0;
+        String? exemplo;
+        var envolveReservada = false;
+        porAno.forEach((ano, mapa) {
+          final dups =
+              mapa.entries.where((en) => en.value.length > 1).toList();
+          if (dups.isNotEmpty) {
+            anos++;
+            if (reservada != null &&
+                dups.any((d) => d.value.contains(reservada))) {
+              envolveReservada = true;
+            }
+            exemplo ??= '$ano: ${dups.first.key} '
+                '(cotas ${dups.first.value.join(", ")})';
+          }
+        });
+        if (anos > 0) {
+          achados.add(AchadoAuditoria(
+            categoria: 'Encaixe',
+            chave: '$tier|$dia',
+            descricao: '$anos ano(s) com semana dividida por 2 cotas '
+                '${envolveReservada ? '(envolve a cota reservada $reservada do hotel) ' : ''}'
+                '— ex.: $exemplo.',
+            ocorrencias: anos,
+          ));
+        }
+      }
+      if (duracaoFora > 0) {
+        achados.add(AchadoAuditoria(
+          categoria: 'Duração',
+          chave: tier,
+          descricao: '$duracaoFora semana(s) do $tier com duração ≠ 7 dias.',
+          ocorrencias: duracaoFora,
+        ));
+      }
+    }
+    return AuditoriaMP(achados: achados, totalSemanas: total);
   }
 
   // --- HOTEL: versões da tabela de preços ---
