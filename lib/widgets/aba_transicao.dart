@@ -8811,18 +8811,6 @@ class _AbaTransicaoState extends State<AbaTransicao> {
               child: Text('Transição para o Hotel Villamor',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
-            FilledButton.tonalIcon(
-              onPressed: _recontando ? null : () => _recontarContratos(),
-              icon: _recontando
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync_rounded, size: 16),
-              label: const Text('Recontar contratos',
-                  style: TextStyle(fontSize: 12)),
-            ),
           ],
         ),
         const SizedBox(height: 4),
