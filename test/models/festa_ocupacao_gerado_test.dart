@@ -28,7 +28,8 @@ void main() {
   });
 
   test('base sai sempre "sem contrato" (associação é manual na tela)', () {
-    expect(ocupacaoFesta, isNotEmpty);
+    // A base pode estar vazia entre festas / após reset (ex.: Festa 2027
+    // começou zerada). Quando houver entradas, todas saem "sem contrato".
     for (final entry in ocupacaoFesta.entries) {
       final o = entry.value;
       expect(o.acao, 'semContrato', reason: 'quarto ${entry.key}');

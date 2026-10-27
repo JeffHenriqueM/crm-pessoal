@@ -23,7 +23,7 @@ import '../utils/url_launcher_service.dart';
 import '../utils/whatsapp_modelos.dart';
 import '../widgets/esolution_button.dart';
 
-const String _periodoFesta = '19 a 23 de julho';
+const String _periodoFesta = '28/03 a 01/04/2027';
 
 String _catLabel(String? key) =>
     const {
