@@ -64,5 +64,11 @@ void main() {
     expect(find.text('300'), findsOneWidget);
     expect(find.text('301'), findsOneWidget);
     expect(find.text('302'), findsOneWidget);
+
+    // Verifica que a pílula de resumo exibe os bloqueados 141 e 302
+    expect(find.text('2 Bloqueados (141, 302)'), findsOneWidget);
+
+    // Verifica que o ícone de cadeado é renderizado nos chips bloqueados
+    expect(find.byIcon(Icons.lock_rounded), findsWidgets);
   });
 }

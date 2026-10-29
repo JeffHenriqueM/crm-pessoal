@@ -388,7 +388,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   ];
 
   // Apartamentos com cota bloqueada para alteração manual, em lote ou auto-distribuição.
-  static const Set<int> _aptosBloqueadosCota = {141};
+  static const Set<int> _aptosBloqueadosCota = {141, 302};
 
   // Ordem de prestígio das categorias (mais premium → mais simples). Usada
   // pela auto-distribuição de cotas: os aptos mais valorizados recebem Ouro,
@@ -4570,7 +4570,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 'Os outros $resto são repartidos entre Ouro/Prata/Bronze '
                 'conforme as vendas ($o Ouro, $p Prata, $b Bronze em cotas; '
                 'sem Matheus/Reynaldo, S & S = 1). Total desbloqueados $n '
-                '(${_aptosBloqueadosCota.length} bloqueado mantido):'),
+                '(${_aptosBloqueadosCota.length} ${_aptosBloqueadosCota.length == 1 ? 'bloqueado mantido' : 'bloqueados mantidos'}):'),
             const SizedBox(height: 10),
             _linhaAlvo(const Color(0xFF4A6FA5), 'Integral', q[0], n),
             _linhaAlvo(const Color(0xFFC9A227), 'Ouro', q[1], n),
@@ -4787,7 +4787,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                 _pilulaResumo(o.$1, contagem[o.$2] ?? 0, o.$3),
               _pilulaResumo('Sem cota', sem, cs.onSurfaceVariant),
               _pilulaResumo(
-                'Bloqueado (${_aptosBloqueadosCota.join(', ')})',
+                '${_aptosBloqueadosCota.length == 1 ? "Bloqueado" : "Bloqueados"} (${_aptosBloqueadosCota.join(', ')})',
                 _aptosBloqueadosCota.length,
                 Colors.amber.shade800,
                 icon: Icons.lock_rounded,
