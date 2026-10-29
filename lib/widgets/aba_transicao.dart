@@ -92,6 +92,7 @@ class _SocioAtualizacaoItem {
   final List<String> produtos;
   final String status;
   final List<String> fases;
+  final String apartamentoDestino; // Apartamento no Hotel Villamor
   final String negociacaoDistrato;
   final String observacoes;
   final DateTime? atualizadoEm;
@@ -106,6 +107,7 @@ class _SocioAtualizacaoItem {
     required this.produtos,
     required this.status,
     required this.fases,
+    this.apartamentoDestino = '',
     required this.negociacaoDistrato,
     required this.observacoes,
     required this.atualizadoEm,
@@ -2858,6 +2860,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ? dados['status'] as String
             : 'Aguardando Resposta',
         'fases': fasesRaw.isNotEmpty ? fasesRaw : const ['Não informado'],
+        'apartamentoDestino': (dados['apartamentoDestino'] as String?) ?? '',
         'negociacaoDistrato': (dados['negociacaoDistrato'] as String?) ?? '',
         'observacoes': (dados['observacoes'] as String?) ?? '',
         'atualizadoEm': _parseDataAtualizacao(dados['atualizadoEm']),
@@ -2868,6 +2871,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     return {
       'status': 'Aguardando Resposta',
       'fases': const ['Não informado'],
+      'apartamentoDestino': '',
       'negociacaoDistrato': '',
       'observacoes': '',
       'atualizadoEm': null,
@@ -2900,6 +2904,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         status: (dados['status'] as String?) ?? 'Aguardando Resposta',
         fases: ((dados['fases'] as List?)?.whereType<String>().toList() ??
             const ['Não informado']),
+        apartamentoDestino: (dados['apartamentoDestino'] as String?) ?? '',
         negociacaoDistrato: (dados['negociacaoDistrato'] as String?) ?? '',
         observacoes: (dados['observacoes'] as String?) ?? '',
         atualizadoEm: dados['atualizadoEm'] as DateTime?,
@@ -2919,6 +2924,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     if (busca.isNotEmpty) {
       itens = itens.where((s) {
         if (s.nome.toLowerCase().contains(busca)) return true;
+        if (s.apartamentoDestino.toLowerCase().contains(busca)) return true;
         for (final c in s.contratos) {
           if (c.cpfComprador.contains(busca)) return true;
           if (c.imovel.toLowerCase().contains(busca)) return true;
@@ -3543,6 +3549,34 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                 ),
                               ),
                             ),
+                            if (s.apartamentoDestino.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.indigo.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.hotel_rounded,
+                                        size: 12,
+                                        color: Colors.indigo.shade800),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Apto ${s.apartamentoDestino}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.indigo.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -3620,6 +3654,36 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                       ],
                     ),
                   ),
+
+                  // Badge do Apartamento de Destino se definido
+                  if (s.apartamentoDestino.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: Colors.indigo.withValues(alpha: 0.4),
+                            width: 1.0),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.hotel_rounded,
+                              size: 14, color: Colors.indigo.shade800),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Ficará no Apto: ${s.apartamentoDestino}',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.indigo.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
                   // Chips das Fases de Transição
                   for (final fase in s.fases) _chipFaseTransicao(fase),
@@ -3847,6 +3911,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
 
     final distratoCtrl = TextEditingController(text: s.negociacaoDistrato);
     final obsCtrl = TextEditingController(text: s.observacoes);
+    final aptoCtrl = TextEditingController(text: s.apartamentoDestino);
     final messenger = ScaffoldMessenger.of(context);
     bool salvando = false;
 
@@ -3946,6 +4011,32 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                   setDialogState(
                                       () => statusTemp = val.first);
                                 },
+                              ),
+                              const SizedBox(height: 18),
+
+                              // Apartamento que o cliente vai ficar (Hotel Villamor)
+                              Text(
+                                'Apartamento de destino (Hotel Villamor):',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: aptoCtrl,
+                                decoration: InputDecoration(
+                                  hintText: 'Ex: 302, 141, etc.',
+                                  prefixIcon: const Icon(Icons.hotel_rounded, size: 20),
+                                  filled: true,
+                                  fillColor: cs.surface,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 20),
 
@@ -4170,6 +4261,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                 : () async {
                                     final distratoTexto =
                                         distratoCtrl.text.trim();
+                                    final aptoTexto = aptoCtrl.text.trim();
                                     if (temDistrato && distratoTexto.isEmpty) {
                                       messenger.showSnackBar(
                                         const SnackBar(
@@ -4187,6 +4279,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                         nomeSocio: s.nome,
                                         status: statusTemp,
                                         fases: fasesTemp,
+                                        apartamentoDestino: aptoTexto,
                                         negociacaoDistrato: distratoTexto,
                                         observacoes: obsCtrl.text.trim(),
                                       );
@@ -4196,6 +4289,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                           'nome': s.nome,
                                           'status': statusTemp,
                                           'fases': fasesTemp,
+                                          'apartamentoDestino': aptoTexto,
                                           'negociacaoDistrato': distratoTexto,
                                           'observacoes': obsCtrl.text.trim(),
                                           'atualizadoEm': Timestamp.now(),

@@ -85,6 +85,7 @@ void main() {
       nomeSocio: 'João da Silva',
       status: 'Aceitar',
       fases: ['Informado', 'Contrato Hotel Villamor assinado'],
+      apartamentoDestino: '302',
     );
 
     await fs.salvarAtualizacaoSocioTransicao(
@@ -136,6 +137,8 @@ void main() {
     expect(find.text('Aceitou a transição'), findsOneWidget);
     expect(find.text('Recusou a transição'), findsOneWidget);
     expect(find.text('Solicitou distrato'), findsWidgets);
+    expect(find.text('Apto 302'), findsOneWidget);
+    expect(find.text('Ficará no Apto: 302'), findsOneWidget);
 
     // Valida que Matheus e Reynaldo foram removidos da listagem de transição
     expect(find.text('MATHEUS ANTONIUS VELOSO CAMELO'), findsNothing);

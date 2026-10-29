@@ -911,6 +911,7 @@ class FirestoreService {
     required String nomeSocio,
     required String status,
     required List<String> fases,
+    String? apartamentoDestino,
     String? negociacaoDistrato,
     String? observacoes,
   }) async {
@@ -922,6 +923,7 @@ class FirestoreService {
           'nome': nomeTrim,
           'status': status.trim(),
           'fases': fases,
+          'apartamentoDestino': (apartamentoDestino ?? '').trim(),
           'negociacaoDistrato': (negociacaoDistrato ?? '').trim(),
           'observacoes': (observacoes ?? '').trim(),
           'atualizadoEm': FieldValue.serverTimestamp(),
