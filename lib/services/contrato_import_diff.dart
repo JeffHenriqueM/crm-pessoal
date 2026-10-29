@@ -14,10 +14,18 @@ class DiffImportContratos {
   /// Quantos já existem e ficariam idênticos (nenhuma gravação efetiva).
   final int inalterados;
 
+  /// Campos detectados no cabeçalho da planilha (usados no merge seguro).
+  final Set<String> camposPresentes;
+
+  /// Colunas importantes esperadas que não vieram na planilha.
+  final List<String> colunasAusentes;
+
   const DiffImportContratos({
     required this.alterados,
     required this.novos,
     required this.inalterados,
+    this.camposPresentes = const {},
+    this.colunasAusentes = const [],
   });
 
   /// Contratos que serão de fato gravados (alterados + novos).
@@ -36,12 +44,15 @@ class ContratoAlterado {
 
 /// Compara os contratos da planilha [novos] com os [atuais] (por localizador) e
 /// devolve apenas o que muda. "Mudou" = ao menos um campo que o merge gravaria
-/// (`toFirestore()`) tem valor diferente do atual. Campos nossos (assinatura,
-/// link, etc.) não entram no `toFirestore()`, então nunca contam como mudança.
+/// (`toFirestore(campos: camposPresentes)`) tem valor diferente do atual.
+/// Campos não presentes no arquivo ou campos nossos (assinatura, link, etc.)
+/// não entram na comparação, protegendo dados existentes de sobrescrita.
 DiffImportContratos analisarImportContratos(
   List<Contrato> novos,
-  Map<String, Contrato> atuais,
-) {
+  Map<String, Contrato> atuais, {
+  Set<String>? camposPresentes,
+  List<String> colunasAusentes = const [],
+}) {
   final alterados = <ContratoAlterado>[];
   final criados = <Contrato>[];
   var inalterados = 0;
@@ -52,7 +63,7 @@ DiffImportContratos analisarImportContratos(
       criados.add(c);
       continue;
     }
-    final campos = _camposAlterados(c, atual);
+    final campos = _camposAlterados(c, atual, camposPresentes: camposPresentes);
     if (campos.isEmpty) {
       inalterados++;
     } else {
@@ -64,16 +75,22 @@ DiffImportContratos analisarImportContratos(
     alterados: alterados,
     novos: criados,
     inalterados: inalterados,
+    camposPresentes: camposPresentes ?? const {},
+    colunasAusentes: colunasAusentes,
   );
 }
 
 /// Rótulos (sem repetição, em ordem) dos campos que o merge mudaria.
-List<String> _camposAlterados(Contrato novo, Contrato atual) {
-  final n = novo.toFirestore();
-  final a = atual.toFirestore();
+List<String> _camposAlterados(
+  Contrato novo,
+  Contrato atual, {
+  Set<String>? camposPresentes,
+}) {
+  final n = novo.toFirestore(campos: camposPresentes);
+  final a = atual.toFirestore(campos: camposPresentes);
   final rotulos = <String>[];
   for (final entry in n.entries) {
-    if (entry.key == 'localizador') continue; // é a própria chave
+    if (entry.key == 'localizador' || entry.key == 'atualizadoEm') continue; // chave ou metadado
     if (!_iguais(entry.value, a[entry.key])) {
       final r = _rotulo(entry.key);
       if (!rotulos.contains(r)) rotulos.add(r);

@@ -581,7 +581,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     // Cede um frame para o loading pintar antes do parse travar a UI thread.
     await Future.delayed(const Duration(milliseconds: 50));
 
-    List<Contrato> contratos;
+    ContratosParseResult parseResult;
     try {
       if (ehExcel) {
         final res = reader.result;
@@ -590,9 +590,9 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
             : res is Uint8List
                 ? res
                 : Uint8List.fromList(res as List<int>);
-        contratos = parsearExcelContratos(bytes);
+        parseResult = parsearExcelContratosResult(bytes);
       } else {
-        contratos = parsearCsvContratos(reader.result as String? ?? '');
+        parseResult = parsearCsvContratosResult(reader.result as String? ?? '');
       }
     } catch (e) {
       if (context.mounted) Navigator.of(context).pop(); // fecha o loading
@@ -605,13 +605,20 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       return;
     }
 
+    final contratos = parseResult.contratos;
+
     // Análise: compara a planilha com o estado atual da base e separa o que
     // realmente muda. O mesmo loading segue aberto enquanto carrega a base.
     DiffImportContratos diff;
     try {
       final atuais = await _fs.getContratos();
       final porLoc = {for (final c in atuais) c.localizador: c};
-      diff = analisarImportContratos(contratos, porLoc);
+      diff = analisarImportContratos(
+        contratos,
+        porLoc,
+        camposPresentes: parseResult.camposPresentes,
+        colunasAusentes: parseResult.colunasAusentes,
+      );
     } catch (e) {
       if (context.mounted) Navigator.of(context).pop(); // fecha o loading
       messenger.showSnackBar(
@@ -631,12 +638,20 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         diff: diff,
         totalArquivo: contratos.length,
         nomeArquivo: nomeArq,
-        onConfirmar: () => _importar(context, diff.paraGravar),
+        onConfirmar: () => _importar(
+          context,
+          diff.paraGravar,
+          camposPresentes: diff.camposPresentes,
+        ),
       ),
     );
   }
 
-  Future<void> _importar(BuildContext context, List<Contrato> contratos) async {
+  Future<void> _importar(
+    BuildContext context,
+    List<Contrato> contratos, {
+    Set<String>? camposPresentes,
+  }) async {
     Navigator.of(context).pop();
 
     if (contratos.isEmpty) {
@@ -653,7 +668,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       const batchSz = 400;
       for (var i = 0; i < contratos.length; i += batchSz) {
         final fatia = contratos.skip(i).take(batchSz).toList();
-        await _fs.salvarContratosLote(fatia);
+        await _fs.salvarContratosLote(fatia, camposPresentes: camposPresentes);
         overlay.update(i + fatia.length);
       }
       overlay.dismiss();
@@ -946,7 +961,7 @@ class _AnalisandoDialog extends StatelessWidget {
 
 // ── Dialog de confirmação: mostra o diff real contra a base ──────────────────
 
-class _ImportPreviewDialog extends StatelessWidget {
+class _ImportPreviewDialog extends StatefulWidget {
   final DiffImportContratos diff;
   final int totalArquivo;
   final String nomeArquivo;
@@ -960,29 +975,86 @@ class _ImportPreviewDialog extends StatelessWidget {
   });
 
   @override
+  State<_ImportPreviewDialog> createState() => _ImportPreviewDialogState();
+}
+
+class _ImportPreviewDialogState extends State<_ImportPreviewDialog> {
+  bool _confirmado = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final diff = widget.diff;
     final aGravar = diff.paraGravar.length;
 
     return AlertDialog(
       title: const Text('Confirmar importação'),
       content: SizedBox(
-        width: 480,
+        width: 520,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Arquivo: $nomeArquivo',
+              Text('Arquivo: ${widget.nomeArquivo}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 12),
-              _linha('Lidos na planilha', '$totalArquivo'),
+              _linha('Lidos na planilha', '${widget.totalArquivo}'),
               _linha('Com alteração', '${diff.alterados.length}',
                   diff.alterados.isNotEmpty ? cs.primary : null),
               _linha('Novos (não existiam)', '${diff.novos.length}',
                   diff.novos.isNotEmpty ? Colors.teal : null),
               _linha('Sem alteração', '${diff.inalterados}', cs.outline),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+
+              // Alerta de proteção de dados caso faltem colunas na planilha
+              if (diff.colunasAusentes.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.08),
+                    border: Border.all(
+                      color: Colors.amber.shade700.withOpacity(0.35),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.shield_outlined,
+                              size: 18, color: Colors.amber.shade800),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Modo Proteção de Dados Ativo',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Esta planilha não possui as colunas: '
+                        '${diff.colunasAusentes.join(", ")}.\n\n'
+                        '🛡️ O sistema protegerá seus dados e NÃO apagará essas '
+                        'informações no banco de dados. Apenas as colunas '
+                        'presentes no arquivo serão mescladas.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.amber.shade900,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               if (aGravar == 0)
                 Text(
                   'Nada mudou em relação aos dados atuais — não há o que gravar.',
@@ -995,7 +1067,7 @@ class _ImportPreviewDialog extends StatelessWidget {
                   '(assinatura, link, código…) são sempre preservados.',
                   style: TextStyle(fontSize: 11, color: cs.outline),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 if (diff.alterados.isNotEmpty)
                   _grupo(
                     context,
@@ -1023,6 +1095,33 @@ class _ImportPreviewDialog extends StatelessWidget {
                             'contrato novo'),
                     ],
                   ),
+                const SizedBox(height: 12),
+
+                // Dupla confirmação
+                Container(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _confirmado ? cs.primary : cs.outlineVariant,
+                    ),
+                  ),
+                  child: CheckboxListTile(
+                    value: _confirmado,
+                    onChanged: (v) => setState(() => _confirmado = v ?? false),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    title: Text(
+                      'Confirmo que revisei as alterações e desejo gravar os $aGravar contrato(s).',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -1034,7 +1133,9 @@ class _ImportPreviewDialog extends StatelessWidget {
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: onConfirmar,
+          onPressed: (aGravar == 0)
+              ? () => Navigator.pop(context)
+              : (_confirmado ? widget.onConfirmar : null),
           child: Text(aGravar == 0 ? 'Fechar' : 'Gravar $aGravar contrato(s)'),
         ),
       ],

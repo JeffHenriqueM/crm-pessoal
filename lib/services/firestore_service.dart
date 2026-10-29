@@ -2326,7 +2326,12 @@ class FirestoreService {
   }
 
   /// Salva uma lista de contratos em lotes (máx 500 por batch).
-  Future<void> salvarContratosLote(List<Contrato> contratos) async {
+  /// Se [camposPresentes] for informado, apenas esses campos serão atualizados
+  /// no merge, impedindo que planilhas parciais sobrescrevam dados existentes.
+  Future<void> salvarContratosLote(
+    List<Contrato> contratos, {
+    Set<String>? camposPresentes,
+  }) async {
     _invalidarCacheContratos();
     const batchSize = 400;
     for (var i = 0; i < contratos.length; i += batchSize) {
@@ -2346,7 +2351,7 @@ class FirestoreService {
       for (var j = 0; j < fatia.length; j++) {
         final c = fatia[j];
         final dados = _flagTeste({
-          ...c.toFirestore(),
+          ...c.toFirestore(campos: camposPresentes),
           if (!(temCriadoEm[c.localizador] ?? false))
             'criadoEm': FieldValue.serverTimestamp(),
         });

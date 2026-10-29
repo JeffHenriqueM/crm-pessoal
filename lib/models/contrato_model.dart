@@ -485,8 +485,8 @@ class Contrato {
     );
   }
 
-  Map<String, dynamic> toFirestore() {
-    return {
+  Map<String, dynamic> toFirestore({Set<String>? campos}) {
+    final todos = <String, dynamic>{
       'localizador': localizador,
       'localizadorAtendimento': localizadorAtendimento,
       if (codigoContrato != null) 'codigoContrato': codigoContrato,
@@ -547,6 +547,13 @@ class Contrato {
       // statusAssinatura NÃO é serializado aqui: é mantido apenas via
       // atualizarStatusAssinatura(), para sobreviver ao re-import por merge.
       'atualizadoEm': FieldValue.serverTimestamp(),
+    };
+
+    if (campos == null) return todos;
+    return {
+      'localizador': localizador,
+      for (final k in todos.keys)
+        if (campos.contains(k) || k == 'atualizadoEm') k: todos[k],
     };
   }
 
