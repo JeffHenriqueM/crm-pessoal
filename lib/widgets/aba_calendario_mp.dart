@@ -4,14 +4,14 @@
 // rodízio fixo de semanas importado da planilha: escolhe tier (Ouro/Prata/
 // Bronze), dia de check-in e número da cota, e vê todas as semanas daquela
 // cota ao longo dos anos (2027–2078), com tipo de temporada e feriado.
-//
-// Fase 1 (consulta): o dia de check-in é escolhido manualmente aqui — ainda
-// não há vínculo automático contrato → semana.
+// Permite também comparar duas ou mais cotas (ex: Cota 3 vs Cota 7).
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/semana_mp.dart';
 import '../services/firestore_service.dart';
+
+enum ModoVisualizacaoCalendario { porAno, tabela, comparar }
 
 class AbaCalendarioMP extends StatefulWidget {
   final FirestoreService? firestoreService;
@@ -54,6 +54,15 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
     'titanio': Color(0xFF546E7A),
   };
 
+  // Cores temáticas para as cotas em comparação
+  static const List<Color> _coresComparacao = [
+    Color(0xFF2563EB), // Azul vibrante
+    Color(0xFFD97706), // Laranja âmbar
+    Color(0xFF059669), // Esmeralda
+    Color(0xFF7C3AED), // Roxo
+    Color(0xFFDC2626), // Vermelho
+  ];
+
   // Produtos de quinzena (14 dias corridos) — texto adaptado.
   static const _produtosQuinzena = {'ourocorrido', 'titanio'};
 
@@ -61,7 +70,11 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   String _dia = 'domingo';
   int? _cota = 1;
   int? _ano; // null = todos os anos
-  bool _agrupadoPorAno = true;
+  ModoVisualizacaoCalendario _modo = ModoVisualizacaoCalendario.porAno;
+
+  // Modo comparação de cotas
+  List<int> _cotasComparacao = [3, 7];
+  bool _comparacaoLadoALado = true;
 
   bool _carregando = false;
   String? _erro;
@@ -88,8 +101,21 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
         final cotas = dados.keys.toList()..sort();
         if (cotas.isEmpty) {
           _cota = null;
-        } else if (_cota == null || !dados.containsKey(_cota)) {
-          _cota = cotas.first;
+          _cotasComparacao = [];
+        } else {
+          if (_cota == null || !dados.containsKey(_cota)) {
+            _cota = cotas.first;
+          }
+          // Garante cotas válidas na comparação
+          final validas =
+              _cotasComparacao.where((c) => dados.containsKey(c)).toList();
+          if (validas.length >= 2) {
+            _cotasComparacao = validas;
+          } else {
+            final c1 = _cota ?? cotas.first;
+            final c2 = cotas.firstWhere((c) => c != c1, orElse: () => c1);
+            _cotasComparacao = [c1, c2];
+          }
         }
       });
     } catch (e) {
@@ -102,14 +128,35 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
     }
   }
 
+  Color _corCotaComparada(int index) =>
+      _coresComparacao[index % _coresComparacao.length];
+
   List<SemanaMP> get _semanasCota =>
       (_cota == null ? null : _dados[_cota]) ?? const [];
+
+  List<SemanaMP> _semanasDaCota(int cota) => _dados[cota] ?? const [];
+
+  List<SemanaMP> _semanasFiltradas(int cota) => [
+        for (final w in _semanasDaCota(cota))
+          if (_ano == null || w.ano == _ano) w,
+      ];
 
   String get _unidade =>
       _produtosQuinzena.contains(_tier) ? 'quinzena(s)' : 'semana(s)';
 
   List<int> get _anosDisponiveis {
-    final s = <int>{for (final w in _semanasCota) w.ano};
+    final s = <int>{};
+    if (_modo == ModoVisualizacaoCalendario.comparar) {
+      for (final c in _cotasComparacao) {
+        for (final w in _semanasDaCota(c)) {
+          s.add(w.ano);
+        }
+      }
+    } else {
+      for (final w in _semanasCota) {
+        s.add(w.ano);
+      }
+    }
     final l = s.toList()..sort();
     return l;
   }
@@ -118,11 +165,11 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final cotas = _dados.keys.toList()..sort();
+
     final semanas = [
       for (final w in _semanasCota)
         if (_ano == null || w.ano == _ano) w,
     ];
-    // Agrupa por ano, preservando a ordem (já vêm ordenadas por data).
     final porAno = <int, List<SemanaMP>>{};
     for (final w in semanas) {
       porAno.putIfAbsent(w.ano, () => []).add(w);
@@ -130,7 +177,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
     final anosOrdenados = porAno.keys.toList()..sort();
     final porAnoTodos = _semanasCota.isEmpty
         ? 0
-        : (_semanasCota.length / _anosDisponiveis.length).round();
+        : (_semanasCota.length / (_anosDisponiveis.isEmpty ? 1 : _anosDisponiveis.length)).round();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -146,7 +193,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
         const SizedBox(height: 4),
         Text(
           'Rodízio fixo de semanas por cota (2027–2078). Escolha o tier, o dia '
-          'de check-in e o número da cota para ver as semanas.',
+          'de check-in e visualize ou compare as semanas das cotas.',
           style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 16),
@@ -176,7 +223,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
         ),
         const SizedBox(height: 12),
 
-        // Seletores de dia, cota, ano e modo de exibição.
+        // Seletores de dia, cota(s), ano e modo de exibição.
         Wrap(
           spacing: 12,
           runSpacing: 12,
@@ -202,16 +249,17 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
                     _carregar();
                   },
                 ),
-                _dropdown<int>(
-                  cs,
-                  rotulo: 'Cota',
-                  value: _dados.containsKey(_cota) ? _cota : null,
-                  itens: [
-                    for (final c in cotas)
-                      DropdownMenuItem(value: c, child: Text('Cota $c')),
-                  ],
-                  onChanged: (v) => setState(() => _cota = v),
-                ),
+                if (_modo != ModoVisualizacaoCalendario.comparar)
+                  _dropdown<int>(
+                    cs,
+                    rotulo: 'Cota',
+                    value: _dados.containsKey(_cota) ? _cota : null,
+                    itens: [
+                      for (final c in cotas)
+                        DropdownMenuItem(value: c, child: Text('Cota $c')),
+                    ],
+                    onChanged: (v) => setState(() => _cota = v),
+                  ),
                 _dropdown<int?>(
                   cs,
                   rotulo: 'Ano',
@@ -225,7 +273,7 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
                 ),
               ],
             ),
-            SegmentedButton<bool>(
+            SegmentedButton<ModoVisualizacaoCalendario>(
               showSelectedIcon: false,
               style: const ButtonStyle(
                 visualDensity: VisualDensity.compact,
@@ -233,19 +281,36 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
               ),
               segments: const [
                 ButtonSegment(
-                  value: true,
+                  value: ModoVisualizacaoCalendario.porAno,
                   label: Text('Por Ano', style: TextStyle(fontSize: 12)),
                   icon: Icon(Icons.view_agenda_outlined, size: 15),
                 ),
                 ButtonSegment(
-                  value: false,
+                  value: ModoVisualizacaoCalendario.tabela,
                   label: Text('Tabela Completa', style: TextStyle(fontSize: 12)),
                   icon: Icon(Icons.table_chart_outlined, size: 15),
                 ),
+                ButtonSegment(
+                  value: ModoVisualizacaoCalendario.comparar,
+                  label: Text('Comparar Cotas', style: TextStyle(fontSize: 12)),
+                  icon: Icon(Icons.compare_arrows_rounded, size: 15),
+                ),
               ],
-              selected: {_agrupadoPorAno},
-              onSelectionChanged: (s) =>
-                  setState(() => _agrupadoPorAno = s.first),
+              selected: {_modo},
+              onSelectionChanged: (s) {
+                setState(() {
+                  _modo = s.first;
+                  if (_modo == ModoVisualizacaoCalendario.comparar &&
+                      _cota != null &&
+                      !_cotasComparacao.contains(_cota)) {
+                    if (_cotasComparacao.length >= 2) {
+                      _cotasComparacao[1] = _cota!;
+                    } else {
+                      _cotasComparacao.add(_cota!);
+                    }
+                  }
+                });
+              },
             ),
           ],
         ),
@@ -258,19 +323,662 @@ class _AbaCalendarioMPState extends State<AbaCalendarioMP> {
           )
         else if (_erro != null)
           _aviso(cs, _erro!, acao: _carregar)
-        else if (_cota == null)
+        else if (_dados.isEmpty)
           _aviso(cs, 'Nenhuma cota encontrada para este tier/dia.')
+        else if (_modo == ModoVisualizacaoCalendario.comparar)
+          _secaoComparacao(cs, cotas)
+        else if (_cota == null)
+          _aviso(cs, 'Selecione uma cota para visualizar.')
         else ...[
           _resumo(cs, porAnoTodos),
           const SizedBox(height: 16),
           if (anosOrdenados.isEmpty)
             _aviso(cs, 'Sem semanas para o filtro selecionado.')
-          else if (_agrupadoPorAno)
+          else if (_modo == ModoVisualizacaoCalendario.porAno)
             for (final ano in anosOrdenados) _blocoAno(cs, ano, porAno[ano]!)
           else
             _tabelaCompleta(cs, semanas),
         ],
       ],
+    );
+  }
+
+  // ── SEÇÃO DE COMPARAÇÃO DE COTAS ──────────────────────────────────────────
+
+  Widget _secaoComparacao(ColorScheme cs, List<int> todasCotas) {
+    // Barra de seleção de cotas para comparar e alternador Lado a Lado / Cronológico
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.compare_arrows_rounded,
+                          size: 18, color: cs.primary),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Cotas:',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  for (int i = 0; i < _cotasComparacao.length; i++) ...[
+                    _seletorCotaComparacao(cs, i, todasCotas),
+                    if (i < _cotasComparacao.length - 1)
+                      Text('vs',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSurfaceVariant)),
+                  ],
+                  if (_cotasComparacao.length < 4 &&
+                      todasCotas.length > _cotasComparacao.length)
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 15),
+                      label: const Text('Adicionar',
+                          style: TextStyle(fontSize: 11)),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        final sobram = todasCotas
+                            .where((c) => !_cotasComparacao.contains(c))
+                            .toList();
+                        if (sobram.isNotEmpty) {
+                          setState(() => _cotasComparacao.add(sobram.first));
+                        }
+                      },
+                    ),
+                  if (_cotasComparacao.length == 2)
+                    IconButton(
+                      icon: const Icon(Icons.swap_horiz, size: 20),
+                      tooltip: 'Inverter ordem',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        setState(() {
+                          final tmp = _cotasComparacao[0];
+                          _cotasComparacao[0] = _cotasComparacao[1];
+                          _cotasComparacao[1] = tmp;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                segments: const [
+                  ButtonSegment(
+                    value: true,
+                    label:
+                        Text('Lado a Lado', style: TextStyle(fontSize: 11)),
+                    icon: Icon(Icons.view_column_outlined, size: 14),
+                  ),
+                  ButtonSegment(
+                    value: false,
+                    label:
+                        Text('Cronológico', style: TextStyle(fontSize: 11)),
+                    icon: Icon(Icons.timeline_outlined, size: 14),
+                  ),
+                ],
+                selected: {_comparacaoLadoALado},
+                onSelectionChanged: (s) =>
+                    setState(() => _comparacaoLadoALado = s.first),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Cards de Resumo Comparativo
+        _resumoCardsComparacao(cs),
+        const SizedBox(height: 14),
+
+        // Visualização das semanas comparadas (Lado a Lado ou Cronológica)
+        if (_comparacaoLadoALado)
+          _visualizacaoComparacaoLadoALado(cs)
+        else
+          _visualizacaoComparacaoCronologica(cs),
+      ],
+    );
+  }
+
+  Widget _seletorCotaComparacao(
+      ColorScheme cs, int index, List<int> todasCotas) {
+    final cotaAtual = _cotasComparacao[index];
+    final cor = _corCotaComparada(index);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cor.withValues(alpha: 0.5), width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: cor,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              'Cota ${String.fromCharCode(65 + index)}',
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          DropdownButton<int>(
+            value: todasCotas.contains(cotaAtual) ? cotaAtual : null,
+            underline: const SizedBox(),
+            isDense: true,
+            icon: Icon(Icons.arrow_drop_down, color: cor, size: 18),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface,
+            ),
+            items: [
+              for (final c in todasCotas)
+                DropdownMenuItem(
+                  value: c,
+                  child: Text(
+                    'Cota $c',
+                    style: TextStyle(
+                      fontWeight: c == cotaAtual
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) {
+                setState(() => _cotasComparacao[index] = v);
+              }
+            },
+          ),
+          if (_cotasComparacao.length > 2) ...[
+            const SizedBox(width: 4),
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _cotasComparacao.removeAt(index)),
+              child: Icon(Icons.close, size: 14, color: cs.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _resumoCardsComparacao(ColorScheme cs) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cards = <Widget>[];
+
+        for (int i = 0; i < _cotasComparacao.length; i++) {
+          final cota = _cotasComparacao[i];
+          final cor = _corCotaComparada(i);
+          final semanas = _semanasFiltradas(cota);
+
+          final countAlta = semanas
+              .where((w) => w.tipo.toLowerCase().startsWith('alta'))
+              .length;
+          final countMedia = semanas
+              .where((w) =>
+                  w.tipo.toLowerCase().startsWith('méd') ||
+                  w.tipo.toLowerCase().startsWith('med'))
+              .length;
+          final feriados = semanas.where((w) => w.temFeriado).toList();
+
+          final meses = <String>{};
+          for (final w in semanas) {
+            meses.add(_nomeMes(DateTime.tryParse(w.entrada)));
+          }
+
+          cards.add(
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cor.withValues(alpha: 0.35)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: cor,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Cota $cota',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${semanas.length} $_unidade'
+                          '${_ano != null ? ' em $_ano' : ' no total'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (countAlta > 0)
+                          _tagResumo(
+                              '$countAlta Alta', const Color(0xFFD97706)),
+                        if (countMedia > 0)
+                          _tagResumo(
+                              '$countMedia Média', const Color(0xFF2563EB)),
+                        if (feriados.isNotEmpty)
+                          _tagResumo(
+                            '${feriados.length} feriado${feriados.length > 1 ? 's' : ''}',
+                            const Color(0xFFEA580C),
+                            icone: Icons.celebration,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Meses: ${meses.join(", ")}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (feriados.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Feriados: ${feriados.map((f) => f.feriado).join(", ")}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFFEA580C),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < cards.length; i++) ...[
+              cards[i],
+              if (i < cards.length - 1) const SizedBox(width: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _visualizacaoComparacaoLadoALado(ColorScheme cs) {
+    // Descobre todos os anos presentes nas semanas das cotas filtradas
+    final anosSet = <int>{};
+    for (final c in _cotasComparacao) {
+      for (final w in _semanasFiltradas(c)) {
+        anosSet.add(w.ano);
+      }
+    }
+    final anos = anosSet.toList()..sort();
+
+    if (anos.isEmpty) {
+      return _aviso(cs, 'Nenhuma semana encontrada para o período selecionado.');
+    }
+
+    return Column(
+      children: [
+        for (final ano in anos)
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(12),
+              border:
+                  Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header do Ano
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(11)),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.event_outlined, size: 17, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$ano',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: cs.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Comparativo de cotas',
+                        style: TextStyle(
+                            fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Colunas lado a lado
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (int i = 0; i < _cotasComparacao.length; i++) ...[
+                        _colunaTabelaCota(cs, _cotasComparacao[i], ano, i),
+                        if (i < _cotasComparacao.length - 1)
+                          Container(
+                            width: 1,
+                            height: 140,
+                            color: cs.outlineVariant.withValues(alpha: 0.4),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _colunaTabelaCota(ColorScheme cs, int cota, int ano, int index) {
+    final cor = _corCotaComparada(index);
+    final semanas =
+        _semanasDaCota(cota).where((w) => w.ano == ano).toList();
+
+    return SizedBox(
+      width: 480,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Sub-header da cota
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            color: cor.withValues(alpha: 0.12),
+            child: Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cor,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Cota $cota',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${semanas.length} $_unidade no ano',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: cor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Tabela da cota para aquele ano
+          if (semanas.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Center(
+                child: Text('Nenhuma semana neste ano.',
+                    style: TextStyle(fontSize: 12, color: cs.outline)),
+              ),
+            )
+          else
+            Table(
+              columnWidths: const {
+                0: FixedColumnWidth(130), // Entrada
+                1: FixedColumnWidth(130), // Saída
+                2: FixedColumnWidth(80), // Mês
+                3: FixedColumnWidth(75), // Tipo
+                4: FlexColumnWidth(), // Feriado
+              },
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: TableBorder(
+                horizontalInside: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.20),
+                  ),
+                  children: [
+                    _th(cs, 'Entrada'),
+                    _th(cs, 'Saída'),
+                    _th(cs, 'Mês'),
+                    _th(cs, 'Tipo'),
+                    _th(cs, 'Feriado'),
+                  ],
+                ),
+                for (final w in semanas)
+                  TableRow(
+                    children: [
+                      _td(cs, _celulaData(cs, w.entrada)),
+                      _td(cs, _celulaData(cs, w.saida)),
+                      _td(
+                        cs,
+                        Text(
+                          _nomeMes(DateTime.tryParse(w.entrada)),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      _td(cs, _badgeTipo(w.tipo)),
+                      _td(cs, _badgeFeriado(cs, w.feriado)),
+                    ],
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _visualizacaoComparacaoCronologica(ColorScheme cs) {
+    // Junta todas as semanas de todas as cotas comparadas
+    final todas = <(int cota, int index, SemanaMP semana)>[];
+    for (int i = 0; i < _cotasComparacao.length; i++) {
+      final cota = _cotasComparacao[i];
+      for (final w in _semanasFiltradas(cota)) {
+        todas.add((cota, i, w));
+      }
+    }
+    // Ordena por data de entrada
+    todas.sort((a, b) => a.$3.entrada.compareTo(b.$3.entrada));
+
+    if (todas.isEmpty) {
+      return _aviso(cs, 'Nenhuma semana encontrada para o período selecionado.');
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 840),
+            child: Table(
+              columnWidths: const {
+                0: FixedColumnWidth(75), // Ano
+                1: FixedColumnWidth(95), // Cota
+                2: FixedColumnWidth(160), // Entrada
+                3: FixedColumnWidth(160), // Saída
+                4: FixedColumnWidth(100), // Mês
+                5: FixedColumnWidth(110), // Tipo
+                6: FlexColumnWidth(), // Feriado
+              },
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: TableBorder(
+                horizontalInside: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                  ),
+                  children: [
+                    _th(cs, 'Ano'),
+                    _th(cs, 'Cota'),
+                    _th(cs, 'Entrada'),
+                    _th(cs, 'Saída'),
+                    _th(cs, 'Mês'),
+                    _th(cs, 'Tipo'),
+                    _th(cs, 'Feriado'),
+                  ],
+                ),
+                for (final item in todas)
+                  TableRow(
+                    children: [
+                      _td(
+                        cs,
+                        Text(
+                          '${item.$3.ano}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ),
+                      _td(
+                        cs,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _corCotaComparada(item.$2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Cota ${item.$1}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      _td(cs, _celulaData(cs, item.$3.entrada)),
+                      _td(cs, _celulaData(cs, item.$3.saida)),
+                      _td(
+                        cs,
+                        Text(
+                          _nomeMes(DateTime.tryParse(item.$3.entrada)),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      _td(cs, _badgeTipo(item.$3.tipo)),
+                      _td(cs, _badgeFeriado(cs, item.$3.feriado)),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

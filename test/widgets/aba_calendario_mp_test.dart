@@ -101,4 +101,76 @@ void main() {
     expect(find.text('2027'), findsWidgets);
     expect(find.text('Setembro'), findsOneWidget);
   });
+
+  testWidgets('AbaCalendarioMP permite alternar para modo Comparar Cotas',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    final service = FirestoreService(
+      db: db,
+      auth: MockFirebaseAuth(
+        signedIn: true,
+        mockUser: MockUser(uid: 'user-jeff', displayName: 'Jefferson'),
+      ),
+    );
+
+    await db.collection('config').doc('calendario_ouro_domingo').set({
+      'tier': 'ouro',
+      'dia': 'domingo',
+      'cotas': {
+        '3': [
+          {
+            'a': 2028,
+            'e': '2028-04-06',
+            's': '2028-04-13',
+            't': 'Média',
+            'f': '',
+          },
+        ],
+        '7': [
+          {
+            'a': 2028,
+            'e': '2028-01-27',
+            's': '2028-02-03',
+            't': 'Alta',
+            'f': '',
+          },
+        ],
+      },
+    });
+
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AbaCalendarioMP(firestoreService: service),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Clica no modo "Comparar Cotas"
+    final btnComparar = find.text('Comparar Cotas');
+    expect(btnComparar, findsOneWidget);
+    await tester.tap(btnComparar);
+    await tester.pumpAndSettle();
+
+    // Verifica que os controles de comparação foram renderizados
+    expect(find.text('Cotas:'), findsOneWidget);
+    expect(find.text('Cota A'), findsOneWidget);
+    expect(find.text('Cota B'), findsOneWidget);
+    expect(find.text('Lado a Lado'), findsOneWidget);
+    expect(find.text('Cronológico'), findsOneWidget);
+
+    // Alterna para o modo cronológico
+    await tester.tap(find.text('Cronológico'));
+    await tester.pumpAndSettle();
+
+    // Na tabela cronológica, as badges das cotas aparecem
+    expect(find.text('Cota 3'), findsWidgets);
+    expect(find.text('Cota 7'), findsWidgets);
+  });
 }
