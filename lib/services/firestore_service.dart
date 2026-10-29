@@ -2488,6 +2488,86 @@ class FirestoreService {
     ]);
   }
 
+  /// Registra o envio de notificação/mensagem (WhatsApp e/ou E-mail) para um contrato.
+  /// Atualiza o campo [notificadoEm] via merge no Firestore, invalida o cache de contratos
+  /// e insere uma nova [Interacao] na subcoleção 'interacoes' do contrato.
+  Future<void> registrarEnvioMensagemContrato(
+    String localizador, {
+    required bool enviouWhats,
+    required bool enviouEmail,
+    String? modeloWhatsTitulo,
+    String? modeloEmailTitulo,
+    String? textoWhats,
+    String? assuntoEmail,
+    String? textoEmail,
+    DateTime? dataEnvio,
+  }) async {
+    final agora = dataEnvio ?? DateTime.now();
+    final ref = _db.collection(_colContratos).doc(localizador);
+
+    await ref.set({
+      'notificadoEm': Timestamp.fromDate(agora),
+    }, SetOptions(merge: true));
+
+    _invalidarCacheContratos();
+
+    final canais = <String>[];
+    if (enviouWhats) canais.add('WhatsApp');
+    if (enviouEmail) canais.add('E-mail');
+    final canaisTxt = canais.isEmpty ? 'Mensagem' : canais.join(' + ');
+
+    final canal = (enviouWhats && enviouEmail)
+        ? Canal.outro
+        : (enviouWhats ? Canal.whatsapp : Canal.email);
+
+    final buffer = StringBuffer();
+    final dataFmt =
+        '${agora.day.toString().padLeft(2, '0')}/${agora.month.toString().padLeft(2, '0')}/${agora.year} '
+        '${agora.hour.toString().padLeft(2, '0')}:${agora.minute.toString().padLeft(2, '0')}';
+    buffer.writeln('Notificação enviada via $canaisTxt em $dataFmt.');
+    if (enviouWhats && (textoWhats?.isNotEmpty ?? false)) {
+      buffer.writeln('\n[WhatsApp]');
+      if (modeloWhatsTitulo != null && modeloWhatsTitulo.isNotEmpty) {
+        buffer.writeln('Modelo: $modeloWhatsTitulo');
+      }
+      buffer.writeln(textoWhats);
+    }
+    if (enviouEmail && (textoEmail?.isNotEmpty ?? false)) {
+      buffer.writeln('\n[E-mail]');
+      if (assuntoEmail != null && assuntoEmail.isNotEmpty) {
+        buffer.writeln('Assunto: $assuntoEmail');
+      }
+      if (modeloEmailTitulo != null && modeloEmailTitulo.isNotEmpty) {
+        buffer.writeln('Modelo: $modeloEmailTitulo');
+      }
+      buffer.writeln(textoEmail);
+    }
+
+    await adicionarInteracaoContrato(
+      localizador,
+      Interacao(
+        titulo: 'Notificação enviada ($canaisTxt)',
+        nota: buffer.toString().trim(),
+        dataInteracao: agora,
+        canal: canal,
+        autorId: _currentUserId,
+        autorNome: _currentUserName,
+      ),
+    );
+
+    try {
+      await _db.collection('audit_log').add({
+        'tipo': 'notificacao_mensagem_enviada',
+        'autorId': _currentUserId,
+        'autorNome': _currentUserName,
+        'contratoLocalizador': localizador,
+        'enviouWhats': enviouWhats,
+        'enviouEmail': enviouEmail,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
   /// Busca única de todos os contratos (não-stream).
   /// Cache em memória com TTL de 10 min — invalidado após writes de distrato.
   /// Passe [forcarRecarga] para ignorar o cache.

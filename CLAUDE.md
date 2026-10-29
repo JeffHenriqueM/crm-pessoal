@@ -162,3 +162,8 @@ Ao atuar nos tickets abertos do sistema, consulte os seguintes arquivos-alvo par
 
 6. **Vendedor Desassociando ao Reabrir Lead Criado na Recepção:**
    - *Arquivo-alvo:* `lib/screens/recepcao_screen.dart` ao promover o atendimento para o funil, e o mapeamento de campos em `lib/models/cliente_model.dart`.
+
+<!-- claude-reflect: learned rules (saved from the band; edit freely) -->
+## Learned rules
+- Calendar usage starts in 2028; Gold uses 7+7+7+7-day periods; everyone checks in and out on the same day.
+<!-- end claude-reflect -->

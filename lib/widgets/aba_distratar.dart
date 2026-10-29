@@ -15,6 +15,7 @@ import 'botoes_contato_contrato.dart';
 /// Critérios de ordenação manual da lista do Distratar.
 enum _OrdenarPor {
   atraso('Valor em atraso'),
+  naoNotificados('Não notificados 1º'),
   notificado('Data de notificação'),
   distratoPrevisto('Distrato previsto'),
   ultimoPgto('Último pagamento'),
@@ -378,6 +379,10 @@ class _AbaDistratarState extends State<AbaDistratar> {
         return true;
       case 'sem':
         return !c.emDistrato;
+      case 'nao_notificados':
+        return c.notificadoEm == null;
+      case 'notificados':
+        return c.notificadoEm != null;
       default:
         if (!c.emDistrato) return false;
         return (c.situacaoDistrato ?? SituacaoDistrato.marcado).valor ==
@@ -389,10 +394,25 @@ class _AbaDistratarState extends State<AbaDistratar> {
   /// Valores nulos (datas ausentes) vão sempre para o fim, independente da
   /// direção.
   void _ordenarLista(List<Contrato> lista, Map<String, DateTime> ultimoPag) {
+    if (_ordenarPor == _OrdenarPor.naoNotificados) {
+      lista.sort((a, b) {
+        final aNotif = a.notificadoEm;
+        final bNotif = b.notificadoEm;
+        if (aNotif == null && bNotif != null) return -1;
+        if (aNotif != null && bNotif == null) return 1;
+        return a.nomeComprador
+            .toLowerCase()
+            .compareTo(b.nomeComprador.toLowerCase());
+      });
+      return;
+    }
+
     Comparable? chave(Contrato c) {
       switch (_ordenarPor) {
         case _OrdenarPor.atraso:
           return c.valorAtrasado;
+        case _OrdenarPor.naoNotificados:
+          return null;
         case _OrdenarPor.pctPago:
           return c.percentualIntegralizado;
         case _OrdenarPor.nome:
@@ -553,6 +573,12 @@ class _AbaDistratarState extends State<AbaDistratar> {
     // (valor do filtro, rótulo, contagem, cor opcional)
     final itens = <(String, String, int, Color?)>[
       ('todos', 'Todos', base.length, null),
+      (
+        'nao_notificados',
+        'Não notificados',
+        contar((c) => c.notificadoEm == null),
+        Colors.orange
+      ),
       ('sem', 'Sem marcação', contar((c) => !c.emDistrato), null),
       for (final s in SituacaoDistrato.values)
         (
@@ -789,7 +815,12 @@ class _AbaDistratarState extends State<AbaDistratar> {
               Row(
                 children: [
                   // ── Contato (WhatsApp + e-mail) ──────────────────────────
-                  BotoesContatoContrato(contrato: c, iconSize: 18),
+                  BotoesContatoContrato(
+                    contrato: c,
+                    iconSize: 18,
+                    firestoreService: _firestore,
+                    onEnvioConcluido: _carregar,
+                  ),
                   const Spacer(),
                   // ── Distrato ─────────────────────────────────────────────
                   if (processando)

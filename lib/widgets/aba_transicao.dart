@@ -342,6 +342,18 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       ? [for (final c in _mp) (c.nome, Color(c.cor))]
       : [for (final c in _categoriasHotel) (c.$1, c.$2)];
 
+  /// Categorias (nome, cor, descrição, unidades) usadas na aba Cotas.
+  /// Fonte = categorias da Multipropriedade (`_mp`), que refletem as categorias
+  /// criadas ou customizadas na aba Categorias (como VILLAMOR (BANHEIRA),
+  /// Bângalo, etc.). Cai para o layout do Hotel caso a Multipropriedade ainda
+  /// não tenha sido carregada.
+  List<(String, Color, String, List<int>)> get _categoriasCotas => _mp.isNotEmpty
+      ? [
+          for (final c in _mp)
+            (c.nome, Color(c.cor), '', List<int>.unmodifiable(c.aptos))
+        ]
+      : _categoriasHotel;
+
   /// Controlador de uma célula, criado sob demanda (seed = preço salvo). Garante
   /// que categorias criadas na Multipropriedade em runtime tenham um campo,
   /// sem apagar edições já em andamento das demais.
@@ -4477,9 +4489,13 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
-  /// Apartamentos do Hotel em ordem de prestígio (categoria premium → simples,
-  /// e dentro da categoria por número crescente). Base da auto-distribuição.
+  /// Apartamentos da Multipropriedade/Hotel em ordem de prestígio (categoria
+  /// premium → simples, e dentro da categoria por número crescente). Base da
+  /// auto-distribuição.
   List<int> _aptosPorPrestigio() {
+    if (_mp.isNotEmpty) {
+      return _aptosMPPorPrestigio();
+    }
     final out = <int>[];
     for (final nome in _prestigioCategorias) {
       final cat = _categoriasHotel.where((c) => c.$1 == nome);
@@ -4699,7 +4715,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
   }
 
   Widget _tabCotas(ColorScheme cs) {
-    final todos = [for (final c in _categoriasHotel) ...c.$4];
+    final categorias = _categoriasCotas;
+    final todos = [for (final c in categorias) ...c.$4];
     // Conta por cota de forma genérica (inclui novas cotas como Titânio).
     final contagem = {for (final o in _cotasOpcoes) o.$2: 0};
     for (final n in todos) {
@@ -4815,7 +4832,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
             ],
           ),
           const SizedBox(height: 16),
-          for (final c in _categoriasHotel) ...[
+          for (final c in categorias) ...[
             _cardCotasCategoria(cs, c),
             const SizedBox(height: 10),
           ],

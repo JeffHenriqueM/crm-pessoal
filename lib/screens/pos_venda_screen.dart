@@ -32,6 +32,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   String? _filtroStatusFin;
   String? _filtroAssinatura;
   String? _filtroProduto;
+  String? _filtroNotificado; // null = todos, 'nao' = não notificados, 'sim' = já notificados
   // Ordenação: 'nome' | 'imovel' | 'valorVendido' | 'aReceber'.
   String _ordenacao = 'nome';
 
@@ -115,8 +116,12 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                   _filtroAssinatura!.substring('grupo:'.length)
               : c.statusAssinatura.value == _filtroAssinatura);
       final prodOk = _filtroProduto == null || c.produto == _filtroProduto;
+      final notifOk = _filtroNotificado == null ||
+          (_filtroNotificado == 'nao'
+              ? c.notificadoEm == null
+              : c.notificadoEm != null);
 
-      return buscaOk && statusOk && finOk && assOk && prodOk;
+      return buscaOk && statusOk && finOk && assOk && prodOk && notifOk;
     }).toList()
       ..sort(_comparar);
   }
@@ -131,6 +136,22 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         return b.valorTotalReajustado.compareTo(a.valorTotalReajustado);
       case 'aReceber':
         return b.saldoRestante.compareTo(a.saldoRestante);
+      case 'naoNotificadosPrimeiro':
+        final aNotif = a.notificadoEm;
+        final bNotif = b.notificadoEm;
+        if (aNotif == null && bNotif != null) return -1;
+        if (aNotif != null && bNotif == null) return 1;
+        return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
+      case 'notificadosRecentes':
+        final aNotif = a.notificadoEm;
+        final bNotif = b.notificadoEm;
+        if (aNotif != null && bNotif == null) return -1;
+        if (aNotif == null && bNotif != null) return 1;
+        if (aNotif != null && bNotif != null) {
+          final cmp = bNotif.compareTo(aNotif);
+          if (cmp != 0) return cmp;
+        }
+        return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
       default:
         return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
     }
@@ -142,6 +163,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         _filtroStatusFin,
         _filtroAssinatura,
         _filtroProduto,
+        _filtroNotificado,
       ].where((f) => f != null).length;
 
   static const _labelsOrdenacao = {
@@ -149,6 +171,8 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     'imovel': 'Nº do imóvel',
     'valorVendido': 'Valor vendido',
     'aReceber': 'Valor a receber',
+    'naoNotificadosPrimeiro': 'Não notificados primeiro',
+    'notificadosRecentes': 'Notificados recentemente',
   };
 
   /// Texto da contagem que reflete o filtro de situação:
@@ -245,6 +269,100 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                 ),
               ],
             ],
+          ),
+        ),
+        // ── Chips Rápidos de Notificação ──────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                FilterChip(
+                  avatar: Icon(
+                    Icons.mark_email_unread_outlined,
+                    size: 15,
+                    color: _filtroNotificado == 'nao'
+                        ? Colors.white
+                        : Colors.orange.shade800,
+                  ),
+                  label: Text(
+                      'Não notificados (${_todos.where((c) => c.notificadoEm == null).length})'),
+                  selected: _filtroNotificado == 'nao',
+                  onSelected: (sel) =>
+                      setState(() => _filtroNotificado = sel ? 'nao' : null),
+                  selectedColor: Colors.orange.shade800,
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _filtroNotificado == 'nao' ? Colors.white : null,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  avatar: Icon(
+                    Icons.mark_email_read_outlined,
+                    size: 15,
+                    color: _filtroNotificado == 'sim'
+                        ? Colors.white
+                        : Colors.teal.shade700,
+                  ),
+                  label: Text(
+                      'Já notificados (${_todos.where((c) => c.notificadoEm != null).length})'),
+                  selected: _filtroNotificado == 'sim',
+                  onSelected: (sel) =>
+                      setState(() => _filtroNotificado = sel ? 'sim' : null),
+                  selectedColor: Colors.teal.shade700,
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _filtroNotificado == 'sim' ? Colors.white : null,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: Icon(
+                    Icons.sort,
+                    size: 15,
+                    color: _ordenacao == 'naoNotificadosPrimeiro'
+                        ? Colors.white
+                        : cs.primary,
+                  ),
+                  label: const Text('Organizar: Não notificados 1º'),
+                  backgroundColor: _ordenacao == 'naoNotificadosPrimeiro'
+                      ? cs.primary
+                      : null,
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _ordenacao == 'naoNotificadosPrimeiro'
+                        ? Colors.white
+                        : null,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (_ordenacao == 'naoNotificadosPrimeiro') {
+                        _ordenacao = 'nome';
+                      } else {
+                        _ordenacao = 'naoNotificadosPrimeiro';
+                      }
+                    });
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+                if (_filtroNotificado != null) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: const Icon(Icons.close, size: 14),
+                    label: const Text('Mostrar todos'),
+                    onPressed: () => setState(() => _filtroNotificado = null),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
         // ── Contagem (reflete o filtro) + ordenação atual ──────────────────
@@ -354,12 +472,21 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                               _filtroStatusFin = null;
                               _filtroAssinatura = null;
                               _filtroProduto = null;
+                              _filtroNotificado = null;
                               _ordenacao = 'nome';
                             }),
                             child: const Text('Limpar'),
                           ),
                         ],
                       ),
+                      grupo('Notificação / Mensagem', [
+                        opc('Todos', _filtroNotificado == null,
+                            () => _filtroNotificado = null),
+                        opc('Não notificados', _filtroNotificado == 'nao',
+                            () => _filtroNotificado = 'nao'),
+                        opc('Já notificados', _filtroNotificado == 'sim',
+                            () => _filtroNotificado = 'sim'),
+                      ]),
                       grupo('Ordenar por', [
                         for (final e in _labelsOrdenacao.entries)
                           opc(e.value, _ordenacao == e.key,
@@ -737,6 +864,25 @@ class _ContratoCard extends StatelessWidget {
                     ],
                   );
                 }),
+              ],
+              // Notificação registrada (quando não está em distrato)
+              if (c.notificadoEm != null && !c.emDistrato) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.mark_email_read_outlined,
+                        size: 13, color: Colors.teal.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Notificado em ${fmtData.format(c.notificadoEm!)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.teal.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ],
               // Acompanhamento de distrato: data da notificação + data prevista
               if (c.emDistrato &&

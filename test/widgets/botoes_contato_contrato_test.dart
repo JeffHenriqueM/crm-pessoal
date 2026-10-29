@@ -91,6 +91,75 @@ void main() {
       await tester.tap(find.text('Cancelar'));
       await tester.pumpAndSettle();
     });
+
+    testWidgets('exibe indicador e alerta de reenvio quando contrato ja foi notificado',
+        (tester) async {
+      final notificado = DateTime.now().subtract(const Duration(hours: 2));
+      final cNotificado = Contrato(
+        localizador: 'LOC_NOTIF',
+        localizadorAtendimento: 'ATD_NOTIF',
+        nomeComprador: 'Ana Notificada',
+        telefoneComprador: '79977777777',
+        emailComprador: 'ana@email.com',
+        notificadoEm: notificado,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BotoesContatoContrato(contrato: cNotificado),
+          ),
+        ),
+      );
+
+      // Tooltip contém a data do último envio
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is IconButton &&
+            (w.tooltip?.contains('Último envio') ?? false)),
+        findsOneWidget,
+      );
+
+      // Ícone de check de notificado visível no Stack
+      expect(find.byIcon(Icons.check), findsOneWidget);
+
+      // Abre diálogo
+      final botaoAmbos = find.byWidgetPredicate((w) =>
+          w is IconButton &&
+          (w.tooltip?.contains('Último envio') ?? false));
+      await tester.tap(botaoAmbos);
+      await tester.pumpAndSettle();
+
+      // Alerta de reenvio deve estar presente
+      expect(find.text('Atenção: Mensagem já enviada anteriormente!'),
+          findsOneWidget);
+      expect(
+          find.text(
+              'Confirmo que desejo reenviar a mensagem (já enviada nas últimas 24h).'),
+          findsOneWidget);
+
+      // Botão deve mostrar 'Reenviar' e estar inicialmente desabilitado por não ter marcado o checkbox
+      final filledButton =
+          tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+      expect(filledButton.onPressed, isNull);
+      expect(find.text('Reenviar WhatsApp + E-mail'), findsOneWidget);
+
+      // Marca o checkbox de confirmação
+      final checkbox = find.byWidgetPredicate(
+        (w) => w is Checkbox && w.activeColor == const Color(0xFF856404),
+      );
+      await tester.tap(checkbox);
+      await tester.pumpAndSettle();
+
+      // Agora o botão deve estar habilitado
+      final filledButtonHabilitado =
+          tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+      expect(filledButtonHabilitado.onPressed, isNotNull);
+
+      // Fecha diálogo
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+    });
   });
 
   group('Alinhamento dos botões em Contratos', () {

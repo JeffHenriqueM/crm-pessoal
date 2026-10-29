@@ -15,6 +15,20 @@ import 'whatsapp_modelos.dart';
 final _moeda =
     NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$ ', decimalDigits: 2);
 final _dataFmt = DateFormat('dd/MM/yyyy');
+final _dataHoraFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+String _tempoRelativo(DateTime data) {
+  final agora = DateTime.now();
+  final diff = agora.difference(data);
+  if (diff.inMinutes < 1) return 'há instantes';
+  if (diff.inMinutes < 60) return 'há ${diff.inMinutes} min';
+  if (diff.inHours < 24) {
+    return diff.inHours == 1 ? 'há 1 hora' : 'há ${diff.inHours} horas';
+  }
+  if (diff.inDays == 1) return 'ontem';
+  if (diff.inDays < 30) return 'há ${diff.inDays} dias';
+  return _dataFmt.format(data);
+}
 
 /// Variáveis de contrato já formatadas (moeda/data) para os modelos de mensagem.
 /// `{dataLimite}` = hoje + 15 dias (prazo de purgação da mora, cláusula 4.7).
@@ -146,6 +160,7 @@ Future<void> enviarWhatsAppEEmailContrato(
   BuildContext context,
   Contrato c, {
   FirestoreService? fs,
+  VoidCallback? onEnvioConcluido,
 }) async {
   final temTel = c.telefoneComprador.trim().isNotEmpty;
   final temEmail = c.emailComprador.trim().isNotEmpty;
@@ -242,6 +257,13 @@ Future<void> enviarWhatsAppEEmailContrato(
       bool enviarWhats = true;
       bool enviarEmail = true;
 
+      final notificadoEm = c.notificadoEm;
+      final jaNotificado = notificadoEm != null;
+      final diferenca =
+          jaNotificado ? DateTime.now().difference(notificadoEm) : null;
+      final notificadoRecente = diferenca != null && diferenca.inHours < 24;
+      bool confirmarReenvio = !notificadoRecente;
+
       return StatefulBuilder(
         builder: (ctx, setDialog) {
           return Dialog(
@@ -287,6 +309,35 @@ Future<void> enviarWhatsAppEEmailContrato(
                                   color: cs.onSurfaceVariant,
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    jaNotificado
+                                        ? Icons.check_circle
+                                        : Icons.info_outline,
+                                    size: 13,
+                                    color: jaNotificado
+                                        ? const Color(0xFF1B8A44)
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      jaNotificado
+                                          ? 'Status: Notificação já enviada em ${_dataHoraFmt.format(notificadoEm)} (${_tempoRelativo(notificadoEm)})'
+                                          : 'Status: Nenhuma mensagem enviada anteriormente para este comprador',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: jaNotificado
+                                            ? const Color(0xFF1B8A44)
+                                            : cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -304,6 +355,54 @@ Future<void> enviarWhatsAppEEmailContrato(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // ── Alerta de Reenvio se já foi notificado ──────────
+                            if (jaNotificado) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF3CD),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: const Color(0xFFFFD166)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(Icons.warning_amber_rounded,
+                                        color: Color(0xFF856404), size: 22),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Atenção: Mensagem já enviada anteriormente!',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              color: Color(0xFF856404),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Último envio registrado em ${_dataHoraFmt.format(notificadoEm)} (${_tempoRelativo(notificadoEm)}). '
+                                            'Verifique abaixo se realmente deseja reenviar para evitar duplicações.',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Color(0xFF856404),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+
                             // ── Seção WhatsApp ──────────────────────────
                             Container(
                               padding: const EdgeInsets.all(12),
@@ -545,6 +644,41 @@ Future<void> enviarWhatsAppEEmailContrato(
                         ),
                       ),
                     ),
+                    // Trava de reenvio nas últimas 24h
+                    if (notificadoRecente) ...[
+                      Container(
+                        margin: const EdgeInsets.only(top: 8, bottom: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFFD166)),
+                        ),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: confirmarReenvio,
+                              onChanged: (v) => setDialog(
+                                  () => confirmarReenvio = v ?? false),
+                              activeColor: const Color(0xFF856404),
+                            ),
+                            const SizedBox(width: 4),
+                            const Expanded(
+                              child: Text(
+                                'Confirmo que desejo reenviar a mensagem (já enviada nas últimas 24h).',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF856404),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 16),
 
                     // Rodapé
@@ -557,7 +691,8 @@ Future<void> enviarWhatsAppEEmailContrato(
                         ),
                         const SizedBox(width: 8),
                         FilledButton.icon(
-                          onPressed: (!enviarWhats && !enviarEmail)
+                          onPressed: ((!enviarWhats && !enviarEmail) ||
+                                  (notificadoRecente && !confirmarReenvio))
                               ? null
                               : () async {
                                   Navigator.pop(dialogCtx);
@@ -590,11 +725,36 @@ Future<void> enviarWhatsAppEEmailContrato(
                                     }
                                   }
 
+                                  if (abriuWhats || abriuEmail) {
+                                    try {
+                                      final servico =
+                                          fs ?? FirestoreService();
+                                      await servico
+                                          .registrarEnvioMensagemContrato(
+                                        c.localizador,
+                                        enviouWhats: abriuWhats,
+                                        enviouEmail: abriuEmail,
+                                        modeloWhatsTitulo:
+                                            whatsSelecionado?.titulo,
+                                        modeloEmailTitulo:
+                                            emailSelecionado?.titulo,
+                                        textoWhats: whatsCtrl.text.trim(),
+                                        assuntoEmail:
+                                            assuntoCtrl.text.trim(),
+                                        textoEmail: corpoCtrl.text.trim(),
+                                      );
+                                      onEnvioConcluido?.call();
+                                    } catch (e) {
+                                      debugPrint(
+                                          '[Ambos] Erro ao registrar envio: $e');
+                                    }
+                                  }
+
                                   if (abriuWhats && abriuEmail) {
                                     messenger.showSnackBar(
                                       SnackBar(
                                         content: const Text(
-                                            'WhatsApp e Gmail abertos com sucesso!'),
+                                            'WhatsApp e Gmail abertos e notificação registrada com sucesso! ✓'),
                                         action: SnackBarAction(
                                           label: 'Reabrir Gmail',
                                           onPressed: () =>
@@ -610,18 +770,20 @@ Future<void> enviarWhatsAppEEmailContrato(
                                     messenger.showSnackBar(
                                       const SnackBar(
                                           content: Text(
-                                              'WhatsApp aberto com sucesso!')),
+                                              'WhatsApp aberto e notificação registrada! ✓')),
                                     );
                                   } else if (abriuEmail) {
                                     messenger.showSnackBar(
                                       const SnackBar(
                                           content:
-                                              Text('Gmail aberto com sucesso!')),
+                                              Text('Gmail aberto e notificação registrada! ✓')),
                                     );
                                   }
                                 },
                           icon: const Icon(Icons.send_rounded, size: 18),
-                          label: const Text('Enviar WhatsApp + E-mail'),
+                          label: Text(jaNotificado
+                              ? 'Reenviar WhatsApp + E-mail'
+                              : 'Enviar WhatsApp + E-mail'),
                         ),
                       ],
                     ),
