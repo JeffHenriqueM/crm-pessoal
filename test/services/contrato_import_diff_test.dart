@@ -119,4 +119,41 @@ void main() {
     final campos = r.alterados.first.campos;
     expect(campos.where((c) => c == 'endereço'), hasLength(1));
   });
+
+  test('campos ausentes na planilha não contam como alteração nem apagam dados', () {
+    // Contrato atual no Firestore tem CPF, email, telefone e endereço.
+    final atual = Contrato(
+      localizador: 'LOC-1',
+      localizadorAtendimento: 'AT-1',
+      nomeComprador: 'MARIA SILVA',
+      cpfComprador: '123.456.789-00',
+      emailComprador: 'maria@email.com',
+      telefoneComprador: '11999998888',
+      logradouro: 'AV BRASIL',
+      valorIntegralizado: 5000,
+    );
+
+    // Planilha parcial: só tem LOCALIZADOR, CESSIONÁRIO 1 e VALOR INTEGRALIZADO.
+    // O parser gerou objeto Contrato com campos restantes vazios.
+    final daPlanilha = Contrato(
+      localizador: 'LOC-1',
+      localizadorAtendimento: '',
+      nomeComprador: 'MARIA SILVA',
+      valorIntegralizado: 5000,
+    );
+
+    // Sem proteção (camposPresentes null) compararia tudo e marcaria alterado:
+    final semProtecao = analisarImportContratos([daPlanilha], {'LOC-1': atual});
+    expect(semProtecao.alterados, hasLength(1));
+
+    // Com proteção (camposPresentes com as colunas reais do arquivo):
+    final comProtecao = analisarImportContratos(
+      [daPlanilha],
+      {'LOC-1': atual},
+      camposPresentes: {'localizador', 'nomeComprador', 'valorIntegralizado'},
+    );
+    expect(comProtecao.alterados, isEmpty);
+    expect(comProtecao.inalterados, 1);
+    expect(comProtecao.paraGravar, isEmpty);
+  });
 }

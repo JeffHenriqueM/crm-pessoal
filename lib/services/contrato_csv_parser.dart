@@ -11,16 +11,32 @@ import '../models/contrato_model.dart';
 ///
 /// Dois formatos de entrada com o **mesmo** mapeamento de colunas → [Contrato]
 /// (ver [_mapearContratos]):
-/// - [parsearCsvContratos]: texto CSV (export "Salvar como CSV").
-/// - [parsearExcelContratos]: xlsx nativo (números e datas tipados — mais
-///   preciso; datas vêm como serial do Excel). Espelha o script Python
-///   `scripts/importar_contratos_central.py`.
+/// - [parsearCsvContratos] / [parsearCsvContratosResult]: texto CSV.
+/// - [parsearExcelContratos] / [parsearExcelContratosResult]: xlsx nativo.
 ///
 /// O que é gravado/preservado no Firestore é decidido pelo `toFirestore()` do
 /// [Contrato] + `set(merge:true)` — ver `docs/importacao_contratos.md`.
 
+/// Resultado da leitura de um arquivo (CSV ou Excel) de contratos.
+class ContratosParseResult {
+  final List<Contrato> contratos;
+  final Set<String> camposPresentes;
+  final List<String> colunasAusentes;
+
+  const ContratosParseResult({
+    required this.contratos,
+    required this.camposPresentes,
+    this.colunasAusentes = const [],
+  });
+}
+
 /// Converte o conteúdo de um CSV de contratos em uma lista de [Contrato].
-List<Contrato> parsearCsvContratos(String conteudo) {
+List<Contrato> parsearCsvContratos(String conteudo) =>
+    parsearCsvContratosResult(conteudo).contratos;
+
+/// Converte o conteúdo de um CSV em [ContratosParseResult], identificando
+/// quais colunas estavam de fato presentes no arquivo.
+ContratosParseResult parsearCsvContratosResult(String conteudo) {
   // Normaliza CRLF (export do Excel/Sheets) para evitar que o \r residual
   // desincronize o estado de quoting do CsvToListConverter.
   final normalizado = conteudo.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -30,11 +46,12 @@ List<Contrato> parsearCsvContratos(String conteudo) {
 }
 
 /// Converte os bytes de um arquivo xlsx de contratos em uma lista de [Contrato].
-///
-/// Lê números e datas nativamente: dinheiro como `num` e datas como **serial do
-/// Excel** (dias desde 1899-12-30). Datas de nascimento podem vir como string
-/// `DD/MM/YYYY` ou como serial — ambos tratados em [_mapearContratos].
-List<Contrato> parsearExcelContratos(Uint8List bytes) {
+List<Contrato> parsearExcelContratos(Uint8List bytes) =>
+    parsearExcelContratosResult(bytes).contratos;
+
+/// Converte os bytes de um arquivo xlsx em [ContratosParseResult], identificando
+/// quais colunas estavam de fato presentes no arquivo.
+ContratosParseResult parsearExcelContratosResult(Uint8List bytes) {
   final planilha = Excel.decodeBytes(_xlsxSanitizado(bytes));
   if (planilha.tables.isEmpty) throw Exception('Planilha vazia');
 
@@ -120,8 +137,9 @@ DateTime? _serialExcelParaData(num serial) {
 }
 
 /// Núcleo compartilhado: recebe `linhas` (cabeçalho + dados, células já como
-/// valores nativos — `String` no CSV, tipadas no xlsx) e devolve os contratos.
-List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
+/// valores nativos — `String` no CSV, tipadas no xlsx) e devolve o resultado
+/// com os contratos, os campos presentes no cabeçalho e as colunas ausentes.
+ContratosParseResult _mapearContratos(List<List<dynamic>> linhas) {
   // Normaliza o cabeçalho removendo BOM e espaços.
   final cabecalho = linhas.first
       .map((e) => (e ?? '').toString().trim().replaceAll('﻿', ''))
@@ -137,6 +155,163 @@ List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
 
   final iLoc = idxExato('LOCALIZADOR');
   if (iLoc < 0) throw Exception('Coluna LOCALIZADOR não encontrada');
+
+  // Mapeamento e detecção de colunas presentes no arquivo:
+  final camposPresentes = <String>{'localizador'};
+
+  final iLocAtend = idx('LOCALIZADOR ATENDIMENTO');
+  if (iLocAtend >= 0) camposPresentes.add('localizadorAtendimento');
+
+  final iCod = idxExato('CÓDIGO');
+  if (iCod >= 0) camposPresentes.add('codigoContrato');
+
+  final iData = idxExato('DATA');
+  if (iData >= 0) camposPresentes.add('dataContrato');
+
+  final iNome1 = idx('CESSIONÁRIO 1');
+  if (iNome1 >= 0) camposPresentes.add('nomeComprador');
+
+  final iCpf1 = idx('CPF/CNPJ cessionário 1');
+  if (iCpf1 >= 0) camposPresentes.add('cpfComprador');
+
+  final iEmail1 = idx('E-mail cessionário 1');
+  if (iEmail1 >= 0) camposPresentes.add('emailComprador');
+
+  final iTel1 = idx('Telefone cessionário 1');
+  if (iTel1 >= 0) camposPresentes.add('telefoneComprador');
+
+  final iNasc1 = idx('DATA NASCIMENTO CESSIONÁRIO 1');
+  if (iNasc1 >= 0) {
+    camposPresentes.addAll([
+      'dataNascimentoComprador',
+      'diaNascimentoComprador',
+      'mesNascimentoComprador',
+    ]);
+  }
+
+  final iNome2 = idx('CESSIONÁRIO 2');
+  if (iNome2 >= 0) camposPresentes.add('nomeComprador2');
+
+  final iCpf2 = idx('CPF/CNPJ cessionário 2');
+  if (iCpf2 >= 0) camposPresentes.add('cpfComprador2');
+
+  final iEmail2 = idx('E-mail cessionário 2');
+  if (iEmail2 >= 0) camposPresentes.add('emailComprador2');
+
+  final iTel2 = idx('Telefone cessionário 2');
+  if (iTel2 >= 0) camposPresentes.add('telefoneComprador2');
+
+  final iNasc2 = idx('DATA NASCIMENTO CESSIONÁRIO 2');
+  if (iNasc2 >= 0) {
+    camposPresentes.addAll([
+      'dataNascimentoComprador2',
+      'diaNascimentoComprador2',
+      'mesNascimentoComprador2',
+    ]);
+  }
+
+  final iLogradouro = idx('LOGRADOURO');
+  if (iLogradouro >= 0) camposPresentes.add('logradouro');
+
+  final iNumero = idx('NÚMERO');
+  if (iNumero >= 0) camposPresentes.add('numero');
+
+  final iComplemento = idx('COMPLEMENTO');
+  if (iComplemento >= 0) camposPresentes.add('complemento');
+
+  final iBairro = idx('BAIRRO');
+  if (iBairro >= 0) camposPresentes.add('bairro');
+
+  final iCidade = idx('CIDADE');
+  if (iCidade >= 0) camposPresentes.add('cidade');
+
+  final iEstado = idx('ESTADO');
+  if (iEstado >= 0) camposPresentes.add('estado');
+
+  final iPais = idx('PAÍS');
+  if (iPais >= 0) camposPresentes.add('pais');
+
+  final iSala = idx('SALA');
+  if (iSala >= 0) camposPresentes.add('sala');
+
+  final iBloco = idx('BLOCO');
+  if (iBloco >= 0) camposPresentes.add('bloco');
+
+  final iImovel = idx('IMÓVEL');
+  if (iImovel >= 0) camposPresentes.add('imovel');
+
+  final iProduto = idx('PRODUTO');
+  if (iProduto >= 0) camposPresentes.add('produto');
+
+  final iCota = idx('COTA');
+  if (iCota >= 0) camposPresentes.add('cota');
+
+  final iRevertido = idx('REVERTIDO');
+  if (iRevertido >= 0) camposPresentes.add('revertido');
+
+  final iOrigemReversao = idx('ORIGEM REVERSÃO');
+  if (iOrigemReversao >= 0) camposPresentes.add('origemReversao');
+
+  final iStatus = idxExato('STATUS');
+  if (iStatus >= 0) camposPresentes.add('status');
+
+  final iStatusFinanceiro = idxExato('STATUS FINANCEIRO');
+  if (iStatusFinanceiro >= 0) camposPresentes.add('statusFinanceiro');
+
+  final iDataQuitacao = idx('DATA QUITAÇÃO');
+  if (iDataQuitacao >= 0) camposPresentes.add('dataQuitacao');
+
+  final iEntrada = idx('ENTRADA');
+  if (iEntrada >= 0) camposPresentes.add('entrada');
+
+  final iSaldoRestante = idx('SALDO RESTANTE');
+  if (iSaldoRestante >= 0) camposPresentes.add('saldoRestante');
+
+  final iValorFinanciado = idx('VALOR FINANCIADO');
+  if (iValorFinanciado >= 0) camposPresentes.add('valorFinanciado');
+
+  final iValorIntegralizado = idx('VALOR INTEGRALIZADO');
+  if (iValorIntegralizado >= 0) camposPresentes.add('valorIntegralizado');
+
+  final iValorAtrasado = idx('VALOR ATRASADO');
+  if (iValorAtrasado >= 0) camposPresentes.add('valorAtrasado');
+
+  final iPercentualIntegralizado = idx('PERCENTUAL INTEGRALIZADO');
+  if (iPercentualIntegralizado >= 0) camposPresentes.add('percentualIntegralizado');
+
+  final iValorTotalReajustado = idx('VALOR TOTAL REAJUSTADO');
+  if (iValorTotalReajustado >= 0) camposPresentes.add('valorTotalReajustado');
+
+  final iDataProximoVencimento = idx('DATA PRÓXIMO VENCIMENTO');
+  if (iDataProximoVencimento >= 0) camposPresentes.add('dataProximoVencimento');
+
+  final iVendedorCloser = idx('VENDEDOR CLOSER');
+  if (iVendedorCloser >= 0) camposPresentes.add('vendedorCloser');
+
+  final iCaptador = idx('CAPTADOR');
+  if (iCaptador >= 0) camposPresentes.add('captador');
+
+  final iVendedorLiner = idx('VENDEDOR LINER');
+  if (iVendedorLiner >= 0) camposPresentes.add('vendedorLiner');
+
+  final iPontoCapatcao = idx('PONTO DE CAPTAÇÃO');
+  if (iPontoCapatcao >= 0) camposPresentes.add('pontoCapatcao');
+
+  final iStatusAssinatura = idx('STATUS ASSINATURA');
+
+  // Colunas de dados importantes que costumam estar no export completo:
+  final colunasAusentes = <String>[];
+  if (iCpf1 < 0) colunasAusentes.add('CPF');
+  if (iEmail1 < 0) colunasAusentes.add('E-mail');
+  if (iTel1 < 0) colunasAusentes.add('Telefone');
+  if (iLogradouro < 0) colunasAusentes.add('Endereço');
+  if (iBloco < 0) colunasAusentes.add('Bloco');
+  if (iSala < 0) colunasAusentes.add('Sala');
+  if (iCaptador < 0) colunasAusentes.add('Captador');
+  if (iSaldoRestante < 0) colunasAusentes.add('Saldo Restante');
+  if (iPercentualIntegralizado < 0) colunasAusentes.add('% Integralizado');
+  if (iValorTotalReajustado < 0) colunasAusentes.add('Valor Reajustado');
+  if (iLocAtend < 0) colunasAusentes.add('Loc. Atendimento');
 
   final contratos = <Contrato>[];
 
@@ -167,10 +342,6 @@ List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
     // DateTime tipado, ou string MM/DD/YYYY (CSV).
     DateTime? parseData(int i) {
       final v = bruto(i);
-      // Trunca a hora: a Central exporta o serial com fração de tempo (ex.:
-      // 46232.875 = 21:00, 46179.0004 = 00:00:35). Esses campos são datas de
-      // calendário — manter a hora empurra a data para o dia seguinte ao
-      // comparar/gravar em UTC e gera falsas "alterações" no import.
       if (v is DateTime) return DateTime(v.year, v.month, v.day);
       if (v is num) return _serialExcelParaData(v);
       final s = (v?.toString() ?? '').trim();
@@ -200,85 +371,89 @@ List<Contrato> _mapearContratos(List<List<dynamic>> linhas) {
       return null;
     }
 
-    final dataNasc1 = parseDataNasc(idx('DATA NASCIMENTO CESSIONÁRIO 1'));
-    final dataNasc2 = parseDataNasc(idx('DATA NASCIMENTO CESSIONÁRIO 2'));
+    final dataNasc1 = parseDataNasc(iNasc1);
+    final dataNasc2 = parseDataNasc(iNasc2);
 
     // Reversão de projeto: lida da planilha (REVERTIDO / ORIGEM REVERSÃO).
     final revertido = const ['sim', 'true', '1', 'verdadeiro']
-        .contains(cel(idx('REVERTIDO')).toLowerCase());
-    final origemRaw = cel(idx('ORIGEM REVERSÃO'));
+        .contains(cel(iRevertido).toLowerCase());
+    final origemRaw = cel(iOrigemReversao);
     final origemReversao =
         (revertido && origemRaw.isNotEmpty && origemRaw != '0')
             ? origemRaw
             : null;
 
-    final codigo = cel(idxExato('CÓDIGO'));
+    final codigo = cel(iCod);
 
     contratos.add(
       Contrato(
         localizador: localizador,
-        localizadorAtendimento: cel(idx('LOCALIZADOR ATENDIMENTO')),
+        localizadorAtendimento: cel(iLocAtend),
         codigoContrato: codigo.isEmpty ? null : codigo,
-        dataContrato: parseData(idxExato('DATA')),
-        nomeComprador: cel(idx('CESSIONÁRIO 1')),
-        cpfComprador: cel(idx('CPF/CNPJ cessionário 1')),
-        emailComprador: cel(idx('E-mail cessionário 1')),
-        telefoneComprador: cel(idx('Telefone cessionário 1')),
+        dataContrato: parseData(iData),
+        nomeComprador: cel(iNome1),
+        cpfComprador: cel(iCpf1),
+        emailComprador: cel(iEmail1),
+        telefoneComprador: cel(iTel1),
         dataNascimentoComprador: dataNasc1,
         diaNascimentoComprador: dataNasc1?.day,
         mesNascimentoComprador: dataNasc1?.month,
         nomeComprador2:
-            cel(idx('CESSIONÁRIO 2')).isEmpty ? null : cel(idx('CESSIONÁRIO 2')),
-        cpfComprador2: cel(idx('CPF/CNPJ cessionário 2')).isEmpty
+            cel(iNome2).isEmpty ? null : cel(iNome2),
+        cpfComprador2: cel(iCpf2).isEmpty
             ? null
-            : cel(idx('CPF/CNPJ cessionário 2')),
-        emailComprador2: cel(idx('E-mail cessionário 2')).isEmpty
+            : cel(iCpf2),
+        emailComprador2: cel(iEmail2).isEmpty
             ? null
-            : cel(idx('E-mail cessionário 2')),
-        telefoneComprador2: cel(idx('Telefone cessionário 2')).isEmpty
+            : cel(iEmail2),
+        telefoneComprador2: cel(iTel2).isEmpty
             ? null
-            : cel(idx('Telefone cessionário 2')),
+            : cel(iTel2),
         dataNascimentoComprador2: dataNasc2,
         diaNascimentoComprador2: dataNasc2?.day,
         mesNascimentoComprador2: dataNasc2?.month,
-        logradouro: cel(idx('LOGRADOURO')),
-        numero: cel(idx('NÚMERO')),
-        complemento: cel(idx('COMPLEMENTO')),
-        bairro: cel(idx('BAIRRO')),
-        cidade: cel(idx('CIDADE')),
-        estado: cel(idx('ESTADO')),
-        pais: cel(idx('PAÍS')).isEmpty ? 'Brasil' : cel(idx('PAÍS')),
-        sala: cel(idx('SALA')),
-        bloco: cel(idx('BLOCO')),
-        imovel: cel(idx('IMÓVEL')),
-        produto: cel(idx('PRODUTO')),
-        cota: cel(idx('COTA')),
+        logradouro: cel(iLogradouro),
+        numero: cel(iNumero),
+        complemento: cel(iComplemento),
+        bairro: cel(iBairro),
+        cidade: cel(iCidade),
+        estado: cel(iEstado),
+        pais: cel(iPais).isEmpty ? 'Brasil' : cel(iPais),
+        sala: cel(iSala),
+        bloco: cel(iBloco),
+        imovel: cel(iImovel),
+        produto: cel(iProduto),
+        cota: cel(iCota),
         revertido: revertido,
         origemReversao: origemReversao,
         // idxExato evita que "STATUS" case "STATUS ASSINATURA"/"STATUS FINANCEIRO"
         status:
-            cel(idxExato('STATUS')).isEmpty ? 'Ativo' : cel(idxExato('STATUS')),
-        statusFinanceiro: cel(idxExato('STATUS FINANCEIRO')).isEmpty
+            cel(iStatus).isEmpty ? 'Ativo' : cel(iStatus),
+        statusFinanceiro: cel(iStatusFinanceiro).isEmpty
             ? 'Em andamento'
-            : cel(idxExato('STATUS FINANCEIRO')),
-        dataQuitacao: parseData(idx('DATA QUITAÇÃO')),
-        entrada: dbl(idx('ENTRADA')),
-        saldoRestante: dbl(idx('SALDO RESTANTE')),
-        valorFinanciado: dbl(idx('VALOR FINANCIADO')),
-        valorIntegralizado: dbl(idx('VALOR INTEGRALIZADO')),
-        valorAtrasado: dbl(idx('VALOR ATRASADO')),
-        percentualIntegralizado: dbl(idx('PERCENTUAL INTEGRALIZADO')),
-        valorTotalReajustado: dbl(idx('VALOR TOTAL REAJUSTADO')),
-        dataProximoVencimento: parseData(idx('DATA PRÓXIMO VENCIMENTO')),
-        vendedorCloser: cel(idx('VENDEDOR CLOSER')),
-        captador: cel(idx('CAPTADOR')),
-        vendedorLiner: cel(idx('VENDEDOR LINER')),
-        pontoCapatcao: cel(idx('PONTO DE CAPTAÇÃO')),
+            : cel(iStatusFinanceiro),
+        dataQuitacao: parseData(iDataQuitacao),
+        entrada: dbl(iEntrada),
+        saldoRestante: dbl(iSaldoRestante),
+        valorFinanciado: dbl(iValorFinanciado),
+        valorIntegralizado: dbl(iValorIntegralizado),
+        valorAtrasado: dbl(iValorAtrasado),
+        percentualIntegralizado: dbl(iPercentualIntegralizado),
+        valorTotalReajustado: dbl(iValorTotalReajustado),
+        dataProximoVencimento: parseData(iDataProximoVencimento),
+        vendedorCloser: cel(iVendedorCloser),
+        captador: cel(iCaptador),
+        vendedorLiner: cel(iVendedorLiner),
+        pontoCapatcao: cel(iPontoCapatcao),
         statusAssinatura:
-            StatusAssinatura.fromCsvLabel(cel(idx('STATUS ASSINATURA'))),
+            StatusAssinatura.fromCsvLabel(cel(iStatusAssinatura)),
       ),
     );
   }
 
-  return contratos;
+  return ContratosParseResult(
+    contratos: contratos,
+    camposPresentes: camposPresentes,
+    colunasAusentes: colunasAusentes,
+  );
 }

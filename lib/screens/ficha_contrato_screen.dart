@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/baixa_financeira_model.dart';
 import '../models/contrato_model.dart';
 import '../models/interacao_model.dart';
+import '../models/resolucao_calendario_mp.dart';
+import '../models/semana_mp.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/whatsapp_interacao.dart';
@@ -40,8 +42,11 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
   // refletir na mesma tela (a tela não faz stream do contrato).
   late StatusAssinatura _statusAssinatura = widget.contrato.statusAssinatura;
 
-  /// Último pagamento do cliente (carregado assincronamente; null = sem dados).
+  /// Último pagamento do cliente (carregado sob demanda; null = sem dados).
   BaixaFinanceira? _ultimoPagamento;
+  // A baixa só é buscada quando o usuário clica em "Ver último pagamento".
+  bool _pagamentoSolicitado = false;
+  bool _carregandoPagamento = false;
 
   StreamSubscription<List<Interacao>>? _interSub;
 
@@ -52,10 +57,7 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
     _auth.getCurrentUserProfile().then((p) {
       if (!mounted) return;
       setState(() => _perfil = p);
-      // Carrega último pagamento apenas para perfis autorizados.
-      if (p == 'admin' || p == 'financeiro' || p == 'super admin') {
-        _carregarUltimoPagamento();
-      }
+      // Não busca o pagamento aqui — aguarda o clique em "Ver último pagamento".
     });
     _interSub = _fs
         .getInteracoesContrato(widget.contrato.localizador)
@@ -81,12 +83,22 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
       _perfil == 'super admin';
 
   Future<void> _carregarUltimoPagamento() async {
+    setState(() {
+      _pagamentoSolicitado = true;
+      _carregandoPagamento = true;
+    });
     try {
       final baixa = await _fs
           .getUltimoPagamentoCliente(widget.contrato.nomeComprador);
-      if (mounted) setState(() => _ultimoPagamento = baixa);
+      if (mounted) {
+        setState(() {
+          _ultimoPagamento = baixa;
+          _carregandoPagamento = false;
+        });
+      }
     } catch (e) {
       debugPrint('[FichaContratoScreen] Erro ao buscar último pagamento: $e');
+      if (mounted) setState(() => _carregandoPagamento = false);
     }
   }
 
@@ -137,6 +149,10 @@ class _FichaContratoScreenState extends State<FichaContratoScreen>
             onEditarLinkPdf: _editarLinkPdf,
             ultimoPagamento:
                 _podeVerFinanceiro ? _ultimoPagamento : null,
+            podeVerPagamento: _podeVerFinanceiro,
+            pagamentoCarregado: _pagamentoSolicitado && !_carregandoPagamento,
+            carregandoPagamento: _carregandoPagamento,
+            onCarregarPagamento: _carregarUltimoPagamento,
           ),
           _InteracoesTab(
             interacoes: _interacoes,
@@ -367,6 +383,13 @@ class _DadosTab extends StatelessWidget {
   /// ou nenhuma baixa encontrada).
   final BaixaFinanceira? ultimoPagamento;
 
+  /// Financeiro visível para o perfil (mostra o botão/seção de pagamento).
+  final bool podeVerPagamento;
+  /// Já foi buscado (mostra o resultado em vez do botão).
+  final bool pagamentoCarregado;
+  final bool carregandoPagamento;
+  final VoidCallback? onCarregarPagamento;
+
   const _DadosTab({
     required this.contrato,
     required this.isAdmin,
@@ -380,6 +403,10 @@ class _DadosTab extends StatelessWidget {
     required this.onAbrirPdf,
     required this.onEditarLinkPdf,
     this.ultimoPagamento,
+    this.podeVerPagamento = false,
+    this.pagamentoCarregado = false,
+    this.carregandoPagamento = false,
+    this.onCarregarPagamento,
   });
 
   @override
@@ -615,8 +642,33 @@ class _DadosTab extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
 
-        // Último Pagamento (visível apenas para admin, financeiro, super admin)
-        if (ultimoPagamento != null) ...[
+        // Último Pagamento (visível apenas para admin, financeiro, super admin).
+        // A baixa só é buscada ao clicar — evita leitura à toa ao abrir a ficha.
+        if (podeVerPagamento && !pagamentoCarregado) ...[
+          _secao('Último Pagamento', [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: carregandoPagamento ? null : onCarregarPagamento,
+                icon: carregandoPagamento
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.payments_outlined, size: 18),
+                label: Text(carregandoPagamento
+                    ? 'Buscando…'
+                    : 'Ver último pagamento'),
+              ),
+            ),
+          ]),
+        ] else if (podeVerPagamento && ultimoPagamento == null) ...[
+          _secao('Último Pagamento', [
+            const Text('Nenhum pagamento encontrado para este cliente.',
+                style: TextStyle(color: Colors.grey)),
+          ]),
+        ] else if (ultimoPagamento != null) ...[
           _secao('Último Pagamento', [
             Builder(builder: (_) {
               final ult = ultimoPagamento!;
@@ -733,6 +785,10 @@ class _DadosTab extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
 
+        // Semanas do rodízio da multipropriedade (resolvidas do contrato)
+        _CalendarioContratoCard(contrato: c),
+        const SizedBox(height: 8),
+
         // Endereço
         _secao('Endereço', [
           _campo(
@@ -821,6 +877,186 @@ class _DadosTab extends StatelessWidget {
                 color: destaque,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Card: semanas do rodízio da multipropriedade ──────────────────────────────
+// Resolve tier (produto) + nº da cota (cota/código) + dia de check-in
+// (bloco + imóvel) e mostra as próximas semanas do contrato. Só leitura.
+
+class _CalendarioContratoCard extends StatefulWidget {
+  final Contrato contrato;
+  const _CalendarioContratoCard({required this.contrato});
+
+  @override
+  State<_CalendarioContratoCard> createState() =>
+      _CalendarioContratoCardState();
+}
+
+class _CalendarioContratoCardState extends State<_CalendarioContratoCard> {
+  final _fs = FirestoreService();
+  static final _fmt = DateFormat('dd/MM/yyyy');
+  static final _diaSem = DateFormat('EEE', 'pt_BR');
+  static const _rotuloDia = {
+    'domingo': 'domingo',
+    'segunda': 'segunda',
+    'quinta': 'quinta',
+    'sexta': 'sexta',
+    'sabado': 'sábado',
+  };
+  late Future<ResolucaoCalendarioMP> _future;
+  bool _verTodas = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _fs.resolverCalendarioContrato(widget.contrato);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.calendar_month_outlined,
+                  size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 6),
+              const Text('Semanas da multipropriedade',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            ]),
+            const SizedBox(height: 8),
+            FutureBuilder<ResolucaoCalendarioMP>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                  );
+                }
+                final r = snap.data;
+                if (r == null || !r.ok) {
+                  return _info(r?.motivo ??
+                      'Não foi possível resolver o calendário deste contrato.');
+                }
+                return _conteudo(r);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _info(String msg) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(children: [
+      Icon(Icons.info_outline, size: 16, color: cs.onSurfaceVariant),
+      const SizedBox(width: 6),
+      Expanded(
+          child: Text(msg,
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
+    ]);
+  }
+
+  Widget _conteudo(ResolucaoCalendarioMP r) {
+    final cs = Theme.of(context).colorScheme;
+    final hoje = DateTime.now();
+    // Próximas semanas (entrada >= hoje); se não houver, mostra as últimas.
+    final futuras = r.semanas
+        .where((w) =>
+            (DateTime.tryParse(w.entrada) ?? hoje).isAfter(hoje) ||
+            (DateTime.tryParse(w.entrada)?.isAtSameMomentAs(hoje) ?? false))
+        .toList();
+    final base = futuras.isNotEmpty ? futuras : r.semanas;
+    final mostra = _verTodas ? base : base.take(6).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_tierLabel(r.tier!)} · entrada ${_rotuloDia[r.dia] ?? r.dia} · '
+          'Cota ${r.cota} · ${r.semanas.length} semanas (2027–2078)',
+          style: TextStyle(fontSize: 13, color: cs.onSurface),
+        ),
+        const SizedBox(height: 8),
+        for (final w in mostra) _linhaSemana(w),
+        if (base.length > mostra.length || _verTodas)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _verTodas = !_verTodas),
+              child: Text(_verTodas
+                  ? 'Mostrar menos'
+                  : 'Ver todas (${base.length})'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _tierLabel(String t) =>
+      {'ouro': 'Ouro', 'prata': 'Prata', 'bronze': 'Bronze'}[t] ?? t;
+
+  Widget _linhaSemana(SemanaMP w) {
+    final cs = Theme.of(context).colorScheme;
+    final alta = w.tipo.toLowerCase().startsWith('alta');
+    final corTipo = alta ? const Color(0xFFD97706) : const Color(0xFF2563EB);
+    final e = DateTime.tryParse(w.entrada);
+    final s = DateTime.tryParse(w.saida);
+    final periodo = (e != null && s != null)
+        ? '${_fmt.format(e)} (${_diaSem.format(e)}) → '
+            '${_fmt.format(s)} (${_diaSem.format(s)})'
+        : '${w.entrada} → ${w.saida}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 30,
+            decoration: BoxDecoration(
+                color: corTipo, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(periodo,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+                if (w.temFeriado)
+                  Text(w.feriado,
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: corTipo.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(w.tipo.isEmpty ? '—' : w.tipo,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: corTipo)),
           ),
         ],
       ),

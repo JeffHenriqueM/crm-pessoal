@@ -54,6 +54,41 @@ void main() {
     expect(contratos.map((c) => c.localizador).toSet(), {'LOC1', 'LOC2'});
   });
 
+  test('registrarEnvioMensagemContrato atualiza notificadoEm e insere interação', () async {
+    final envio = DateTime(2026, 10, 27, 14, 30);
+    await service.registrarEnvioMensagemContrato(
+      'LOC1',
+      enviouWhats: true,
+      enviouEmail: true,
+      modeloWhatsTitulo: 'Aviso de vencimento',
+      modeloEmailTitulo: 'Cobrança cota',
+      textoWhats: 'Olá Fulano, sua parcela...',
+      assuntoEmail: 'Importante: parcela',
+      textoEmail: 'Prezado Fulano...',
+      dataEnvio: envio,
+    );
+
+    // Contrato atualizado
+    final contratos = await service.getContratos(forcarRecarga: true);
+    final loc1 = contratos.firstWhere((c) => c.localizador == 'LOC1');
+    expect(loc1.notificadoEm, equals(envio));
+    expect(loc1.contatadoEsteMes, isTrue);
+
+    // Subcoleção de interações
+    final interacoesSnap = await db
+        .collection('contratos')
+        .doc('LOC1')
+        .collection('interacoes')
+        .get();
+    expect(interacoesSnap.docs.length, 1);
+    final docInteracao = interacoesSnap.docs.first.data();
+    expect(docInteracao['titulo'], 'Notificação enviada (WhatsApp + E-mail)');
+    expect(docInteracao['canal'], 'outro');
+    expect(docInteracao['nota'], contains('Aviso de vencimento'));
+    expect(docInteracao['nota'], contains('Cobrança cota'));
+    expect(docInteracao['nota'], contains('Olá Fulano'));
+  });
+
   group('meta de assinaturas', () {
     test('passar para assinado conta a assinatura do usuário', () async {
       await service.atualizarStatusAssinatura(

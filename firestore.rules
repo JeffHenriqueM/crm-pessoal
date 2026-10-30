@@ -105,6 +105,11 @@ service cloud.firestore {
       allow read, write: if isAuth();
     }
 
+    // ── Versões da tabela de preços do Hotel ──────────────────────────────────
+    match /hotel_precos_versoes/{docId} {
+      allow read, write: if isAuth();
+    }
+
     // ── Histórico de edições (subcoleção de clientes) ────────────────────────
     match /clientes/{clienteId}/historico/{docId} {
       allow read, write: if isAuth();

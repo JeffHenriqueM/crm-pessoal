@@ -83,6 +83,11 @@ class Interacao {
   final Modalidade modalidade;
   final bool houveResposta;
   final String? oQueCombinamos;
+  /// Sugestão (texto livre) do que fazer/falar no PRÓXIMO contato — a
+  /// recomendação de abordagem de quem registrou, complementando a data em
+  /// `Cliente.proximoContato`. Distinta de [oQueCombinamos], que é o que ficou
+  /// acertado COM o cliente.
+  final String? sugestaoProximoContato;
   // Resposta do cliente registrada DEPOIS da interação (quando ela foi criada
   // sem resposta). Preenchê-la marca houveResposta=true. respostaEm = quando
   // foi registrada.
@@ -100,6 +105,7 @@ class Interacao {
     this.modalidade = Modalidade.online,
     this.houveResposta = false,
     this.oQueCombinamos,
+    this.sugestaoProximoContato,
     this.respostaCliente,
     this.respostaEm,
     this.autorId,
@@ -116,6 +122,7 @@ class Interacao {
     Modalidade? modalidade,
     bool? houveResposta,
     String? oQueCombinamos,
+    String? sugestaoProximoContato,
     String? respostaCliente,
     DateTime? respostaEm,
   }) =>
@@ -128,6 +135,8 @@ class Interacao {
         modalidade: modalidade ?? this.modalidade,
         houveResposta: houveResposta ?? this.houveResposta,
         oQueCombinamos: oQueCombinamos ?? this.oQueCombinamos,
+        sugestaoProximoContato:
+            sugestaoProximoContato ?? this.sugestaoProximoContato,
         respostaCliente: respostaCliente ?? this.respostaCliente,
         respostaEm: respostaEm ?? this.respostaEm,
         autorId: autorId,
@@ -144,6 +153,8 @@ class Interacao {
     'houveResposta': houveResposta,
     if (oQueCombinamos != null && oQueCombinamos!.isNotEmpty)
       'oQueCombinamos': oQueCombinamos,
+    if (sugestaoProximoContato != null && sugestaoProximoContato!.isNotEmpty)
+      'sugestaoProximoContato': sugestaoProximoContato,
     if (respostaCliente != null && respostaCliente!.isNotEmpty)
       'respostaCliente': respostaCliente,
     if (respostaEm != null) 'respostaEm': Timestamp.fromDate(respostaEm!),
@@ -182,6 +193,10 @@ class Interacao {
       oQueCombinamos: (data['oQueCombinamos'] as String?)?.isNotEmpty == true
           ? data['oQueCombinamos'] as String
           : data['proximoPasso'] as String?,
+      sugestaoProximoContato:
+          (data['sugestaoProximoContato'] as String?)?.isNotEmpty == true
+              ? data['sugestaoProximoContato'] as String
+              : null,
       respostaCliente: (data['respostaCliente'] as String?)?.isNotEmpty == true
           ? data['respostaCliente'] as String
           : null,

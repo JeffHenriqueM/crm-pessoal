@@ -21,8 +21,13 @@ import '../models/negociacao_model.dart';
 import '../models/notificacao_inapp_model.dart';
 import '../models/produto_model.dart';
 import '../models/baixa_financeira_model.dart';
+import '../models/semana_mp.dart';
+import '../models/resolucao_calendario_mp.dart';
+import '../models/ocupacao_mp.dart';
+import '../models/auditoria_mp.dart';
 import '../models/ticket_model.dart';
 import '../models/usuario_model.dart';
+import '../models/versao_preco_hotel.dart';
 import 'analise_imoveis.dart';
 
 class FirestoreService {
@@ -49,6 +54,9 @@ class FirestoreService {
 
   String get _currentUserId => _auth.currentUser?.uid ?? 'sistema';
   String get _currentUserName => _auth.currentUser?.displayName ?? 'Usuário';
+
+  String get currentUserId => _currentUserId;
+  String get currentUserName => _currentUserName;
 
   // ── Modo teste (staging) ──────────────────────────────────────────────────
   /// Quando true, todos os documentos criados recebem isTeste:true + expireAt:amanhã.
@@ -107,6 +115,18 @@ class FirestoreService {
       }
       return m;
     });
+  }
+
+  /// Leitura única das associações manuais (quarto → contrato), por número do
+  /// quarto. Usada para resolver o `{apartamento}` de um contrato ao montar uma
+  /// mensagem, sem abrir um stream.
+  Future<Map<String, FestaAssociacao>> getAssociacoesFesta() async {
+    final snap = await _db.collection(_colFestaAssociacoes).get();
+    final m = <String, FestaAssociacao>{};
+    for (final d in snap.docs) {
+      m[d.id] = FestaAssociacao.fromMap(d.data());
+    }
+    return m;
   }
 
   /// Vincula (ou remove) manualmente um quarto a um contrato/sócio.
@@ -249,6 +269,763 @@ class FirestoreService {
 
   Future<void> removerEsperaFesta(String esperaId) =>
       _db.collection(_colFestaEspera).doc(esperaId).delete();
+
+  // --- HOTEL: cota por apartamento (Ouro/Prata/Bronze) ---
+  // Guardado num único doc `config/hotel_cotas`, campo `cotas` = mapa
+  // { "<numero do apto>": "ouro" | "prata" | "bronze" }. Config é leitura/
+  // escrita para qualquer autenticado (inclui o perfil `transicao`).
+  static const _colConfig = 'config';
+  static const _docHotelCotas = 'hotel_cotas';
+
+  /// Lê o mapa apartamento → cota definido manualmente no módulo Hotel.
+  Future<Map<String, String>> getCotasHotel() async {
+    try {
+      final snap = await _db.collection(_colConfig).doc(_docHotelCotas).get();
+      final data = snap.data();
+      final raw = data?['cotas'];
+      final m = <String, String>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is String && v.isNotEmpty) m[k.toString()] = v;
+        });
+      }
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler cotasHotel: $e');
+      return {};
+    }
+  }
+
+  /// Define (ou limpa, com [cota] == null) a cota de um apartamento.
+  Future<void> setCotaHotel(String apto, String? cota) async {
+    final ref = _db.collection(_colConfig).doc(_docHotelCotas);
+    await ref.set({
+      'cotas': {apto: cota ?? FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Aplica uma cota (ou limpa) a vários apartamentos de uma vez.
+  Future<void> setCotasHotelEmLote(List<String> aptos, String? cota) async {
+    if (aptos.isEmpty) return;
+    final ref = _db.collection(_colConfig).doc(_docHotelCotas);
+    final cotas = <String, dynamic>{
+      for (final a in aptos) a: cota ?? FieldValue.delete(),
+    };
+    await ref.set({
+      'cotas': cotas,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Substitui TODO o mapa de cotas por apartamento de uma vez (usado pela
+  /// auto-distribuição conforme as vendas). Zera o que havia antes.
+  Future<void> substituirCotasHotel(Map<String, String> mapa) async {
+    await _db.collection(_colConfig).doc(_docHotelCotas).set({
+      'cotas': mapa,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
+  // --- HOTEL: dia de check-in por apartamento (quinta/sexta/sabado/domingo/segunda) ---
+  // Guardado em `config/hotel_checkin`, campo `checkin` = mapa
+  // { "<numero do apto>": "quinta" | "sexta" | "sabado" | "domingo" | "segunda" }.
+  static const _docHotelCheckin = 'hotel_checkin';
+
+  /// Lê o mapa apartamento → dia de check-in definido no módulo Hotel.
+  /// Regra: o apto 141 é sexta-feira por padrão.
+  Future<Map<String, String>> getCheckinHotel() async {
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docHotelCheckin).get();
+      final data = snap.data();
+      final raw = data?['checkin'];
+      final m = <String, String>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is String && v.isNotEmpty) m[k.toString()] = v;
+        });
+      }
+      // Regra explícita do negócio: 141 é sexta-feira por padrão
+      m.putIfAbsent('141', () => 'sexta');
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler checkinHotel: $e');
+      return {'141': 'sexta'};
+    }
+  }
+
+  /// Define (ou limpa, com [dia] == null) o dia de check-in de um apartamento.
+  Future<void> setCheckinHotel(String apto, String? dia) async {
+    final ref = _db.collection(_colConfig).doc(_docHotelCheckin);
+    await ref.set({
+      'checkin': {apto: dia ?? FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Aplica o dia de check-in (ou limpa) a vários apartamentos de uma vez.
+  Future<void> setCheckinHotelEmLote(List<String> aptos, String? dia) async {
+    if (aptos.isEmpty) return;
+    final ref = _db.collection(_colConfig).doc(_docHotelCheckin);
+    final checkin = <String, dynamic>{
+      for (final a in aptos) a: dia ?? FieldValue.delete(),
+    };
+    await ref.set({
+      'checkin': checkin,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  // --- HOTEL: categorias da Multipropriedade (editáveis) ---
+  // Guardado em `config/multipropriedade`, campo `categorias` = lista de
+  // { nome: String, cor: int (ARGB), aptos: [int] }. Começa como cópia do
+  // layout do Hotel; o usuário reorganiza livremente pela aba.
+  static const _docMultipropriedade = 'multipropriedade';
+
+  /// Lê as categorias da Multipropriedade; null se ainda não foram definidas
+  /// (a tela faz o seed inicial a partir do layout do Hotel).
+  Future<List<Map<String, dynamic>>?> getMultipropriedade() async {
+    final snap =
+        await _db.collection(_colConfig).doc(_docMultipropriedade).get();
+    final raw = snap.data()?['categorias'];
+    if (raw is! List) return null;
+    return raw
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  /// Salva (substitui) toda a lista de categorias da Multipropriedade.
+  Future<void> salvarMultipropriedade(
+      List<Map<String, dynamic>> categorias) async {
+    await _db.collection(_colConfig).doc(_docMultipropriedade).set({
+      'categorias': categorias,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
+  // --- HOTEL: tabela de preços (categoria × cota) ---
+  // Guardado em `config/hotel_precos`, campo `precos` = mapa
+  // { "<categoria>|<cota>": número (reais) }. Preço de venda de tabela por
+  // combinação de categoria de apartamento e cota (Integral/Ouro/Prata/Bronze).
+  static const _docHotelPrecos = 'hotel_precos';
+
+  /// Lê a tabela de preços do Hotel (categoria × cota). Chave = "categoria|cota".
+  Future<Map<String, double>> getPrecosHotel() async {
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docHotelPrecos).get();
+      final data = snap.data();
+      final raw = data?['precos'];
+      final m = <String, double>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is num && v > 0) m[k.toString()] = v.toDouble();
+        });
+      }
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler precosHotel: $e');
+      return {};
+    }
+  }
+
+  /// Substitui TODA a tabela de preços do Hotel de uma vez.
+  Future<void> salvarPrecosHotel(Map<String, double> precos) async {
+    await _db.collection(_colConfig).doc(_docHotelPrecos).set({
+      'precos': precos,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
+
+  // --- MULTIPROPRIEDADE: calendário de rodízio (planilha importada) ---
+  // Dado estático em `config/calendario_<tier>_<dia>` (15 docs), campo
+  // `cotas` = { "<numero da cota>": [ {a,e,s,t,f}, ... ] }. Só leitura; cache
+  // em memória (por instância) pois o conteúdo nunca muda em runtime.
+  final Map<String, Map<int, List<SemanaMP>>> _cacheCalendarioMP = {};
+
+  /// Lê o calendário de rodízio de um [tier] (ouro/prata/bronze) e [dia] de
+  /// check-in (domingo/segunda/quinta/sexta/sabado). Retorna cota → semanas
+  /// ordenadas por data de entrada. Vazio se o documento não existir.
+  Future<Map<int, List<SemanaMP>>> getCalendarioMP(
+      String tier, String dia) async {
+    final chave = '${tier}_$dia';
+    final cacheado = _cacheCalendarioMP[chave];
+    if (cacheado != null) return cacheado;
+
+    final snap =
+        await _db.collection(_colConfig).doc('calendario_$chave').get();
+    final raw = (snap.data()?['cotas'] as Map<String, dynamic>?) ?? {};
+    final out = <int, List<SemanaMP>>{};
+    raw.forEach((k, v) {
+      final n = int.tryParse(k);
+      if (n == null || v is! List) return;
+      final semanas = v
+          .whereType<Map>()
+          .map((m) => SemanaMP.fromMap(Map<String, dynamic>.from(m)))
+          .toList()
+        ..sort((a, b) => a.entrada.compareTo(b.entrada));
+      out[n] = semanas;
+    });
+    _cacheCalendarioMP[chave] = out;
+    return out;
+  }
+
+  // Check-in por imóvel da Multipropriedade (planilha, bloco a bloco).
+  // `config/mp_checkin`, campo `blocos` = { "<bloco>": { "<imovel>": "<dia>" } }.
+  static const _docMpCheckin = 'mp_checkin';
+  Map<String, Map<String, String>>? _cacheCheckinMP;
+
+  /// Lê o mapa de check-in da Multipropriedade: bloco → imóvel → dia.
+  Future<Map<String, Map<String, String>>> getCheckinMP() async {
+    final cacheado = _cacheCheckinMP;
+    if (cacheado != null) return cacheado;
+    final snap = await _db.collection(_colConfig).doc(_docMpCheckin).get();
+    final raw = (snap.data()?['blocos'] as Map<String, dynamic>?) ?? {};
+    final out = <String, Map<String, String>>{};
+    raw.forEach((bloco, mapa) {
+      if (mapa is Map) {
+        out[bloco] = {
+          for (final e in mapa.entries)
+            if (e.value is String && (e.value as String).isNotEmpty)
+              e.key.toString(): e.value as String,
+        };
+      }
+    });
+    _cacheCheckinMP = out;
+    return out;
+  }
+
+  /// Chave do bloco no mapa de check-in a partir do rótulo do contrato
+  /// ("B (HERA)" → "B"). Null se o bloco não é um dos blocos-letra mapeados.
+  static String? blocoKeyMP(String bloco) {
+    final b = bloco.toUpperCase().trim();
+    if (b.contains('HERA')) return 'B';
+    if (b.contains('AFRODITE')) return 'C';
+    if (b.contains('ATENA')) return 'D';
+    // Rótulos curtos "B", "C (…)" — letra isolada (não pega "BANGALO").
+    final m = RegExp(r'^([BCD])\b').firstMatch(b);
+    return m?.group(1);
+  }
+
+  /// Tier do rodízio a partir do produto ("LUXO PRATA T" → prata). Null se o
+  /// produto não é de um tier com rodízio (ex.: Integral/Diamante).
+  static String? tierRodizioDeProduto(String produto) {
+    final p = produto.toUpperCase();
+    if (p.contains('OURO')) return 'ouro';
+    if (p.contains('PRATA')) return 'prata';
+    if (p.contains('BRONZE')) return 'bronze';
+    return null;
+  }
+
+  /// Número da cota a partir do campo `cota` ("Cota-07" → 7), caindo para o
+  /// código do contrato ("…/Cota-07") quando necessário.
+  static int? numeroCotaContrato(String cota, String? codigo) {
+    final m = RegExp(r'(\d+)').firstMatch(cota);
+    if (m != null) return int.tryParse(m.group(1)!);
+    if (codigo != null) {
+      final m2 = RegExp(r'[Cc]ota-?(\d+)').firstMatch(codigo);
+      if (m2 != null) return int.tryParse(m2.group(1)!);
+    }
+    return null;
+  }
+
+  /// Resolve as semanas do rodízio de um [contrato]: deriva tier (produto),
+  /// número da cota (cota/código) e dia de check-in (bloco + imóvel), e busca
+  /// as semanas no calendário. Retorna ok=false com motivo quando falta dado.
+  Future<ResolucaoCalendarioMP> resolverCalendarioContrato(
+      Contrato contrato) async {
+    final tier = tierRodizioDeProduto(contrato.produto);
+    if (tier == null) {
+      return ResolucaoCalendarioMP.erro(
+          'Produto sem tier de rodízio (Ouro/Prata/Bronze).');
+    }
+    final cota = numeroCotaContrato(contrato.cota, contrato.codigoContrato);
+    if (cota == null) {
+      return ResolucaoCalendarioMP.erro('Número da cota não identificado.',
+          tier: tier);
+    }
+    final blocoKey = blocoKeyMP(contrato.bloco);
+    if (blocoKey == null) {
+      return ResolucaoCalendarioMP.erro(
+          'Bloco "${contrato.bloco}" ainda não tem check-in cadastrado.',
+          tier: tier,
+          cota: cota);
+    }
+    final checkin = await getCheckinMP();
+    final imovelKey =
+        int.tryParse(contrato.imovel.trim())?.toString() ?? contrato.imovel.trim();
+    final dia = checkin[blocoKey]?[imovelKey];
+    if (dia == null) {
+      return ResolucaoCalendarioMP.erro(
+          'Imóvel ${contrato.imovel} (bloco $blocoKey) sem check-in cadastrado.',
+          tier: tier,
+          cota: cota);
+    }
+    final cal = await getCalendarioMP(tier, dia);
+    final semanas = cal[cota] ?? const <SemanaMP>[];
+    if (semanas.isEmpty) {
+      return ResolucaoCalendarioMP.erro(
+          'Sem semanas para a cota $cota ($tier, $dia).',
+          tier: tier,
+          dia: dia,
+          cota: cota);
+    }
+    return ResolucaoCalendarioMP(
+        ok: true, tier: tier, dia: dia, cota: cota, semanas: semanas);
+  }
+
+  /// Monta a agenda de ocupação: entradas e saídas de sócios por dia, a partir
+  /// dos contratos **Ativos** cruzados com o calendário de rodízio. Usa os
+  /// caches de contratos/calendário/check-in (barato após a 1ª leitura).
+  Future<OcupacaoMP> montarOcupacaoMP() async {
+    final contratos = await getContratos();
+    final ativos =
+        contratos.where((c) => c.status.trim().toLowerCase() == 'ativo').toList();
+    final entradas = <String, List<EventoOcupacao>>{};
+    final saidas = <String, List<EventoOcupacao>>{};
+    var naoResolvidos = 0;
+
+    for (final c in ativos) {
+      final r = await resolverCalendarioContrato(c);
+      if (!r.ok) {
+        naoResolvidos++;
+        continue;
+      }
+      for (final w in r.semanas) {
+        final evt = EventoOcupacao(
+          localizador: c.localizador,
+          nome: c.nomeComprador,
+          bloco: c.bloco,
+          imovel: c.imovel,
+          tier: r.tier!,
+          cota: r.cota!,
+          dia: r.dia!,
+          tipoSemana: w.tipo,
+          feriado: w.feriado,
+        );
+        if (w.entrada.isNotEmpty) {
+          (entradas[w.entrada] ??= []).add(evt);
+        }
+        if (w.saida.isNotEmpty) {
+          (saidas[w.saida] ??= []).add(evt);
+        }
+      }
+    }
+    return OcupacaoMP(
+      entradasPorDia: entradas,
+      saidasPorDia: saidas,
+      ativos: ativos.length,
+      naoResolvidos: naoResolvidos,
+    );
+  }
+
+  // Cota reservada ao hotel/manutenção por tier (topo de cada tier).
+  static const Map<String, int> cotasReservadasMP = {
+    'ouro': 13,
+    'prata': 26,
+    'bronze': 52,
+  };
+
+  /// Ano em que o uso do rodízio começa (virada 2027→2028).
+  static const int anoInicioUsoMP = 2028;
+
+  /// Audita o calendário de rodízio procurando inconsistências: semanas com
+  /// duração != 7 dias, semanas divididas por duas cotas (sobreposição) e
+  /// cotas com nº de semanas/ano fora do esperado (4 Ouro, 2 Prata, 1 Bronze).
+  Future<AuditoriaMP> auditarCalendarioMP() async {
+    const esperadoPorTier = {'ouro': 4, 'prata': 2, 'bronze': 1};
+    const dias = ['domingo', 'segunda', 'quinta', 'sexta', 'sabado'];
+    final achados = <AchadoAuditoria>[];
+    var total = 0;
+
+    for (final tier in esperadoPorTier.keys) {
+      final exp = esperadoPorTier[tier]!;
+      final reservada = cotasReservadasMP[tier];
+      var duracaoFora = 0;
+      for (final dia in dias) {
+        final cal = await getCalendarioMP(tier, dia);
+        if (cal.isEmpty) continue;
+        // ano -> entrada -> cotas (p/ detectar sobreposição)
+        final porAno = <int, Map<String, List<int>>>{};
+        cal.forEach((cota, semanas) {
+          final contagemAno = <int, int>{};
+          for (final w in semanas) {
+            total++;
+            final e = DateTime.tryParse(w.entrada);
+            final s = DateTime.tryParse(w.saida);
+            if (e != null && s != null && s.difference(e).inDays != 7) {
+              duracaoFora++;
+            }
+            if (e != null) {
+              contagemAno[e.year] = (contagemAno[e.year] ?? 0) + 1;
+              porAno
+                  .putIfAbsent(e.year, () => {})
+                  .putIfAbsent(w.entrada, () => [])
+                  .add(cota);
+            }
+          }
+          if (cota != reservada) {
+            contagemAno.forEach((ano, n) {
+              if (n != exp) {
+                achados.add(AchadoAuditoria(
+                  categoria: 'Semanas/ano',
+                  chave: '$tier|$dia',
+                  descricao:
+                      'Cota $cota em $ano tem $n semana(s); esperado $exp.',
+                  ocorrencias: 1,
+                ));
+              }
+            });
+          }
+        });
+        // Sobreposições (semana dividida por 2+ cotas) no mesmo ano.
+        var anos = 0;
+        String? exemplo;
+        var envolveReservada = false;
+        porAno.forEach((ano, mapa) {
+          final dups =
+              mapa.entries.where((en) => en.value.length > 1).toList();
+          if (dups.isNotEmpty) {
+            anos++;
+            if (reservada != null &&
+                dups.any((d) => d.value.contains(reservada))) {
+              envolveReservada = true;
+            }
+            exemplo ??= '$ano: ${dups.first.key} '
+                '(cotas ${dups.first.value.join(", ")})';
+          }
+        });
+        if (anos > 0) {
+          achados.add(AchadoAuditoria(
+            categoria: 'Encaixe',
+            chave: '$tier|$dia',
+            descricao: '$anos ano(s) com semana dividida por 2 cotas '
+                '${envolveReservada ? '(envolve a cota reservada $reservada do hotel) ' : ''}'
+                '— ex.: $exemplo.',
+            ocorrencias: anos,
+          ));
+        }
+      }
+      if (duracaoFora > 0) {
+        achados.add(AchadoAuditoria(
+          categoria: 'Duração',
+          chave: tier,
+          descricao: '$duracaoFora semana(s) do $tier com duração ≠ 7 dias.',
+          ocorrencias: duracaoFora,
+        ));
+      }
+    }
+    return AuditoriaMP(achados: achados, totalSemanas: total);
+  }
+
+  // --- HOTEL: versões da tabela de preços ---
+  // Coleção `hotel_precos_versoes`. Cada documento representa uma versão.
+  static const _colHotelPrecosVersoes = 'hotel_precos_versoes';
+
+  /// Busca todas as versões da tabela de preços salvas, ordenadas pela data de criação.
+  Future<List<VersaoPrecoHotel>> getVersoesPrecosHotel() async {
+    try {
+      final snap = await _db
+          .collection(_colHotelPrecosVersoes)
+          .orderBy('criadoEm', descending: false)
+          .get();
+      final versoes = snap.docs.map(VersaoPrecoHotel.fromFirestore).toList();
+      if (versoes.isEmpty) {
+        // Seed inicial a partir da tabela atual em config/hotel_precos
+        final precosAtuais = await getPrecosHotel();
+        final versaoInicial = VersaoPrecoHotel(
+          id: 'versao_jeff',
+          nome: 'Versão Jeff',
+          criadoPorId: _currentUserId,
+          criadoPorNome: _currentUserName.contains('Usuário') ? 'Jeff' : _currentUserName,
+          criadoEm: DateTime.now(),
+          atualizadoEm: DateTime.now(),
+          precos: precosAtuais,
+          isPadrao: true,
+        );
+        try {
+          await salvarVersaoPrecoHotel(versaoInicial);
+        } catch (e) {
+          debugPrint('[Firestore] Erro ao salvar seed versao_jeff: $e');
+        }
+        return [versaoInicial];
+      }
+      return versoes;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao buscar versoesPrecosHotel: $e');
+      // Fallback seguro: cria versão local em memória baseada nos preços atuais
+      try {
+        final precosAtuais = await getPrecosHotel();
+        return [
+          VersaoPrecoHotel(
+            id: 'versao_jeff',
+            nome: 'Versão Jeff',
+            criadoPorId: _currentUserId,
+            criadoPorNome: _currentUserName.contains('Usuário') ? 'Jeff' : _currentUserName,
+            criadoEm: DateTime.now(),
+            atualizadoEm: DateTime.now(),
+            precos: precosAtuais,
+            isPadrao: true,
+          )
+        ];
+      } catch (_) {
+        return [];
+      }
+    }
+  }
+
+  /// Salva ou atualiza uma versão da tabela de preços.
+  Future<void> salvarVersaoPrecoHotel(VersaoPrecoHotel versao) async {
+    final ref = versao.id.isEmpty
+        ? _db.collection(_colHotelPrecosVersoes).doc()
+        : _db.collection(_colHotelPrecosVersoes).doc(versao.id);
+
+    final dados = _flagTeste({
+      ...versao.toFirestore(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+    await ref.set(dados, SetOptions(merge: true));
+
+    // Se a versão for a padrão ou única, sincroniza com config/hotel_precos para retrocompatibilidade
+    if (versao.isPadrao || versao.id == 'versao_jeff') {
+      await salvarPrecosHotel(versao.precos);
+    }
+  }
+
+  /// Deleta uma versão da tabela de preços.
+  Future<void> deletarVersaoPrecoHotel(String versaoId) async {
+    await _db.collection(_colHotelPrecosVersoes).doc(versaoId).delete();
+  }
+
+  // --- HOTEL: argumentos de transição por sócio ---
+  // Guardado em `config/hotel_argumentos_socios`, campo `socios` = mapa
+  // { "<nome_socio>": { "nome": String, "argumentos": String, "atualizadoEm": Timestamp, "atualizadoPorNome": String } }.
+  static const _docHotelArgumentosSocios = 'hotel_argumentos_socios';
+
+  /// Lê os argumentos de transição por sócio do módulo Hotel.
+  /// Retorna um mapa indexado pelo nome do sócio.
+  Future<Map<String, Map<String, dynamic>>> getArgumentosSociosHotel() async {
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docHotelArgumentosSocios).get();
+      final data = snap.data();
+      final raw = data?['socios'];
+      final m = <String, Map<String, dynamic>>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is Map) {
+            final entry = Map<String, dynamic>.from(v);
+            final arg = (entry['argumentos'] as String?)?.trim() ?? '';
+            if (arg.isNotEmpty) {
+              m[k.toString()] = entry;
+            }
+          } else if (v is String && v.trim().isNotEmpty) {
+            m[k.toString()] = {
+              'nome': k.toString(),
+              'argumentos': v.trim(),
+            };
+          }
+        });
+      }
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler argumentosSociosHotel: $e');
+      return {};
+    }
+  }
+
+  /// Salva ou atualiza os argumentos de um sócio no módulo Hotel.
+  Future<void> salvarArgumentoSocioHotel(
+      String nomeSocio, String argumentos) async {
+    final nomeTrim = nomeSocio.trim();
+    final argTrim = argumentos.trim();
+    if (argTrim.isEmpty) {
+      await removerArgumentoSocioHotel(nomeTrim);
+      return;
+    }
+    final ref = _db.collection(_colConfig).doc(_docHotelArgumentosSocios);
+    await ref.set({
+      'socios': {
+        nomeTrim: {
+          'nome': nomeTrim,
+          'argumentos': argTrim,
+          'atualizadoEm': FieldValue.serverTimestamp(),
+          'atualizadoPorNome': _currentUserName,
+        }
+      },
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Remove os argumentos de um sócio no módulo Hotel.
+  Future<void> removerArgumentoSocioHotel(String nomeSocio) async {
+    final nomeTrim = nomeSocio.trim();
+    final ref = _db.collection(_colConfig).doc(_docHotelArgumentosSocios);
+    await ref.set({
+      'socios': {nomeTrim: FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  // --- TRANSIÇÃO: atualização de sócios (status de aceite, fases, distrato) ---
+  // Guardado em `config/transicao_atualizacoes_socios`, campo `socios` = mapa
+  // { "<nome_socio>": { "nome": String, "status": String, "fases": List<String>, "negociacaoDistrato": String, "observacoes": String, "atualizadoEm": Timestamp, "atualizadoPorNome": String } }.
+  static const _docTransicaoAtualizacoesSocios = 'transicao_atualizacoes_socios';
+
+  /// Lê as atualizações de transição por sócio (aceite, fases e distrato).
+  /// Retorna um mapa indexado pelo nome do sócio.
+  Future<Map<String, Map<String, dynamic>>> getAtualizacoesSociosTransicao() async {
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios).get();
+      final data = snap.data();
+      final raw = data?['socios'];
+      final m = <String, Map<String, dynamic>>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          if (v is Map) {
+            m[k.toString()] = Map<String, dynamic>.from(v);
+          }
+        });
+      }
+      return m;
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler atualizacoesSociosTransicao: $e');
+      return {};
+    }
+  }
+
+  /// Salva ou atualiza a situação de transição de um sócio.
+  Future<void> salvarAtualizacaoSocioTransicao({
+    required String nomeSocio,
+    required String status,
+    required List<String> fases,
+    String? apartamentoDestino,
+    String? negociacaoDistrato,
+    String? observacoes,
+    DateTime? dataAceiteTransicao,
+    DateTime? dataSolicitacaoDistrato,
+  }) async {
+    final nomeTrim = nomeSocio.trim();
+    final ref = _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios);
+    await ref.set({
+      'socios': {
+        nomeTrim: {
+          'nome': nomeTrim,
+          'status': status.trim(),
+          'fases': fases,
+          'apartamentoDestino': (apartamentoDestino ?? '').trim(),
+          'negociacaoDistrato': (negociacaoDistrato ?? '').trim(),
+          'observacoes': (observacoes ?? '').trim(),
+          'dataAceiteTransicao': dataAceiteTransicao != null
+              ? Timestamp.fromDate(dataAceiteTransicao)
+              : null,
+          'dataSolicitacaoDistrato': dataSolicitacaoDistrato != null
+              ? Timestamp.fromDate(dataSolicitacaoDistrato)
+              : null,
+          'atualizadoEm': FieldValue.serverTimestamp(),
+          'atualizadoPorNome': _currentUserName,
+        }
+      },
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Remove ou reseta o registro de atualização de um sócio na transição.
+  Future<void> removerAtualizacaoSocioTransicao(String nomeSocio) async {
+    final nomeTrim = nomeSocio.trim();
+    final ref = _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios);
+    await ref.set({
+      'socios': {nomeTrim: FieldValue.delete()},
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  // --- TRANSIÇÃO: objeções e respostas adicionadas pelo usuário ---
+  // Guardado em `config/transicao_objecoes`, campo `objecoes` = lista de
+  // { "id": String, "pergunta": String, "resposta": String, "criadoEm": Timestamp, "criadoPorNome": String }
+  static const _docTransicaoObjecoes = 'transicao_objecoes';
+
+  /// Lê as objeções personalizadas cadastradas para a transição.
+  Future<List<Map<String, dynamic>>> getObjecoesTransicao() async {
+    try {
+      final snap =
+          await _db.collection(_colConfig).doc(_docTransicaoObjecoes).get();
+      final raw = snap.data()?['objecoes'];
+      if (raw is! List) return [];
+      return raw
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao ler objecoesTransicao: $e');
+      return [];
+    }
+  }
+
+  /// Salva (cria ou atualiza) uma objeção na lista de objeções da transição.
+  Future<void> salvarObjecaoTransicao({
+    String? id,
+    required String pergunta,
+    required String resposta,
+  }) async {
+    final ref = _db.collection(_colConfig).doc(_docTransicaoObjecoes);
+    final lista = await getObjecoesTransicao();
+    final itemId = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    final idx = lista.indexWhere((o) => o['id'] == itemId);
+
+    final item = {
+      'id': itemId,
+      'pergunta': pergunta.trim(),
+      'resposta': resposta.trim(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    };
+
+    if (idx >= 0) {
+      lista[idx] = {
+        ...lista[idx],
+        ...item,
+      };
+    } else {
+      lista.add({
+        ...item,
+        'criadoEm': FieldValue.serverTimestamp(),
+        'criadoPorNome': _currentUserName,
+      });
+    }
+
+    await ref.set({
+      'objecoes': lista,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    }, SetOptions(merge: true));
+  }
+
+  /// Remove uma objeção personalizada da transição.
+  Future<void> removerObjecaoTransicao(String id) async {
+    final ref = _db.collection(_colConfig).doc(_docTransicaoObjecoes);
+    final lista = await getObjecoesTransicao();
+    lista.removeWhere((o) => o['id'] == id);
+    await ref.set({
+      'objecoes': lista,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+      'atualizadoPorNome': _currentUserName,
+    });
+  }
 
   // --- CLIENTES ---
 
@@ -814,6 +1591,10 @@ class FirestoreService {
         // Agenda o próximo contato junto com a interação (tira do "em atraso").
         if (proximoContato != null)
           'proximoContato': Timestamp.fromDate(proximoContato),
+        // Sugestão de próximo contato: a mais recente vira o "próximo passo
+        // atual" do lead. Interação sem sugestão não apaga a anterior.
+        if ((interacao.sugestaoProximoContato ?? '').isNotEmpty)
+          'sugestaoProximoContato': interacao.sugestaoProximoContato,
         if (!interacao.houveResposta)
           'no_response_count': FieldValue.increment(1),
         if (interacao.houveResposta)
@@ -1316,12 +2097,48 @@ class FirestoreService {
     }
   }
 
-  /// Verifica se o usuário logado está ativo no Firestore.
+  /// Bloqueia (ou libera) o ACESSO ao sistema sem desativar o usuário: ele para
+  /// de conseguir login, mas continua atribuível a leads e mantém o histórico.
+  /// Diferente de [alterarStatusUsuario], que desativa por completo.
+  Future<void> bloquearAcessoUsuario({
+    required String id,
+    required bool bloqueado,
+  }) async {
+    try {
+      await _db
+          .collection('usuarios')
+          .doc(id)
+          .update({'acessoBloqueado': bloqueado});
+    } catch (e) {
+      debugPrint('[Firestore] Erro ao bloquear acesso: $e');
+      throw 'Não foi possível alterar o acesso do usuário.';
+    }
+  }
+
+  /// Stream em tempo real do direito de acesso do usuário (ativo E sem acesso
+  /// bloqueado). Usado para derrubar a sessão AO VIVO quando um gestor bloqueia
+  /// o acesso enquanto a pessoa está logada. Emite `true` quando o doc não
+  /// existe (fail-open) para não deslogar por leitura inconsistente.
+  Stream<bool> acessoDoUsuarioStream(String uid) {
+    return _db.collection('usuarios').doc(uid).snapshots().map((doc) {
+      if (!doc.exists) return true;
+      final d = doc.data();
+      final ativo = d?['ativo'] ?? true;
+      final bloqueado = d?['acessoBloqueado'] ?? false;
+      return ativo && !bloqueado;
+    });
+  }
+
+  /// Verifica se o usuário pode acessar o sistema (ativo E sem acesso
+  /// bloqueado). Fail-open: falha de leitura não tranca o usuário.
   Future<bool> isUsuarioAtivo(String uid) async {
     try {
       final doc = await _db.collection('usuarios').doc(uid).get();
       if (!doc.exists) return true; // usuário sem documento = considera ativo
-      return doc.data()?['ativo'] ?? true;
+      final d = doc.data();
+      final ativo = d?['ativo'] ?? true;
+      final bloqueado = d?['acessoBloqueado'] ?? false;
+      return ativo && !bloqueado;
     } catch (_) {
       return true;
     }
@@ -1519,7 +2336,12 @@ class FirestoreService {
   }
 
   /// Salva uma lista de contratos em lotes (máx 500 por batch).
-  Future<void> salvarContratosLote(List<Contrato> contratos) async {
+  /// Se [camposPresentes] for informado, apenas esses campos serão atualizados
+  /// no merge, impedindo que planilhas parciais sobrescrevam dados existentes.
+  Future<void> salvarContratosLote(
+    List<Contrato> contratos, {
+    Set<String>? camposPresentes,
+  }) async {
     _invalidarCacheContratos();
     const batchSize = 400;
     for (var i = 0; i < contratos.length; i += batchSize) {
@@ -1539,7 +2361,7 @@ class FirestoreService {
       for (var j = 0; j < fatia.length; j++) {
         final c = fatia[j];
         final dados = _flagTeste({
-          ...c.toFirestore(),
+          ...c.toFirestore(campos: camposPresentes),
           if (!(temCriadoEm[c.localizador] ?? false))
             'criadoEm': FieldValue.serverTimestamp(),
         });
@@ -1681,6 +2503,86 @@ class FirestoreService {
     ]);
   }
 
+  /// Registra o envio de notificação/mensagem (WhatsApp e/ou E-mail) para um contrato.
+  /// Atualiza o campo [notificadoEm] via merge no Firestore, invalida o cache de contratos
+  /// e insere uma nova [Interacao] na subcoleção 'interacoes' do contrato.
+  Future<void> registrarEnvioMensagemContrato(
+    String localizador, {
+    required bool enviouWhats,
+    required bool enviouEmail,
+    String? modeloWhatsTitulo,
+    String? modeloEmailTitulo,
+    String? textoWhats,
+    String? assuntoEmail,
+    String? textoEmail,
+    DateTime? dataEnvio,
+  }) async {
+    final agora = dataEnvio ?? DateTime.now();
+    final ref = _db.collection(_colContratos).doc(localizador);
+
+    await ref.set({
+      'notificadoEm': Timestamp.fromDate(agora),
+    }, SetOptions(merge: true));
+
+    _invalidarCacheContratos();
+
+    final canais = <String>[];
+    if (enviouWhats) canais.add('WhatsApp');
+    if (enviouEmail) canais.add('E-mail');
+    final canaisTxt = canais.isEmpty ? 'Mensagem' : canais.join(' + ');
+
+    final canal = (enviouWhats && enviouEmail)
+        ? Canal.outro
+        : (enviouWhats ? Canal.whatsapp : Canal.email);
+
+    final buffer = StringBuffer();
+    final dataFmt =
+        '${agora.day.toString().padLeft(2, '0')}/${agora.month.toString().padLeft(2, '0')}/${agora.year} '
+        '${agora.hour.toString().padLeft(2, '0')}:${agora.minute.toString().padLeft(2, '0')}';
+    buffer.writeln('Notificação enviada via $canaisTxt em $dataFmt.');
+    if (enviouWhats && (textoWhats?.isNotEmpty ?? false)) {
+      buffer.writeln('\n[WhatsApp]');
+      if (modeloWhatsTitulo != null && modeloWhatsTitulo.isNotEmpty) {
+        buffer.writeln('Modelo: $modeloWhatsTitulo');
+      }
+      buffer.writeln(textoWhats);
+    }
+    if (enviouEmail && (textoEmail?.isNotEmpty ?? false)) {
+      buffer.writeln('\n[E-mail]');
+      if (assuntoEmail != null && assuntoEmail.isNotEmpty) {
+        buffer.writeln('Assunto: $assuntoEmail');
+      }
+      if (modeloEmailTitulo != null && modeloEmailTitulo.isNotEmpty) {
+        buffer.writeln('Modelo: $modeloEmailTitulo');
+      }
+      buffer.writeln(textoEmail);
+    }
+
+    await adicionarInteracaoContrato(
+      localizador,
+      Interacao(
+        titulo: 'Notificação enviada ($canaisTxt)',
+        nota: buffer.toString().trim(),
+        dataInteracao: agora,
+        canal: canal,
+        autorId: _currentUserId,
+        autorNome: _currentUserName,
+      ),
+    );
+
+    try {
+      await _db.collection('audit_log').add({
+        'tipo': 'notificacao_mensagem_enviada',
+        'autorId': _currentUserId,
+        'autorNome': _currentUserName,
+        'contratoLocalizador': localizador,
+        'enviouWhats': enviouWhats,
+        'enviouEmail': enviouEmail,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
   /// Busca única de todos os contratos (não-stream).
   /// Cache em memória com TTL de 10 min — invalidado após writes de distrato.
   /// Passe [forcarRecarga] para ignorar o cache.
@@ -1708,7 +2610,9 @@ class FirestoreService {
     }
   }
 
-  /// Invalida o cache de contratos (usar após writes que alteram a lista).
+  /// Invalida o cache de contratos (usar após writes que alteram a lista ou para forçar recontagem).
+  void invalidarCacheContratos() => _invalidarCacheContratos();
+
   void _invalidarCacheContratos() {
     _cacheContratos = null;
     _cacheContratosEm = null;
@@ -1981,6 +2885,13 @@ class FirestoreService {
         .collection(_colImoveis)
         .snapshots()
         .map((s) => s.docs.map(Imovel.fromFirestore).toList());
+  }
+
+  /// Leitura única do inventário de imóveis (para telas que carregam sob
+  /// demanda, sem manter um stream aberto).
+  Future<List<Imovel>> getImoveis() async {
+    final snap = await _db.collection(_colImoveis).get();
+    return snap.docs.map(Imovel.fromFirestore).toList();
   }
 
   /// Stream das cotas (vendidas) de um imóvel específico — usado no detalhe.

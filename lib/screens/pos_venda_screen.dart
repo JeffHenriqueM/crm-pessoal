@@ -32,6 +32,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   String? _filtroStatusFin;
   String? _filtroAssinatura;
   String? _filtroProduto;
+  String? _filtroNotificado; // null = todos, 'nao' = não notificados, 'sim' = já notificados
   // Ordenação: 'nome' | 'imovel' | 'valorVendido' | 'aReceber'.
   String _ordenacao = 'nome';
 
@@ -40,6 +41,10 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
 
   /// Mapa de último pagamento indexado por nomeComprador.
   Map<String, BaixaFinanceira> _ultimosPagamentos = {};
+  // Os últimos pagamentos (baixas) só são buscados quando o usuário clica no
+  // botão — leitura evitada ao abrir a tela.
+  bool _pagamentosCarregados = false;
+  bool _carregandoPagamentos = false;
 
   StreamSubscription<List<Contrato>>? _sub;
 
@@ -53,7 +58,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
           _todos = lista;
           _carregando = false;
         });
-        _carregarUltimosPagamentos(lista);
+        // Não busca os pagamentos aqui — aguarda o clique no botão.
       },
       onError: (_) {
         if (mounted) setState(() => _carregando = false);
@@ -62,14 +67,22 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
   }
 
   /// Busca em batch os últimos pagamentos para os contratos visíveis.
-  /// Roda em background — falha silenciosa (não bloqueia a tela).
+  /// Disparada pelo botão "Carregar pagamentos" (não roda ao abrir a tela).
   Future<void> _carregarUltimosPagamentos(List<Contrato> lista) async {
+    setState(() => _carregandoPagamentos = true);
     try {
       final nomes = lista.map((c) => c.nomeComprador).toList();
       final mapa = await _fs.getUltimosPagamentosClientes(nomes);
-      if (mounted) setState(() => _ultimosPagamentos = mapa);
+      if (mounted) {
+        setState(() {
+          _ultimosPagamentos = mapa;
+          _pagamentosCarregados = true;
+          _carregandoPagamentos = false;
+        });
+      }
     } catch (e) {
       debugPrint('[PosVendaScreen] Erro ao buscar últimos pagamentos: $e');
+      if (mounted) setState(() => _carregandoPagamentos = false);
     }
   }
 
@@ -103,8 +116,12 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                   _filtroAssinatura!.substring('grupo:'.length)
               : c.statusAssinatura.value == _filtroAssinatura);
       final prodOk = _filtroProduto == null || c.produto == _filtroProduto;
+      final notifOk = _filtroNotificado == null ||
+          (_filtroNotificado == 'nao'
+              ? c.notificadoEm == null
+              : c.notificadoEm != null);
 
-      return buscaOk && statusOk && finOk && assOk && prodOk;
+      return buscaOk && statusOk && finOk && assOk && prodOk && notifOk;
     }).toList()
       ..sort(_comparar);
   }
@@ -119,6 +136,22 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         return b.valorTotalReajustado.compareTo(a.valorTotalReajustado);
       case 'aReceber':
         return b.saldoRestante.compareTo(a.saldoRestante);
+      case 'naoNotificadosPrimeiro':
+        final aNotif = a.notificadoEm;
+        final bNotif = b.notificadoEm;
+        if (aNotif == null && bNotif != null) return -1;
+        if (aNotif != null && bNotif == null) return 1;
+        return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
+      case 'notificadosRecentes':
+        final aNotif = a.notificadoEm;
+        final bNotif = b.notificadoEm;
+        if (aNotif != null && bNotif == null) return -1;
+        if (aNotif == null && bNotif != null) return 1;
+        if (aNotif != null && bNotif != null) {
+          final cmp = bNotif.compareTo(aNotif);
+          if (cmp != 0) return cmp;
+        }
+        return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
       default:
         return a.nomeComprador.toLowerCase().compareTo(b.nomeComprador.toLowerCase());
     }
@@ -130,6 +163,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         _filtroStatusFin,
         _filtroAssinatura,
         _filtroProduto,
+        _filtroNotificado,
       ].where((f) => f != null).length;
 
   static const _labelsOrdenacao = {
@@ -137,6 +171,8 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     'imovel': 'Nº do imóvel',
     'valorVendido': 'Valor vendido',
     'aReceber': 'Valor a receber',
+    'naoNotificadosPrimeiro': 'Não notificados primeiro',
+    'notificadosRecentes': 'Notificados recentemente',
   };
 
   /// Texto da contagem que reflete o filtro de situação:
@@ -205,6 +241,25 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                   onPressed: () => _abrirFiltros(context),
                 ),
               ),
+              const SizedBox(width: 4),
+              // Carrega os últimos pagamentos (baixas) sob demanda.
+              IconButton(
+                icon: _carregandoPagamentos
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(_pagamentosCarregados
+                        ? Icons.price_check
+                        : Icons.payments_outlined),
+                tooltip: _pagamentosCarregados
+                    ? 'Pagamentos carregados — clique para atualizar'
+                    : 'Carregar últimos pagamentos',
+                onPressed: _carregandoPagamentos
+                    ? null
+                    : () => _carregarUltimosPagamentos(_todos),
+              ),
               if (_podeImportar) ...[
                 const SizedBox(width: 4),
                 IconButton(
@@ -214,6 +269,100 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                 ),
               ],
             ],
+          ),
+        ),
+        // ── Chips Rápidos de Notificação ──────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                FilterChip(
+                  avatar: Icon(
+                    Icons.mark_email_unread_outlined,
+                    size: 15,
+                    color: _filtroNotificado == 'nao'
+                        ? Colors.white
+                        : Colors.orange.shade800,
+                  ),
+                  label: Text(
+                      'Não notificados (${_todos.where((c) => c.notificadoEm == null).length})'),
+                  selected: _filtroNotificado == 'nao',
+                  onSelected: (sel) =>
+                      setState(() => _filtroNotificado = sel ? 'nao' : null),
+                  selectedColor: Colors.orange.shade800,
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _filtroNotificado == 'nao' ? Colors.white : null,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  avatar: Icon(
+                    Icons.mark_email_read_outlined,
+                    size: 15,
+                    color: _filtroNotificado == 'sim'
+                        ? Colors.white
+                        : Colors.teal.shade700,
+                  ),
+                  label: Text(
+                      'Já notificados (${_todos.where((c) => c.notificadoEm != null).length})'),
+                  selected: _filtroNotificado == 'sim',
+                  onSelected: (sel) =>
+                      setState(() => _filtroNotificado = sel ? 'sim' : null),
+                  selectedColor: Colors.teal.shade700,
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _filtroNotificado == 'sim' ? Colors.white : null,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: Icon(
+                    Icons.sort,
+                    size: 15,
+                    color: _ordenacao == 'naoNotificadosPrimeiro'
+                        ? Colors.white
+                        : cs.primary,
+                  ),
+                  label: const Text('Organizar: Não notificados 1º'),
+                  backgroundColor: _ordenacao == 'naoNotificadosPrimeiro'
+                      ? cs.primary
+                      : null,
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _ordenacao == 'naoNotificadosPrimeiro'
+                        ? Colors.white
+                        : null,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (_ordenacao == 'naoNotificadosPrimeiro') {
+                        _ordenacao = 'nome';
+                      } else {
+                        _ordenacao = 'naoNotificadosPrimeiro';
+                      }
+                    });
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+                if (_filtroNotificado != null) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: const Icon(Icons.close, size: 14),
+                    label: const Text('Mostrar todos'),
+                    onPressed: () => setState(() => _filtroNotificado = null),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
         // ── Contagem (reflete o filtro) + ordenação atual ──────────────────
@@ -323,12 +472,21 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
                               _filtroStatusFin = null;
                               _filtroAssinatura = null;
                               _filtroProduto = null;
+                              _filtroNotificado = null;
                               _ordenacao = 'nome';
                             }),
                             child: const Text('Limpar'),
                           ),
                         ],
                       ),
+                      grupo('Notificação / Mensagem', [
+                        opc('Todos', _filtroNotificado == null,
+                            () => _filtroNotificado = null),
+                        opc('Não notificados', _filtroNotificado == 'nao',
+                            () => _filtroNotificado = 'nao'),
+                        opc('Já notificados', _filtroNotificado == 'sim',
+                            () => _filtroNotificado = 'sim'),
+                      ]),
                       grupo('Ordenar por', [
                         for (final e in _labelsOrdenacao.entries)
                           opc(e.value, _ordenacao == e.key,
@@ -423,7 +581,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
     // Cede um frame para o loading pintar antes do parse travar a UI thread.
     await Future.delayed(const Duration(milliseconds: 50));
 
-    List<Contrato> contratos;
+    ContratosParseResult parseResult;
     try {
       if (ehExcel) {
         final res = reader.result;
@@ -432,9 +590,9 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
             : res is Uint8List
                 ? res
                 : Uint8List.fromList(res as List<int>);
-        contratos = parsearExcelContratos(bytes);
+        parseResult = parsearExcelContratosResult(bytes);
       } else {
-        contratos = parsearCsvContratos(reader.result as String? ?? '');
+        parseResult = parsearCsvContratosResult(reader.result as String? ?? '');
       }
     } catch (e) {
       if (context.mounted) Navigator.of(context).pop(); // fecha o loading
@@ -447,13 +605,20 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       return;
     }
 
+    final contratos = parseResult.contratos;
+
     // Análise: compara a planilha com o estado atual da base e separa o que
     // realmente muda. O mesmo loading segue aberto enquanto carrega a base.
     DiffImportContratos diff;
     try {
       final atuais = await _fs.getContratos();
       final porLoc = {for (final c in atuais) c.localizador: c};
-      diff = analisarImportContratos(contratos, porLoc);
+      diff = analisarImportContratos(
+        contratos,
+        porLoc,
+        camposPresentes: parseResult.camposPresentes,
+        colunasAusentes: parseResult.colunasAusentes,
+      );
     } catch (e) {
       if (context.mounted) Navigator.of(context).pop(); // fecha o loading
       messenger.showSnackBar(
@@ -473,12 +638,20 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
         diff: diff,
         totalArquivo: contratos.length,
         nomeArquivo: nomeArq,
-        onConfirmar: () => _importar(context, diff.paraGravar),
+        onConfirmar: () => _importar(
+          context,
+          diff.paraGravar,
+          camposPresentes: diff.camposPresentes,
+        ),
       ),
     );
   }
 
-  Future<void> _importar(BuildContext context, List<Contrato> contratos) async {
+  Future<void> _importar(
+    BuildContext context,
+    List<Contrato> contratos, {
+    Set<String>? camposPresentes,
+  }) async {
     Navigator.of(context).pop();
 
     if (contratos.isEmpty) {
@@ -495,7 +668,7 @@ class _PosVendaScreenState extends State<PosVendaScreen> {
       const batchSz = 400;
       for (var i = 0; i < contratos.length; i += batchSz) {
         final fatia = contratos.skip(i).take(batchSz).toList();
-        await _fs.salvarContratosLote(fatia);
+        await _fs.salvarContratosLote(fatia, camposPresentes: camposPresentes);
         overlay.update(i + fatia.length);
       }
       overlay.dismiss();
@@ -559,48 +732,56 @@ class _ContratoCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Flexible(
-                    child: Text(
-                      c.nomeComprador,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            c.nomeComprador,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (c.dataContrato != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            'compra ${fmtData.format(c.dataContrato!)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (c.temAtrasos) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Em atraso',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.red.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (c.dataContrato != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      'compra ${fmtData.format(c.dataContrato!)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  if (c.temAtrasos)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Em atraso',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.red.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   BotoesContatoContrato(contrato: c, iconSize: 18),
                 ],
               ),
@@ -699,6 +880,25 @@ class _ContratoCard extends StatelessWidget {
                   );
                 }),
               ],
+              // Notificação registrada (quando não está em distrato)
+              if (c.notificadoEm != null && !c.emDistrato) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.mark_email_read_outlined,
+                        size: 13, color: Colors.teal.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Notificado em ${fmtData.format(c.notificadoEm!)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.teal.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               // Acompanhamento de distrato: data da notificação + data prevista
               if (c.emDistrato &&
                   (c.notificadoEm != null ||
@@ -761,7 +961,7 @@ class _AnalisandoDialog extends StatelessWidget {
 
 // ── Dialog de confirmação: mostra o diff real contra a base ──────────────────
 
-class _ImportPreviewDialog extends StatelessWidget {
+class _ImportPreviewDialog extends StatefulWidget {
   final DiffImportContratos diff;
   final int totalArquivo;
   final String nomeArquivo;
@@ -775,29 +975,86 @@ class _ImportPreviewDialog extends StatelessWidget {
   });
 
   @override
+  State<_ImportPreviewDialog> createState() => _ImportPreviewDialogState();
+}
+
+class _ImportPreviewDialogState extends State<_ImportPreviewDialog> {
+  bool _confirmado = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final diff = widget.diff;
     final aGravar = diff.paraGravar.length;
 
     return AlertDialog(
       title: const Text('Confirmar importação'),
       content: SizedBox(
-        width: 480,
+        width: 520,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Arquivo: $nomeArquivo',
+              Text('Arquivo: ${widget.nomeArquivo}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 12),
-              _linha('Lidos na planilha', '$totalArquivo'),
+              _linha('Lidos na planilha', '${widget.totalArquivo}'),
               _linha('Com alteração', '${diff.alterados.length}',
                   diff.alterados.isNotEmpty ? cs.primary : null),
               _linha('Novos (não existiam)', '${diff.novos.length}',
                   diff.novos.isNotEmpty ? Colors.teal : null),
               _linha('Sem alteração', '${diff.inalterados}', cs.outline),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+
+              // Alerta de proteção de dados caso faltem colunas na planilha
+              if (diff.colunasAusentes.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.08),
+                    border: Border.all(
+                      color: Colors.amber.shade700.withOpacity(0.35),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.shield_outlined,
+                              size: 18, color: Colors.amber.shade800),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Modo Proteção de Dados Ativo',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Esta planilha não possui as colunas: '
+                        '${diff.colunasAusentes.join(", ")}.\n\n'
+                        '🛡️ O sistema protegerá seus dados e NÃO apagará essas '
+                        'informações no banco de dados. Apenas as colunas '
+                        'presentes no arquivo serão mescladas.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.amber.shade900,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               if (aGravar == 0)
                 Text(
                   'Nada mudou em relação aos dados atuais — não há o que gravar.',
@@ -810,7 +1067,7 @@ class _ImportPreviewDialog extends StatelessWidget {
                   '(assinatura, link, código…) são sempre preservados.',
                   style: TextStyle(fontSize: 11, color: cs.outline),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 if (diff.alterados.isNotEmpty)
                   _grupo(
                     context,
@@ -838,6 +1095,33 @@ class _ImportPreviewDialog extends StatelessWidget {
                             'contrato novo'),
                     ],
                   ),
+                const SizedBox(height: 12),
+
+                // Dupla confirmação
+                Container(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _confirmado ? cs.primary : cs.outlineVariant,
+                    ),
+                  ),
+                  child: CheckboxListTile(
+                    value: _confirmado,
+                    onChanged: (v) => setState(() => _confirmado = v ?? false),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    title: Text(
+                      'Confirmo que revisei as alterações e desejo gravar os $aGravar contrato(s).',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -849,7 +1133,9 @@ class _ImportPreviewDialog extends StatelessWidget {
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: onConfirmar,
+          onPressed: (aGravar == 0)
+              ? () => Navigator.pop(context)
+              : (_confirmado ? widget.onConfirmar : null),
           child: Text(aGravar == 0 ? 'Fechar' : 'Gravar $aGravar contrato(s)'),
         ),
       ],

@@ -1,0 +1,607 @@
+{
+  "lib/firebase_options.dart": {
+    "mtime": 1761692372.4062011,
+    "ast_hash": "ad6143b016a674cd358459ff37718e6b",
+    "semantic_hash": "ad6143b016a674cd358459ff37718e6b"
+  },
+  "lib/firebase_options_staging.dart": {
+    "mtime": 1780026018.7737715,
+    "ast_hash": "3cc162b0c5e5172ecf2a552343aa5762",
+    "semantic_hash": "3cc162b0c5e5172ecf2a552343aa5762"
+  },
+  "lib/main.dart": {
+    "mtime": 1780507675.1113079,
+    "ast_hash": "1e4e8b29449899f19d20531dd7d24e86",
+    "semantic_hash": "1e4e8b29449899f19d20531dd7d24e86"
+  },
+  "lib/models/agendamento_model.dart": {
+    "mtime": 1781801261.4113111,
+    "ast_hash": "7147c92ded519ba984687bcd0a97bb00",
+    "semantic_hash": "7147c92ded519ba984687bcd0a97bb00"
+  },
+  "lib/models/atividade_interacao.dart": {
+    "mtime": 1781526985.0038733,
+    "ast_hash": "5c4fd00a7c2e9948baae040222b8a483",
+    "semantic_hash": "5c4fd00a7c2e9948baae040222b8a483"
+  },
+  "lib/models/baixa_financeira_model.dart": {
+    "mtime": 1781872642.9501073,
+    "ast_hash": "359942edc5b9af79d01412904232f3c7",
+    "semantic_hash": "359942edc5b9af79d01412904232f3c7"
+  },
+  "lib/models/campanha_model.dart": {
+    "mtime": 1780026018.7743402,
+    "ast_hash": "454be538bca3848a8d32640f7e3f63f4",
+    "semantic_hash": "454be538bca3848a8d32640f7e3f63f4"
+  },
+  "lib/models/cliente_model.dart": {
+    "mtime": 1781797133.4896991,
+    "ast_hash": "a73acf5eb6d01ab1fea51d60a7d87fc3",
+    "semantic_hash": "a73acf5eb6d01ab1fea51d60a7d87fc3"
+  },
+  "lib/models/contato_embaixador_model.dart": {
+    "mtime": 1781019517.006635,
+    "ast_hash": "0584a76a214833e03903cbb857bbc4ec",
+    "semantic_hash": "0584a76a214833e03903cbb857bbc4ec"
+  },
+  "lib/models/contrato_model.dart": {
+    "mtime": 1781977786.4203768,
+    "ast_hash": "9f6015761c8c9841f87594fd0150523a",
+    "semantic_hash": "9f6015761c8c9841f87594fd0150523a"
+  },
+  "lib/models/cota_model.dart": {
+    "mtime": 1781019517.0072143,
+    "ast_hash": "5b9d66583546a576bc53310e70f9d635",
+    "semantic_hash": "5b9d66583546a576bc53310e70f9d635"
+  },
+  "lib/models/fase_enum.dart": {
+    "mtime": 1780026018.775067,
+    "ast_hash": "b1d21a2f0463cc7e4444e0591348f0cb",
+    "semantic_hash": "b1d21a2f0463cc7e4444e0591348f0cb"
+  },
+  "lib/models/festa_associacao.dart": {
+    "mtime": 1781019520.233925,
+    "ast_hash": "c8b7db4d3c250c518dd2054c14405493",
+    "semantic_hash": "c8b7db4d3c250c518dd2054c14405493"
+  },
+  "lib/models/festa_espera.dart": {
+    "mtime": 1781019520.2342415,
+    "ast_hash": "bdeea29f6e53251102fb41d9066ee4d9",
+    "semantic_hash": "bdeea29f6e53251102fb41d9066ee4d9"
+  },
+  "lib/models/festa_mapa2_gerado.dart": {
+    "mtime": 1781019520.2345934,
+    "ast_hash": "b4cd6adcc4cd3c0071268b5d2e849e55",
+    "semantic_hash": "b4cd6adcc4cd3c0071268b5d2e849e55"
+  },
+  "lib/models/festa_ocupacao_gerado.dart": {
+    "mtime": 1783077446.7755408,
+    "ast_hash": "49bcef22a9ebf50e9d2bd5d5834f1c23",
+    "semantic_hash": "49bcef22a9ebf50e9d2bd5d5834f1c23"
+  },
+  "lib/models/festa_regras.dart": {
+    "mtime": 1781019520.2359266,
+    "ast_hash": "179486971388ecc8106e2a4d6675d7de",
+    "semantic_hash": "179486971388ecc8106e2a4d6675d7de"
+  },
+  "lib/models/festa_trocas_gerado.dart": {
+    "mtime": 1781019520.236299,
+    "ast_hash": "3746c192a61bc78e13b47cc3cfebbb79",
+    "semantic_hash": "3746c192a61bc78e13b47cc3cfebbb79"
+  },
+  "lib/models/festa_validacao.dart": {
+    "mtime": 1781019520.2365408,
+    "ast_hash": "88ff62f88dcf94b80e879679425d360f",
+    "semantic_hash": "88ff62f88dcf94b80e879679425d360f"
+  },
+  "lib/models/fila_atendimento_model.dart": {
+    "mtime": 1781800823.479271,
+    "ast_hash": "eb0ffb1ad8c861ac45251f6a00f7e2b4",
+    "semantic_hash": "eb0ffb1ad8c861ac45251f6a00f7e2b4"
+  },
+  "lib/models/imovel_model.dart": {
+    "mtime": 1781019517.0074482,
+    "ast_hash": "caabc59b0bad2309d46ab1ae10ebafeb",
+    "semantic_hash": "caabc59b0bad2309d46ab1ae10ebafeb"
+  },
+  "lib/models/interacao_model.dart": {
+    "mtime": 1781361615.4378636,
+    "ast_hash": "4ea5f7c88440d3993e74c6d7969cad5e",
+    "semantic_hash": "4ea5f7c88440d3993e74c6d7969cad5e"
+  },
+  "lib/models/modelo_mensagem_model.dart": {
+    "mtime": 1781959078.5296855,
+    "ast_hash": "cb7fb9c339d5d181e3c754af8514127d",
+    "semantic_hash": "cb7fb9c339d5d181e3c754af8514127d"
+  },
+  "lib/models/negociacao_model.dart": {
+    "mtime": 1780507675.1124694,
+    "ast_hash": "68bcd424bea87971cbcb9235aba40573",
+    "semantic_hash": "68bcd424bea87971cbcb9235aba40573"
+  },
+  "lib/models/notificacao_inapp_model.dart": {
+    "mtime": 1780507675.112733,
+    "ast_hash": "ddd7823493a17ec1d5f8c92e9a8c6b9a",
+    "semantic_hash": "ddd7823493a17ec1d5f8c92e9a8c6b9a"
+  },
+  "lib/models/produto_model.dart": {
+    "mtime": 1780507675.1129448,
+    "ast_hash": "7687b51fef7e490cd677b13ea21163a8",
+    "semantic_hash": "7687b51fef7e490cd677b13ea21163a8"
+  },
+  "lib/models/quarto_festa_socios.dart": {
+    "mtime": 1781019520.237295,
+    "ast_hash": "54df657facc970da824b0a36fdffa308",
+    "semantic_hash": "54df657facc970da824b0a36fdffa308"
+  },
+  "lib/models/ticket_model.dart": {
+    "mtime": 1783094608.0976903,
+    "ast_hash": "bdfc95349a10269071570fc525a886ef",
+    "semantic_hash": "bdfc95349a10269071570fc525a886ef"
+  },
+  "lib/models/usuario_model.dart": {
+    "mtime": 1780507675.1134737,
+    "ast_hash": "ace32f3ec311790ea04fb231cbb0eea4",
+    "semantic_hash": "ace32f3ec311790ea04fb231cbb0eea4"
+  },
+  "lib/screens/apresentacao_screen.dart": {
+    "mtime": 1780507675.1137393,
+    "ast_hash": "78f825af24b7e1da4ae3503008cbdcfb",
+    "semantic_hash": "78f825af24b7e1da4ae3503008cbdcfb"
+  },
+  "lib/screens/campanhas_screen.dart": {
+    "mtime": 1780026018.7766838,
+    "ast_hash": "5971166bb392ac683817ef300d7e4914",
+    "semantic_hash": "5971166bb392ac683817ef300d7e4914"
+  },
+  "lib/screens/configuracoes_screen.dart": {
+    "mtime": 1781019517.0080655,
+    "ast_hash": "dcbd9d658e26e946f5dbc841f929652f",
+    "semantic_hash": "dcbd9d658e26e946f5dbc841f929652f"
+  },
+  "lib/screens/dashboard_screen.dart": {
+    "mtime": 1781872642.9502492,
+    "ast_hash": "5cefeac16aab7c0b23eeb10888f9d972",
+    "semantic_hash": "5cefeac16aab7c0b23eeb10888f9d972"
+  },
+  "lib/screens/ficha_cliente_screen.dart": {
+    "mtime": 1781798354.0033257,
+    "ast_hash": "00d6098ebd2d4b42f2abffdfb5d97c98",
+    "semantic_hash": "00d6098ebd2d4b42f2abffdfb5d97c98"
+  },
+  "lib/screens/ficha_contrato_screen.dart": {
+    "mtime": 1781959637.9783938,
+    "ast_hash": "f4b058a0f8be57dd46ff6c9685fa72af",
+    "semantic_hash": "f4b058a0f8be57dd46ff6c9685fa72af"
+  },
+  "lib/screens/ficha_ticket_screen.dart": {
+    "mtime": 1780507675.114902,
+    "ast_hash": "b3c92ddb79ea954107489e882162eee2",
+    "semantic_hash": "b3c92ddb79ea954107489e882162eee2"
+  },
+  "lib/screens/financeiro_screen.dart": {
+    "mtime": 1781872642.9505088,
+    "ast_hash": "fd1fabc16eb94ba6a4ecd20d6a82b737",
+    "semantic_hash": "fd1fabc16eb94ba6a4ecd20d6a82b737"
+  },
+  "lib/screens/fluxo_cliente_screen.dart": {
+    "mtime": 1780507810.1147768,
+    "ast_hash": "5626ae405f722fc7c83652788c59d9a7",
+    "semantic_hash": "5626ae405f722fc7c83652788c59d9a7"
+  },
+  "lib/screens/gerenciar_produtos_screen.dart": {
+    "mtime": 1780507675.1152909,
+    "ast_hash": "83567b5012fda0f93d083428a2fd642e",
+    "semantic_hash": "83567b5012fda0f93d083428a2fd642e"
+  },
+  "lib/screens/gerenciar_usuarios_screen.dart": {
+    "mtime": 1781268951.6083004,
+    "ast_hash": "4270fe1699890a00be280d11ff2a73ac",
+    "semantic_hash": "4270fe1699890a00be280d11ff2a73ac"
+  },
+  "lib/screens/hospedagem_screen.dart": {
+    "mtime": 1781982445.8240619,
+    "ast_hash": "1a951786cdcb90863e4cc646d35bb5f5",
+    "semantic_hash": "1a951786cdcb90863e4cc646d35bb5f5"
+  },
+  "lib/screens/lista_clientes_screen.dart": {
+    "mtime": 1780507675.1155322,
+    "ast_hash": "1c23f2526f9f9c1cb82de268afe362a9",
+    "semantic_hash": "1c23f2526f9f9c1cb82de268afe362a9"
+  },
+  "lib/screens/modelos_mensagem_screen.dart": {
+    "mtime": 1781959155.8180192,
+    "ast_hash": "c0c97afa76a01806ce2b2a9e119615bc",
+    "semantic_hash": "c0c97afa76a01806ce2b2a9e119615bc"
+  },
+  "lib/screens/negociacoes_screen.dart": {
+    "mtime": 1780507675.1158023,
+    "ast_hash": "07a61e13818921783fc6294bfc566536",
+    "semantic_hash": "07a61e13818921783fc6294bfc566536"
+  },
+  "lib/screens/pos_venda_screen.dart": {
+    "mtime": 1781981045.434195,
+    "ast_hash": "245d1e241b4215640a5f575ea6b99309",
+    "semantic_hash": "245d1e241b4215640a5f575ea6b99309"
+  },
+  "lib/screens/recepcao_screen.dart": {
+    "mtime": 1781808759.47185,
+    "ast_hash": "9954eb7f125dd78c2544a06b485f4b1d",
+    "semantic_hash": "9954eb7f125dd78c2544a06b485f4b1d"
+  },
+  "lib/screens/staging_login_screen.dart": {
+    "mtime": 1781268951.6084888,
+    "ast_hash": "f9e44f0dd84d35d14a1c7d623195affc",
+    "semantic_hash": "f9e44f0dd84d35d14a1c7d623195affc"
+  },
+  "lib/screens/tela_login_screen.dart": {
+    "mtime": 1780026018.7792492,
+    "ast_hash": "c638cced69bc0ff548b4c2b638644065",
+    "semantic_hash": "c638cced69bc0ff548b4c2b638644065"
+  },
+  "lib/screens/tickets_screen.dart": {
+    "mtime": 1783094614.502719,
+    "ast_hash": "ddb58992e92b53e594dc6b49f685f789",
+    "semantic_hash": "ddb58992e92b53e594dc6b49f685f789"
+  },
+  "lib/screens/tutorial_screen.dart": {
+    "mtime": 1781810589.4198275,
+    "ast_hash": "774317e0b3dd792e0435d2a003122d32",
+    "semantic_hash": "774317e0b3dd792e0435d2a003122d32"
+  },
+  "lib/screens/vendedor_home_screen.dart": {
+    "mtime": 1781800823.4796522,
+    "ast_hash": "42a2e7fdfe8f9f227e32fb322078a5e0",
+    "semantic_hash": "42a2e7fdfe8f9f227e32fb322078a5e0"
+  },
+  "lib/services/analise_imoveis.dart": {
+    "mtime": 1782825864.6398215,
+    "ast_hash": "e923486a9efce84375e78365236d1280",
+    "semantic_hash": "e923486a9efce84375e78365236d1280"
+  },
+  "lib/services/analise_vendas.dart": {
+    "mtime": 1781019517.010181,
+    "ast_hash": "7d97983b5141e81cb8b0f35445eca6f3",
+    "semantic_hash": "7d97983b5141e81cb8b0f35445eca6f3"
+  },
+  "lib/services/aniversariantes_pos_venda.dart": {
+    "mtime": 1780507675.11724,
+    "ast_hash": "b30a5c4484649bf2040410b23fa73eb4",
+    "semantic_hash": "b30a5c4484649bf2040410b23fa73eb4"
+  },
+  "lib/services/atualizacao_service.dart": {
+    "mtime": 1781341655.1263099,
+    "ast_hash": "42d389ee5bed84bdd500aa99f2fa8d5d",
+    "semantic_hash": "42d389ee5bed84bdd500aa99f2fa8d5d"
+  },
+  "lib/services/auth_service.dart": {
+    "mtime": 1780507675.117475,
+    "ast_hash": "538f599026f6ffd550539f5b2d37ddea",
+    "semantic_hash": "538f599026f6ffd550539f5b2d37ddea"
+  },
+  "lib/services/calibracao.dart": {
+    "mtime": 1780738678.7889283,
+    "ast_hash": "a2f3d5461aa241cbbb881c29850d56f5",
+    "semantic_hash": "a2f3d5461aa241cbbb881c29850d56f5"
+  },
+  "lib/services/contrato_csv_parser.dart": {
+    "mtime": 1781341655.1266463,
+    "ast_hash": "1e7c4f4881b34d93ccf936dcb5094b78",
+    "semantic_hash": "1e7c4f4881b34d93ccf936dcb5094b78"
+  },
+  "lib/services/contrato_import_diff.dart": {
+    "mtime": 1781341655.1268876,
+    "ast_hash": "aeff74d3b0f8bd5a81ec0c00bb71e8b0",
+    "semantic_hash": "aeff74d3b0f8bd5a81ec0c00bb71e8b0"
+  },
+  "lib/services/desempenho_vendedor.dart": {
+    "mtime": 1780738678.789115,
+    "ast_hash": "d18f73d347e6d27d785b8408296ea7c4",
+    "semantic_hash": "d18f73d347e6d27d785b8408296ea7c4"
+  },
+  "lib/services/festa_pdf.dart": {
+    "mtime": 1781019520.2397854,
+    "ast_hash": "263732cb4fadca3b79330d1648f83722",
+    "semantic_hash": "263732cb4fadca3b79330d1648f83722"
+  },
+  "lib/services/ficha_pdf.dart": {
+    "mtime": 1780026018.780179,
+    "ast_hash": "daa53a48f9b3fbc4ac59d3613921fdc0",
+    "semantic_hash": "daa53a48f9b3fbc4ac59d3613921fdc0"
+  },
+  "lib/services/financeiro_excel_parser.dart": {
+    "mtime": 1781872999.405598,
+    "ast_hash": "b5476d7a2cf1b8bb3999975ea04f7ec4",
+    "semantic_hash": "b5476d7a2cf1b8bb3999975ea04f7ec4"
+  },
+  "lib/services/firestore_service.dart": {
+    "mtime": 1782305213.0614572,
+    "ast_hash": "1a251e7e49230f6475b7d975e561eb55",
+    "semantic_hash": "1a251e7e49230f6475b7d975e561eb55"
+  },
+  "lib/services/lead_score.dart": {
+    "mtime": 1780737591.5996494,
+    "ast_hash": "33f1079bead104592b2aa67eb52ebf68",
+    "semantic_hash": "33f1079bead104592b2aa67eb52ebf68"
+  },
+  "lib/services/proposta_pdf.dart": {
+    "mtime": 1780026018.7806768,
+    "ast_hash": "eba35bc4b1da3ec36e52aec4f32dbe80",
+    "semantic_hash": "eba35bc4b1da3ec36e52aec4f32dbe80"
+  },
+  "lib/services/push_notification_service.dart": {
+    "mtime": 1780026018.780898,
+    "ast_hash": "4b33e74865563d13dc89c4711e9dab4f",
+    "semantic_hash": "4b33e74865563d13dc89c4711e9dab4f"
+  },
+  "lib/services/relatorio_recebimentos_export.dart": {
+    "mtime": 1781884323.8823378,
+    "ast_hash": "d057c9c0d94b9a53a5565ab4b6c1c085",
+    "semantic_hash": "d057c9c0d94b9a53a5565ab4b6c1c085"
+  },
+  "lib/services/risco_silencio.dart": {
+    "mtime": 1780736776.4735925,
+    "ast_hash": "1df865ed64d26bd645f145de1147ba54",
+    "semantic_hash": "1df865ed64d26bd645f145de1147ba54"
+  },
+  "lib/services/tempo_sem_contato.dart": {
+    "mtime": 1781798354.0034418,
+    "ast_hash": "2b07b3f8fec4adea317d4bbfb4b7561c",
+    "semantic_hash": "2b07b3f8fec4adea317d4bbfb4b7561c"
+  },
+  "lib/theme/app_theme.dart": {
+    "mtime": 1780026018.7813396,
+    "ast_hash": "c488cda4f8a2b0dadadd923bc673df59",
+    "semantic_hash": "c488cda4f8a2b0dadadd923bc673df59"
+  },
+  "lib/theme/theme_controller.dart": {
+    "mtime": 1780026018.7816515,
+    "ast_hash": "d123e41c041846e827d5498ad4313b36",
+    "semantic_hash": "d123e41c041846e827d5498ad4313b36"
+  },
+  "lib/utils/acoes_lead.dart": {
+    "mtime": 1781019517.0112708,
+    "ast_hash": "7003b22c8bcdbc56d18b7580f0c582b4",
+    "semantic_hash": "7003b22c8bcdbc56d18b7580f0c582b4"
+  },
+  "lib/utils/analise_distrato.dart": {
+    "mtime": 1783095296.999107,
+    "ast_hash": "e676b6010bd062285b8946fffec0e86e",
+    "semantic_hash": "e676b6010bd062285b8946fffec0e86e"
+  },
+  "lib/utils/contato_contrato.dart": {
+    "mtime": 1781959597.3173664,
+    "ast_hash": "d77a60351c2fa155fe68ad3c884e4119",
+    "semantic_hash": "d77a60351c2fa155fe68ad3c884e4119"
+  },
+  "lib/utils/datas_uteis.dart": {
+    "mtime": 1781110496.5516834,
+    "ast_hash": "991a9672157883bfa0d3e0e534eea6c9",
+    "semantic_hash": "991a9672157883bfa0d3e0e534eea6c9"
+  },
+  "lib/utils/email_modelos.dart": {
+    "mtime": 1781959109.1094,
+    "ast_hash": "530ce2712ffc9f1f897f3be8d2241a7d",
+    "semantic_hash": "530ce2712ffc9f1f897f3be8d2241a7d"
+  },
+  "lib/utils/env.dart": {
+    "mtime": 1780026018.781866,
+    "ast_hash": "88c10d29a8164159b7477cac93d689bf",
+    "semantic_hash": "88c10d29a8164159b7477cac93d689bf"
+  },
+  "lib/utils/match_contrato.dart": {
+    "mtime": 1781019517.0119998,
+    "ast_hash": "70b5dc18b31aaa0e5b193f1f819a3fda",
+    "semantic_hash": "70b5dc18b31aaa0e5b193f1f819a3fda"
+  },
+  "lib/utils/moeda_input.dart": {
+    "mtime": 1781019520.2403593,
+    "ast_hash": "d30d42761b766e4c5b338aa24fd45893",
+    "semantic_hash": "d30d42761b766e4c5b338aa24fd45893"
+  },
+  "lib/utils/negociacao_regras.dart": {
+    "mtime": 1781019520.2406325,
+    "ast_hash": "39a7a237035913c7b04db35cd69a2a8c",
+    "semantic_hash": "39a7a237035913c7b04db35cd69a2a8c"
+  },
+  "lib/utils/perfis.dart": {
+    "mtime": 1781799157.1256778,
+    "ast_hash": "40afd8d7df613bb19b5f381e8734fbbe",
+    "semantic_hash": "40afd8d7df613bb19b5f381e8734fbbe"
+  },
+  "lib/utils/url_launcher_service.dart": {
+    "mtime": 1781960417.0838256,
+    "ast_hash": "b41783778fdc7d57db69ac394fd3e0b3",
+    "semantic_hash": "b41783778fdc7d57db69ac394fd3e0b3"
+  },
+  "lib/utils/whatsapp_interacao.dart": {
+    "mtime": 1781019517.0124488,
+    "ast_hash": "fe0bdaf5d9266a116d888850c01eb05b",
+    "semantic_hash": "fe0bdaf5d9266a116d888850c01eb05b"
+  },
+  "lib/utils/whatsapp_modelos.dart": {
+    "mtime": 1781959094.1208735,
+    "ast_hash": "543054b3ebc20ae3f118c43315b2e329",
+    "semantic_hash": "543054b3ebc20ae3f118c43315b2e329"
+  },
+  "lib/widgets/aba_admin_overview.dart": {
+    "mtime": 1781799157.1258833,
+    "ast_hash": "dce8459f97862f7d6074c20c3b63f05e",
+    "semantic_hash": "dce8459f97862f7d6074c20c3b63f05e"
+  },
+  "lib/widgets/aba_agenda.dart": {
+    "mtime": 1781116001.123611,
+    "ast_hash": "08781f9742a78e40545d71e89d424eb7",
+    "semantic_hash": "08781f9742a78e40545d71e89d424eb7"
+  },
+  "lib/widgets/aba_analise_imoveis.dart": {
+    "mtime": 1782826085.0360532,
+    "ast_hash": "ec54635e6986f3200e3bee6f13fe0feb",
+    "semantic_hash": "ec54635e6986f3200e3bee6f13fe0feb"
+  },
+  "lib/widgets/aba_calibracao.dart": {
+    "mtime": 1780738678.7892637,
+    "ast_hash": "f62e331737c8f96cc8fa3d380ad30bba",
+    "semantic_hash": "f62e331737c8f96cc8fa3d380ad30bba"
+  },
+  "lib/widgets/aba_captacao.dart": {
+    "mtime": 1781019517.014891,
+    "ast_hash": "f1481dca1ed1bd0032425ddfed74d5fb",
+    "semantic_hash": "f1481dca1ed1bd0032425ddfed74d5fb"
+  },
+  "lib/widgets/aba_desempenho_vendedor.dart": {
+    "mtime": 1780738678.7894437,
+    "ast_hash": "5418b1c702f6b4faa80eeb10285074df",
+    "semantic_hash": "5418b1c702f6b4faa80eeb10285074df"
+  },
+  "lib/widgets/aba_distratar.dart": {
+    "mtime": 1783097399.767458,
+    "ast_hash": "d3918def1476b89d43e0e1c7e5767367",
+    "semantic_hash": "d3918def1476b89d43e0e1c7e5767367"
+  },
+  "lib/widgets/aba_estatisticas.dart": {
+    "mtime": 1781019517.0152495,
+    "ast_hash": "ce4b0054b1856a42c49bf8142ed77f8b",
+    "semantic_hash": "ce4b0054b1856a42c49bf8142ed77f8b"
+  },
+  "lib/widgets/aba_financeiro.dart": {
+    "mtime": 1781886605.1087527,
+    "ast_hash": "a1ad668c67574cad60f6b68b7ef4aff4",
+    "semantic_hash": "a1ad668c67574cad60f6b68b7ef4aff4"
+  },
+  "lib/widgets/aba_lead_score.dart": {
+    "mtime": 1780737591.599978,
+    "ast_hash": "8aae45aae87f9212867f776bf7567a39",
+    "semantic_hash": "8aae45aae87f9212867f776bf7567a39"
+  },
+  "lib/widgets/aba_linha_atendimento.dart": {
+    "mtime": 1781800823.480041,
+    "ast_hash": "79a9fdca4e467a0127c87467089baf81",
+    "semantic_hash": "79a9fdca4e467a0127c87467089baf81"
+  },
+  "lib/widgets/aba_metas.dart": {
+    "mtime": 1781019517.01562,
+    "ast_hash": "35e5629dd0a247ff7bc5236d39fe75c7",
+    "semantic_hash": "35e5629dd0a247ff7bc5236d39fe75c7"
+  },
+  "lib/widgets/aba_motivos_perda.dart": {
+    "mtime": 1781019517.0158021,
+    "ast_hash": "d981674cf61016d5aa4ea669b2b6de01",
+    "semantic_hash": "d981674cf61016d5aa4ea669b2b6de01"
+  },
+  "lib/widgets/aba_negociacoes.dart": {
+    "mtime": 1781019520.241846,
+    "ast_hash": "6411c6ca4c9081ab1ab06cfa14480f03",
+    "semantic_hash": "6411c6ca4c9081ab1ab06cfa14480f03"
+  },
+  "lib/widgets/aba_pos_venda.dart": {
+    "mtime": 1781875321.6254797,
+    "ast_hash": "49ca42d066b86951f921d19d798658af",
+    "semantic_hash": "49ca42d066b86951f921d19d798658af"
+  },
+  "lib/widgets/aba_relatorios.dart": {
+    "mtime": 1781526985.0045307,
+    "ast_hash": "e07e4dc5c383528ba0349eace0ec1f67",
+    "semantic_hash": "e07e4dc5c383528ba0349eace0ec1f67"
+  },
+  "lib/widgets/aba_risco_silencio.dart": {
+    "mtime": 1780737591.6001914,
+    "ast_hash": "69853b40696937ad334790a6d2f34323",
+    "semantic_hash": "69853b40696937ad334790a6d2f34323"
+  },
+  "lib/widgets/aba_tempo_sem_contato.dart": {
+    "mtime": 1781798354.0035493,
+    "ast_hash": "052ba54ab67534ad6fea2af0904071a1",
+    "semantic_hash": "052ba54ab67534ad6fea2af0904071a1"
+  },
+  "lib/widgets/app_bar.dart": {
+    "mtime": 1780026018.7846963,
+    "ast_hash": "57498cb0443089eeb1dcf75ec4c95f99",
+    "semantic_hash": "57498cb0443089eeb1dcf75ec4c95f99"
+  },
+  "lib/widgets/botoes_contato_contrato.dart": {
+    "mtime": 1781959608.737564,
+    "ast_hash": "13d30f42f873fdd864820389f5b34286",
+    "semantic_hash": "13d30f42f873fdd864820389f5b34286"
+  },
+  "lib/widgets/chip_tempo_sem_contato.dart": {
+    "mtime": 1781798354.0036433,
+    "ast_hash": "3ed45b98a031070dc96914c9409bcb7f",
+    "semantic_hash": "3ed45b98a031070dc96914c9409bcb7f"
+  },
+  "lib/widgets/cliente_list_filtered.dart": {
+    "mtime": 1781798354.0037684,
+    "ast_hash": "f9998a62214e8bbc94c34eb05ba0d360",
+    "semantic_hash": "f9998a62214e8bbc94c34eb05ba0d360"
+  },
+  "lib/widgets/contatos_embaixador_tab.dart": {
+    "mtime": 1781117740.1812053,
+    "ast_hash": "1254e483072992dfa1b95c68c2d0194c",
+    "semantic_hash": "1254e483072992dfa1b95c68c2d0194c"
+  },
+  "lib/widgets/esolution_button.dart": {
+    "mtime": 1781288867.5706866,
+    "ast_hash": "380a4e91408a1f1a3249b5afc46e89d3",
+    "semantic_hash": "380a4e91408a1f1a3249b5afc46e89d3"
+  },
+  "lib/widgets/ficha/ficha_dados_tab.dart": {
+    "mtime": 1781019520.2426088,
+    "ast_hash": "9506972f5d01d31fea55e1cbac6be55d",
+    "semantic_hash": "9506972f5d01d31fea55e1cbac6be55d"
+  },
+  "lib/widgets/ficha/ficha_timeline_tab.dart": {
+    "mtime": 1781361615.4390934,
+    "ast_hash": "92f5d869a07284d75ef5b38e1bd207c4",
+    "semantic_hash": "92f5d869a07284d75ef5b38e1bd207c4"
+  },
+  "lib/widgets/filtro_periodo.dart": {
+    "mtime": 1780507675.123493,
+    "ast_hash": "508f4ca25b703156467b6e2bf0de8616",
+    "semantic_hash": "508f4ca25b703156467b6e2bf0de8616"
+  },
+  "lib/widgets/grupo_notificacao_colapsavel.dart": {
+    "mtime": 1781809145.469847,
+    "ast_hash": "2c26f7d5e20c26460700c8a2db2c47ef",
+    "semantic_hash": "2c26f7d5e20c26460700c8a2db2c47ef"
+  },
+  "lib/widgets/interacao_form_dialog.dart": {
+    "mtime": 1781361615.4392989,
+    "ast_hash": "02c2246d8d72d448a283a474523f22b4",
+    "semantic_hash": "02c2246d8d72d448a283a474523f22b4"
+  },
+  "lib/widgets/kanban_view.dart": {
+    "mtime": 1781798354.0039396,
+    "ast_hash": "48728c30970fecd3e69b2118545b69c1",
+    "semantic_hash": "48728c30970fecd3e69b2118545b69c1"
+  },
+  "lib/widgets/main_shell.dart": {
+    "mtime": 1782227559.3991919,
+    "ast_hash": "e905af066703c321c7ae6ffebb739b27",
+    "semantic_hash": "e905af066703c321c7ae6ffebb739b27"
+  },
+  "lib/widgets/meta_mensal_card.dart": {
+    "mtime": 1781019517.0173888,
+    "ast_hash": "9b5b477497f49be10661c55955e2254b",
+    "semantic_hash": "9b5b477497f49be10661c55955e2254b"
+  },
+  "lib/widgets/notificacao_bell.dart": {
+    "mtime": 1781809145.47015,
+    "ast_hash": "70c586d7398a2cea240b633e448e4fd1",
+    "semantic_hash": "70c586d7398a2cea240b633e448e4fd1"
+  },
+  "lib/widgets/secao_recolhivel.dart": {
+    "mtime": 1781019517.0178308,
+    "ast_hash": "845928040e6bd46a4dd57b29c20414c6",
+    "semantic_hash": "845928040e6bd46a4dd57b29c20414c6"
+  },
+  "lib/widgets/vincular_contrato_dialog.dart": {
+    "mtime": 1781019517.0186195,
+    "ast_hash": "41a438dfb69133f207595be8a4893e3c",
+    "semantic_hash": "41a438dfb69133f207595be8a4893e3c"
+  },
+  "functions/src/index.ts": {
+    "mtime": 1780507675.1104817,
+    "ast_hash": "83de81b8f2241d78dc128afe9aea0d2f",
+    "semantic_hash": "83de81b8f2241d78dc128afe9aea0d2f"
+  }
+}
