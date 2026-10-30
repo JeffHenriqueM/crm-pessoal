@@ -914,6 +914,8 @@ class FirestoreService {
     String? apartamentoDestino,
     String? negociacaoDistrato,
     String? observacoes,
+    DateTime? dataAceiteTransicao,
+    DateTime? dataSolicitacaoDistrato,
   }) async {
     final nomeTrim = nomeSocio.trim();
     final ref = _db.collection(_colConfig).doc(_docTransicaoAtualizacoesSocios);
@@ -926,6 +928,12 @@ class FirestoreService {
           'apartamentoDestino': (apartamentoDestino ?? '').trim(),
           'negociacaoDistrato': (negociacaoDistrato ?? '').trim(),
           'observacoes': (observacoes ?? '').trim(),
+          'dataAceiteTransicao': dataAceiteTransicao != null
+              ? Timestamp.fromDate(dataAceiteTransicao)
+              : null,
+          'dataSolicitacaoDistrato': dataSolicitacaoDistrato != null
+              ? Timestamp.fromDate(dataSolicitacaoDistrato)
+              : null,
           'atualizadoEm': FieldValue.serverTimestamp(),
           'atualizadoPorNome': _currentUserName,
         }

@@ -95,6 +95,8 @@ class _SocioAtualizacaoItem {
   final String apartamentoDestino; // Apartamento no Hotel Villamor
   final String negociacaoDistrato;
   final String observacoes;
+  final DateTime? dataAceiteTransicao;
+  final DateTime? dataSolicitacaoDistrato;
   final DateTime? atualizadoEm;
   final String? atualizadoPorNome;
   final bool personalizado;
@@ -110,6 +112,8 @@ class _SocioAtualizacaoItem {
     this.apartamentoDestino = '',
     required this.negociacaoDistrato,
     required this.observacoes,
+    this.dataAceiteTransicao,
+    this.dataSolicitacaoDistrato,
     required this.atualizadoEm,
     required this.atualizadoPorNome,
     required this.personalizado,
@@ -2850,6 +2854,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     }
   }
 
+  String _formatarDataSimples(DateTime dt) {
+    try {
+      return DateFormat('dd/MM/yyyy').format(dt);
+    } catch (_) {
+      return '';
+    }
+  }
+
   Map<String, dynamic> _getDadosAtualizacaoSocio(String nomeSocio) {
     final dados = _atualizacoesSocios[nomeSocio];
     if (dados != null) {
@@ -2863,6 +2875,10 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         'apartamentoDestino': (dados['apartamentoDestino'] as String?) ?? '',
         'negociacaoDistrato': (dados['negociacaoDistrato'] as String?) ?? '',
         'observacoes': (dados['observacoes'] as String?) ?? '',
+        'dataAceiteTransicao':
+            _parseDataAtualizacao(dados['dataAceiteTransicao']),
+        'dataSolicitacaoDistrato':
+            _parseDataAtualizacao(dados['dataSolicitacaoDistrato']),
         'atualizadoEm': _parseDataAtualizacao(dados['atualizadoEm']),
         'atualizadoPorNome': dados['atualizadoPorNome'] as String?,
         'personalizado': true,
@@ -2874,6 +2890,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
       'apartamentoDestino': '',
       'negociacaoDistrato': '',
       'observacoes': '',
+      'dataAceiteTransicao': null,
+      'dataSolicitacaoDistrato': null,
       'atualizadoEm': null,
       'atualizadoPorNome': null,
       'personalizado': false,
@@ -2907,6 +2925,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         apartamentoDestino: (dados['apartamentoDestino'] as String?) ?? '',
         negociacaoDistrato: (dados['negociacaoDistrato'] as String?) ?? '',
         observacoes: (dados['observacoes'] as String?) ?? '',
+        dataAceiteTransicao: dados['dataAceiteTransicao'] as DateTime?,
+        dataSolicitacaoDistrato:
+            dados['dataSolicitacaoDistrato'] as DateTime?,
         atualizadoEm: dados['atualizadoEm'] as DateTime?,
         atualizadoPorNome: dados['atualizadoPorNome'] as String?,
         personalizado: (dados['personalizado'] as bool?) ?? false,
@@ -2965,6 +2986,27 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         const ordem = {'Aceitar': 0, 'Aguardando Resposta': 1, 'Recusar': 2};
         itens.sort((a, b) =>
             (ordem[a.status] ?? 3).compareTo(ordem[b.status] ?? 3));
+        break;
+      case 'dataAceiteDesc':
+        itens.sort((a, b) {
+          if (a.dataAceiteTransicao == null && b.dataAceiteTransicao == null) {
+            return b.totalPago.compareTo(a.totalPago);
+          }
+          if (a.dataAceiteTransicao == null) return 1;
+          if (b.dataAceiteTransicao == null) return -1;
+          return b.dataAceiteTransicao!.compareTo(a.dataAceiteTransicao!);
+        });
+        break;
+      case 'dataDistratoDesc':
+        itens.sort((a, b) {
+          if (a.dataSolicitacaoDistrato == null &&
+              b.dataSolicitacaoDistrato == null) {
+            return b.totalPago.compareTo(a.totalPago);
+          }
+          if (a.dataSolicitacaoDistrato == null) return 1;
+          if (b.dataSolicitacaoDistrato == null) return -1;
+          return b.dataSolicitacaoDistrato!.compareTo(a.dataSolicitacaoDistrato!);
+        });
         break;
     }
 
@@ -3312,6 +3354,14 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                 value: 'status',
                                 child: Text('Status de aceite'),
                               ),
+                              DropdownMenuItem(
+                                value: 'dataAceiteDesc',
+                                child: Text('Data do aceite (mais recentes)'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'dataDistratoDesc',
+                                child: Text('Data do distrato (mais recentes)'),
+                              ),
                             ],
                             onChanged: (val) {
                               if (val != null) {
@@ -3644,7 +3694,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                         Icon(statusIcone, size: 14, color: statusCor),
                         const SizedBox(width: 5),
                         Text(
-                          statusRotulo,
+                          s.status == 'Aceitar' && s.dataAceiteTransicao != null
+                              ? 'Aceitou (${_formatarDataSimples(s.dataAceiteTransicao!)})'
+                              : statusRotulo,
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.bold,
@@ -3686,7 +3738,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                     ),
 
                   // Chips das Fases de Transição
-                  for (final fase in s.fases) _chipFaseTransicao(fase),
+                  for (final fase in s.fases)
+                    _chipFaseTransicao(
+                      fase,
+                      dataDistrato: s.dataSolicitacaoDistrato,
+                    ),
                 ],
               ),
 
@@ -3712,7 +3768,8 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Negociação de Distrato Realizada:',
+                              'Negociação de Distrato Realizada'
+                              '${s.dataSolicitacaoDistrato != null ? ' (Solicitado em ${_formatarDataSimples(s.dataSolicitacaoDistrato!)})' : ''}:',
                               style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.bold,
@@ -3787,10 +3844,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     );
   }
 
-  Widget _chipFaseTransicao(String fase) {
+  Widget _chipFaseTransicao(String fase, {DateTime? dataDistrato}) {
     Color cor;
     Color fundo;
     IconData icone;
+    String texto = fase;
 
     switch (fase) {
       case 'Informado':
@@ -3817,6 +3875,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
         cor = Colors.deepOrange.shade800;
         fundo = Colors.deepOrange.withValues(alpha: 0.15);
         icone = Icons.assignment_return_outlined;
+        if (dataDistrato != null) {
+          texto = 'Solicitou distrato (${_formatarDataSimples(dataDistrato)})';
+        }
         break;
       case 'Contrato Hotel Villamor assinado':
         cor = Colors.teal.shade800;
@@ -3844,7 +3905,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
           Icon(icone, size: 12, color: cor),
           const SizedBox(width: 4),
           Text(
-            fase,
+            texto,
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -3908,6 +3969,11 @@ class _AbaTransicaoState extends State<AbaTransicao> {
     String statusTemp = s.status;
     List<String> fasesTemp = List<String>.from(s.fases);
     if (fasesTemp.isEmpty) fasesTemp.add('Não informado');
+
+    DateTime? dataAceiteTemp = s.dataAceiteTransicao ??
+        (statusTemp == 'Aceitar' ? DateTime.now() : null);
+    DateTime? dataDistratoTemp = s.dataSolicitacaoDistrato ??
+        (fasesTemp.contains('Solicitou distrato') ? DateTime.now() : null);
 
     final distratoCtrl = TextEditingController(text: s.negociacaoDistrato);
     final obsCtrl = TextEditingController(text: s.observacoes);
@@ -4008,10 +4074,75 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                 ],
                                 selected: {statusTemp},
                                 onSelectionChanged: (val) {
-                                  setDialogState(
-                                      () => statusTemp = val.first);
+                                  setDialogState(() {
+                                    statusTemp = val.first;
+                                    if (statusTemp == 'Aceitar') {
+                                      dataAceiteTemp ??= DateTime.now();
+                                    } else {
+                                      dataAceiteTemp = null;
+                                    }
+                                  });
                                 },
                               ),
+                              if (statusTemp == 'Aceitar') ...[
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: salvando
+                                      ? null
+                                      : () async {
+                                          final picked = await showDatePicker(
+                                            context: ctx,
+                                            initialDate: dataAceiteTemp ??
+                                                DateTime.now(),
+                                            firstDate: DateTime(2020),
+                                            lastDate: DateTime(2100),
+                                          );
+                                          if (picked != null) {
+                                            setDialogState(() =>
+                                                dataAceiteTemp = picked);
+                                          }
+                                        },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green
+                                          .withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: Colors.green
+                                              .withValues(alpha: 0.3)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.calendar_today_rounded,
+                                            size: 16,
+                                            color: Colors.green.shade800),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Data do Aceite: ${dataAceiteTemp != null ? _formatarDataSimples(dataAceiteTemp!) : 'Selecionar data'}',
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.green.shade900,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          'Alterar data',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: cs.primary,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 18),
 
                               // Apartamento que o cliente vai ficar (Hotel Villamor)
@@ -4110,6 +4241,7 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                                       fasesTemp = [
                                                         'Não informado'
                                                       ];
+                                                      dataDistratoTemp = null;
                                                     } else {
                                                       fasesTemp.remove(
                                                           'Não informado');
@@ -4117,9 +4249,18 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                                           .contains(fase)) {
                                                         fasesTemp.add(fase);
                                                       }
+                                                      if (fase ==
+                                                          'Solicitou distrato') {
+                                                        dataDistratoTemp ??=
+                                                            DateTime.now();
+                                                      }
                                                     }
                                                   } else {
                                                     fasesTemp.remove(fase);
+                                                    if (fase ==
+                                                        'Solicitou distrato') {
+                                                      dataDistratoTemp = null;
+                                                    }
                                                     if (fasesTemp.isEmpty) {
                                                       fasesTemp
                                                           .add('Não informado');
@@ -4176,7 +4317,69 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                           color: Colors.deepOrange.shade900,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 10),
+                                      InkWell(
+                                        onTap: salvando
+                                            ? null
+                                            : () async {
+                                                final picked =
+                                                    await showDatePicker(
+                                                  context: ctx,
+                                                  initialDate:
+                                                      dataDistratoTemp ??
+                                                          DateTime.now(),
+                                                  firstDate: DateTime(2020),
+                                                  lastDate: DateTime(2100),
+                                                );
+                                                if (picked != null) {
+                                                  setDialogState(() =>
+                                                      dataDistratoTemp =
+                                                          picked);
+                                                }
+                                              },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: cs.surface,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                                color: Colors.deepOrange
+                                                    .withValues(alpha: 0.4)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.event_note_rounded,
+                                                  size: 16,
+                                                  color: Colors
+                                                      .deepOrange.shade800),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  'Data da solicitação do distrato: ${dataDistratoTemp != null ? _formatarDataSimples(dataDistratoTemp!) : 'Selecionar data'}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors
+                                                        .deepOrange.shade900,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                'Alterar data',
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  color: cs.primary,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
                                       TextField(
                                         controller: distratoCtrl,
                                         minLines: 3,
@@ -4273,6 +4476,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                       return;
                                     }
 
+                                    final finalDataAceite =
+                                        statusTemp == 'Aceitar'
+                                            ? (dataAceiteTemp ??
+                                                DateTime.now())
+                                            : null;
+                                    final finalDataDistrato = temDistrato
+                                        ? (dataDistratoTemp ??
+                                            DateTime.now())
+                                        : null;
+
                                     setDialogState(() => salvando = true);
                                     try {
                                       await _fs.salvarAtualizacaoSocioTransicao(
@@ -4282,6 +4495,9 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                         apartamentoDestino: aptoTexto,
                                         negociacaoDistrato: distratoTexto,
                                         observacoes: obsCtrl.text.trim(),
+                                        dataAceiteTransicao: finalDataAceite,
+                                        dataSolicitacaoDistrato:
+                                            finalDataDistrato,
                                       );
 
                                       setState(() {
@@ -4292,6 +4508,16 @@ class _AbaTransicaoState extends State<AbaTransicao> {
                                           'apartamentoDestino': aptoTexto,
                                           'negociacaoDistrato': distratoTexto,
                                           'observacoes': obsCtrl.text.trim(),
+                                          'dataAceiteTransicao':
+                                              finalDataAceite != null
+                                                  ? Timestamp.fromDate(
+                                                      finalDataAceite)
+                                                  : null,
+                                          'dataSolicitacaoDistrato':
+                                              finalDataDistrato != null
+                                                  ? Timestamp.fromDate(
+                                                      finalDataDistrato)
+                                                  : null,
                                           'atualizadoEm': Timestamp.now(),
                                         };
                                       });

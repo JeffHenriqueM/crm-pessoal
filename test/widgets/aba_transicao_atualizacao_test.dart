@@ -86,6 +86,7 @@ void main() {
       status: 'Aceitar',
       fases: ['Informado', 'Contrato Hotel Villamor assinado'],
       apartamentoDestino: '302',
+      dataAceiteTransicao: DateTime(2026, 10, 15),
     );
 
     await fs.salvarAtualizacaoSocioTransicao(
@@ -94,6 +95,7 @@ void main() {
       fases: ['Solicitou distrato'],
       negociacaoDistrato: 'Negociação de distrato em andamento com devolução parcelada.',
       observacoes: 'Cliente pediu atenção aos prazos.',
+      dataSolicitacaoDistrato: DateTime(2026, 10, 18),
     );
 
     // Também injeta diretamente formato com String em atualizadoEm para testar resiliência
@@ -134,9 +136,10 @@ void main() {
     expect(find.text('João da Silva'), findsOneWidget);
     expect(find.text('Maria Oliveira'), findsOneWidget);
     expect(find.text('Carlos Santos'), findsOneWidget);
-    expect(find.text('Aceitou a transição'), findsOneWidget);
+    expect(find.text('Aceitou (15/10/2026)'), findsOneWidget);
     expect(find.text('Recusou a transição'), findsOneWidget);
-    expect(find.text('Solicitou distrato'), findsWidgets);
+    expect(find.text('Solicitou distrato (18/10/2026)'), findsWidgets);
+    expect(find.text('Negociação de Distrato Realizada (Solicitado em 18/10/2026):'), findsOneWidget);
     expect(find.text('Apto 302'), findsOneWidget);
     expect(find.text('Ficará no Apto: 302'), findsOneWidget);
 
@@ -146,5 +149,76 @@ void main() {
 
     // Sem nenhum erro na árvore de renderização
     expect(find.byType(ErrorWidget), findsNothing);
+  });
+
+  testWidgets('Abre dialog de atualização de sócio e salva com data de aceite e distrato',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    final auth = MockFirebaseAuth(
+      signedIn: true,
+      mockUser: MockUser(uid: 'user-jeff', displayName: 'Jefferson Henrique'),
+    );
+    final fs = FirestoreService(db: db, auth: auth);
+
+    await fs.salvarContrato(const Contrato(
+      localizador: 'LOC_TEST',
+      localizadorAtendimento: 'ATD_TEST',
+      nomeComprador: 'Ana Pereira',
+      cpfComprador: '12345678900',
+      imovel: 'Apto 201',
+      bloco: 'A',
+      cota: 'Cota 01',
+      valorIntegralizado: 80000,
+      status: 'Ativo',
+    ));
+
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AbaTransicao(
+            firestoreService: fs,
+            modo: ModoAba.transicao,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Clica na aba Atualização
+    await tester.tap(find.text('Atualização'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ana Pereira'), findsOneWidget);
+
+    // Clica no card ou botão de atualizar
+    await tester.tap(find.text('Atualizar'));
+    await tester.pumpAndSettle();
+
+    // Modal aberto
+    expect(find.text('Decisão do Sócio (Aceite da Transição):'), findsOneWidget);
+
+    // Seleciona Aceitar
+    await tester.tap(find.text('Aceitar'));
+    await tester.pumpAndSettle();
+
+    // Valida que o container com a data do aceite apareceu
+    expect(find.textContaining('Data do Aceite:'), findsOneWidget);
+
+    // Salva atualização
+    await tester.tap(find.text('Salvar atualização'));
+    await tester.pumpAndSettle();
+
+    // Valida que o modal fechou e no card aparece Aceitou com data
+    expect(find.textContaining('Aceitou ('), findsOneWidget);
+
+    // Valida que no Firestore os dados foram persistidos
+    final doc = await db.collection('config').doc('transicao_atualizacoes_socios').get();
+    final data = doc.data();
+    expect(data, isNotNull);
+    final socioMap = (data!['socios'] as Map<String, dynamic>)['Ana Pereira'] as Map<String, dynamic>;
+    expect(socioMap['status'], 'Aceitar');
+    expect(socioMap['dataAceiteTransicao'], isNotNull);
   });
 }
